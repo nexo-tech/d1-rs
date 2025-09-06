@@ -3,6 +3,9 @@ use sea_orm::*;
 use worker::{D1Database, Error as WorkerError};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use futures::future::BoxFuture;
+use std::pin::Pin;
+use std::future::Future;
 
 // Custom D1 Connection that implements ConnectionTrait
 pub struct D1Connection {
@@ -249,7 +252,7 @@ impl ConnectionTrait for D1Connection {
 }
 
 impl StreamTrait for D1Connection {
-    type Stream<'a> = ();
+    type Stream<'a> = futures::stream::Empty<Result<QueryResult, DbErr>>;
     
     fn stream<'a>(&'a self, _stmt: Statement) -> Pin<Box<dyn Future<Output = Result<Self::Stream<'a>, DbErr>> + Send + 'a>> {
         Box::pin(async {
@@ -272,12 +275,190 @@ impl MockDatabaseTrait for D1Connection {
     fn append_query_err(&mut self, _err: DbErr) {}
 }
 
-// Helper to create a "DatabaseConnection" enum variant that contains our D1Connection
-pub fn create_d1_database_connection(db: D1Database) -> DatabaseConnection {
-    // We need to create a mock connection since D1Connection can't be directly converted
-    // This is a workaround - in a real implementation you'd need to modify SeaORM
-    let d1_conn = D1Connection::new(db);
+// D1 Backend wrapper that integrates with SeaORM's architecture
+#[derive(Debug)]
+pub struct D1Backend {
+    connection: Arc<D1Connection>,
+}
+
+impl D1Backend {
+    pub fn new(db: D1Database) -> Self {
+        Self {
+            connection: Arc::new(D1Connection::new(db)),
+        }
+    }
     
-    // For now, return a mock connection - this would need SeaORM modification to work properly
-    DatabaseConnection::MockDatabaseConnection(Arc::new(MockDatabase::new(DbBackend::Sqlite)))
+    pub async fn init_schema(&self) -> Result<(), DbErr> {
+        self.connection.init_schema().await
+    }
+    
+    pub fn get_connection(&self) -> Arc<D1Connection> {
+        self.connection.clone()
+    }
+}
+
+// Custom D1 Database Connection that can be used with SeaORM
+// This wraps our D1Connection in a way that SeaORM can understand
+pub struct D1DatabaseConnection {
+    backend: Arc<D1Backend>,
+}
+
+impl D1DatabaseConnection {
+    pub fn new(d1_backend: D1Backend) -> Self {
+        Self {
+            backend: Arc::new(d1_backend),
+        }
+    }
+}
+
+#[async_trait]
+impl ConnectionTrait for D1DatabaseConnection {
+    fn get_database_backend(&self) -> DbBackend {
+        DbBackend::Sqlite
+    }
+
+    async fn execute(&self, stmt: Statement) -> Result<ExecResult, DbErr> {
+        self.backend.connection.execute(stmt).await
+    }
+
+    async fn execute_unprepared(&self, sql: &str) -> Result<ExecResult, DbErr> {
+        self.backend.connection.execute_unprepared(sql).await
+    }
+
+    async fn query_one(&self, stmt: Statement) -> Result<Option<QueryResult>, DbErr> {
+        self.backend.connection.query_one(stmt).await
+    }
+
+    async fn query_all(&self, stmt: Statement) -> Result<Vec<QueryResult>, DbErr> {
+        self.backend.connection.query_all(stmt).await
+    }
+}
+
+impl StreamTrait for D1DatabaseConnection {
+    type Stream<'a> = futures::stream::Empty<Result<QueryResult, DbErr>>;
+    
+    fn stream<'a>(&'a self, stmt: Statement) -> Pin<Box<dyn Future<Output = Result<Self::Stream<'a>, DbErr>> + Send + 'a>> {
+        self.backend.connection.stream(stmt)
+    }
+}
+
+impl MockDatabaseTrait for D1DatabaseConnection {
+    fn into_transaction_log(self) -> Vec<Transaction> {
+        vec![]
+    }
+    fn append_exec_result(&mut self, _result: ExecResult) {}
+    fn append_query_result(&mut self, _result: Vec<QueryResult>) {}
+    fn append_exec_err(&mut self, _err: DbErr) {}
+    fn append_query_err(&mut self, _err: DbErr) {}
+}
+
+// Factory function to create a proper D1 database connection
+pub async fn create_d1_connection(d1_db: D1Database) -> Result<DatabaseConnection, DbErr> {
+    let d1_backend = D1Backend::new(d1_db);
+    
+    // Initialize the database schema
+    d1_backend.init_schema().await?;
+    
+    let d1_conn = D1DatabaseConnection::new(d1_backend);
+    
+    // Since SeaORM's DatabaseConnection enum is closed, we need to use MockDatabaseConnection
+    // but with a twist - we'll create a custom mock that actually forwards to our D1 connection
+    let mock_db = D1MockDatabase::new(d1_conn);
+    
+    Ok(DatabaseConnection::MockDatabaseConnection(Arc::new(mock_db)))
+}
+
+// Custom MockDatabase that forwards operations to our D1 connection
+struct D1MockDatabase {
+    d1_conn: D1DatabaseConnection,
+    transaction_log: std::sync::Mutex<Vec<Transaction>>,
+}
+
+impl D1MockDatabase {
+    fn new(d1_conn: D1DatabaseConnection) -> Self {
+        Self {
+            d1_conn,
+            transaction_log: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl ConnectionTrait for D1MockDatabase {
+    fn get_database_backend(&self) -> DbBackend {
+        self.d1_conn.get_database_backend()
+    }
+
+    async fn execute(&self, stmt: Statement) -> Result<ExecResult, DbErr> {
+        // Log the transaction
+        if let Ok(mut log) = self.transaction_log.lock() {
+            let (sql, values) = stmt.build(self.get_database_backend());
+            log.push(Transaction::from_sql_and_values(self.get_database_backend(), &sql, &values));
+        }
+        
+        // Forward to D1 connection
+        self.d1_conn.execute(stmt).await
+    }
+
+    async fn execute_unprepared(&self, sql: &str) -> Result<ExecResult, DbErr> {
+        // Log the transaction
+        if let Ok(mut log) = self.transaction_log.lock() {
+            log.push(Transaction::from_sql_and_values(self.get_database_backend(), sql, &[]));
+        }
+        
+        // Forward to D1 connection
+        self.d1_conn.execute_unprepared(sql).await
+    }
+
+    async fn query_one(&self, stmt: Statement) -> Result<Option<QueryResult>, DbErr> {
+        // Log the transaction
+        if let Ok(mut log) = self.transaction_log.lock() {
+            let (sql, values) = stmt.build(self.get_database_backend());
+            log.push(Transaction::from_sql_and_values(self.get_database_backend(), &sql, &values));
+        }
+        
+        // Forward to D1 connection
+        self.d1_conn.query_one(stmt).await
+    }
+
+    async fn query_all(&self, stmt: Statement) -> Result<Vec<QueryResult>, DbErr> {
+        // Log the transaction
+        if let Ok(mut log) = self.transaction_log.lock() {
+            let (sql, values) = stmt.build(self.get_database_backend());
+            log.push(Transaction::from_sql_and_values(self.get_database_backend(), &sql, &values));
+        }
+        
+        // Forward to D1 connection
+        self.d1_conn.query_all(stmt).await
+    }
+}
+
+impl StreamTrait for D1MockDatabase {
+    type Stream<'a> = futures::stream::Empty<Result<QueryResult, DbErr>>;
+    
+    fn stream<'a>(&'a self, stmt: Statement) -> Pin<Box<dyn Future<Output = Result<Self::Stream<'a>, DbErr>> + Send + 'a>> {
+        self.d1_conn.stream(stmt)
+    }
+}
+
+impl MockDatabaseTrait for D1MockDatabase {
+    fn into_transaction_log(self) -> Vec<Transaction> {
+        self.transaction_log.into_inner().unwrap_or_default()
+    }
+    
+    fn append_exec_result(&mut self, _result: ExecResult) {
+        // No-op for D1 since we execute immediately
+    }
+    
+    fn append_query_result(&mut self, _result: Vec<QueryResult>) {
+        // No-op for D1 since we execute immediately
+    }
+    
+    fn append_exec_err(&mut self, _err: DbErr) {
+        // No-op for D1 since we execute immediately
+    }
+    
+    fn append_query_err(&mut self, _err: DbErr) {
+        // No-op for D1 since we execute immediately
+    }
 }

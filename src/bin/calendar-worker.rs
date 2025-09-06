@@ -55,23 +55,11 @@ async fn main(req: HttpRequest, env: Env, _ctx: worker::Context) -> Result<Respo
 
 // Create a SeaORM-compatible connection to D1 database
 async fn create_d1_connection(d1_db: worker::D1Database) -> Result<sea_orm::DatabaseConnection> {
-    use crate::db::d1_connection::D1Connection;
-    use sea_orm::DatabaseConnection;
-    use std::sync::Arc;
+    use calendar_app::db::d1_connection;
     
-    // Create our custom D1Connection that implements ConnectionTrait
-    let d1_conn = D1Connection::new(d1_db);
-    
-    // Initialize the schema (create tables)
-    d1_conn.init_schema().await
-        .map_err(|e| Error::RustError(format!("Schema initialization failed: {}", e)))?;
-    
-    // Convert to DatabaseConnection enum
-    // Note: This would require modifying SeaORM or using a different approach
-    // For now, we'll use a mock connection as a placeholder
-    Ok(DatabaseConnection::MockDatabaseConnection(
-        Arc::new(sea_orm::MockDatabase::new(sea_orm::DbBackend::Sqlite))
-    ))
+    // Create a proper D1 database connection that integrates with SeaORM
+    d1_connection::create_d1_connection(d1_db).await
+        .map_err(|e| Error::RustError(format!("D1 connection creation failed: {}", e)))
 }
 
 async fn convert_request(req: HttpRequest) -> Result<axum::http::Request<axum::body::Body>> {
