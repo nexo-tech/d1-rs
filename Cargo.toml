@@ -1,0 +1,148 @@
+[package]
+name = "calendar_app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Leptos Framework
+leptos = { version = "0.6" }
+leptos_actix = { version = "0.6", optional = true }
+leptos_router = { version = "0.6" }
+leptos_meta = { version = "0.6" }
+
+# Database - SeaORM for auto-migrations
+sea-orm = { version = "1.0", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono", "with-json", "with-uuid"] }
+sea-orm-migration = { version = "1.0", features = ["runtime-tokio-rustls", "sqlx-sqlite"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web servers
+actix-web = { version = "4", optional = true, features = ["macros"] }
+actix-files = { version = "0.6", optional = true }
+
+# Workers support
+worker = { version = "0.1", optional = true }
+axum = { version = "0.7", optional = true }
+leptos_axum = { version = "0.6", optional = true }
+futures = { version = "0.3", optional = true }
+tower = { version = "0.4", optional = true }
+worker-build = { version = "0.1", optional = true }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.8"
+time = { version = "0.3", features = ["serde"] }
+
+# OAuth and Google Calendar
+oauth2 = "4.4"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+google-calendar3 = "5"
+yup-oauth2 = "11"
+
+# Environment variables
+dotenvy = "0.15"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# WASM for client side  
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["HtmlDocument", "Window", "Storage"] }
+console_error_panic_hook = "0.1"
+
+# Form handling
+leptos_dom = { version = "0.6" }
+
+# Styling
+leptos-use = { version = "0.10" }
+
+# HTTP
+http = "1"
+
+# Authentication
+bcrypt = "0.15"
+jsonwebtoken = "9"
+rand = "0.8"
+
+# Configuration
+cfg-if = "1"
+
+# Async traits
+async-trait = "0.1"
+
+[features]
+default = ["ssr"]
+hydrate = ["leptos/hydrate", "leptos_meta/hydrate", "leptos_router/hydrate"]
+ssr = [
+    "dep:actix-web",
+    "dep:actix-files",
+    "leptos/ssr",
+    "leptos_actix",
+    "leptos_meta/ssr",
+    "leptos_router/ssr",
+]
+workers = [
+    "dep:worker",
+    "dep:axum",
+    "dep:leptos_axum", 
+    "dep:futures",
+    "dep:tower",
+    "dep:worker-build",
+    "leptos/ssr",
+    "leptos_meta/ssr",
+    "leptos_router/ssr",
+]
+
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+strip = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "calendar-server"
+required-features = ["ssr"]
+
+[[bin]]
+name = "calendar-worker"
+required-features = ["workers"]
+
+[[bin]]
+name = "test_db"
+
+[[bin]]
+name = "simple_test"
+
+[package.metadata.leptos]
+output-name = "calendar_app"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+style-file = "style/main.css"
+tailwind-input-file = "style/tailwind.css"
+tailwind-config-file = "tailwind.config.js"
+assets-dir = "public"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+browserquery = "defaults"
+watch = false
+env = "DEV"
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false

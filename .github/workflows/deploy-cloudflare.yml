@@ -1,0 +1,48 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust nightly
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: clippy, rustfmt
+        targets: wasm32-unknown-unknown
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Install cargo-leptos
+      run: cargo install --locked cargo-leptos
+    
+    - name: Lint and test
+      run: |
+        cargo fmt --all -- --check
+        cargo clippy --all-targets --features workers -- -D warnings
+        cargo test --features workers
+    
+    - name: Build for Cloudflare Workers
+      run: cargo leptos build --release --bin-features="workers"
+      env:
+        D1_DATABASE_URL: sqlite::memory:
+    
+    - name: Deploy to Cloudflare Workers
+      run: npx wrangler deploy
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
