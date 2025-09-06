@@ -66,7 +66,6 @@
             valgrind
             
             # Additional libraries commonly needed
-            libiconv
             zlib
             
             # Wasm tools (optional)
@@ -77,9 +76,12 @@
             # Documentation
             mdbook
             mdbook-mermaid
-          ] ++ lib.optionals stdenv.isDarwin [
-            darwin.apple_sdk.frameworks.Security
-            darwin.apple_sdk.frameworks.SystemConfiguration
+          ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.darwin.apple_sdk.frameworks.Security
+            pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+            pkgs.darwin.apple_sdk.frameworks.CoreServices
+            pkgs.darwin.apple_sdk.frameworks.CoreFoundation
+            pkgs.libiconv
           ];
           
           shellHook = ''
