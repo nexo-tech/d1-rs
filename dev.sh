@@ -18,9 +18,14 @@ if ! command -v cargo &> /dev/null; then
     exit 1
 fi
 
-# Install worker-build if not already installed
-echo "📦 Installing worker-build..."
-cargo install -q worker-build 2>/dev/null || echo "worker-build already installed"
+# Check if worker-build is installed
+echo "📦 Checking worker-build installation..."
+if ! command -v worker-build &> /dev/null; then
+    echo "Installing worker-build..."
+    cargo install worker-build
+else
+    echo "worker-build already installed"
+fi
 
 # Create local D1 database for development
 echo "🗄️ Setting up local D1 database..."

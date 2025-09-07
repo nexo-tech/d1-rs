@@ -3,15 +3,9 @@ main = "build/worker/shim.mjs"
 compatibility_date = "2023-05-18"
 
 [build]
-command = "cargo install -q worker-build && worker-build --release"
+command = "worker-build"
 
 [[d1_databases]]
-binding = "DB"
-database_name = "cloudflare-worker-db"
-database_id = "YOUR_DATABASE_ID"
-
-[env.dev.d1_databases]
-[[env.dev.d1_databases]]
 binding = "DB"
 database_name = "cloudflare-worker-db"
 database_id = "YOUR_DATABASE_ID"
@@ -21,3 +15,4 @@ database_id = "YOUR_DATABASE_ID"
 binding = "DB"
 database_name = "cloudflare-worker-db"
 preview_database_id = "local"
+

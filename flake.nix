@@ -35,10 +35,11 @@
             pkg-config
             openssl
             just
-            nodePackages.wrangler
+            nodejs_22
           ];
           
           shellHook = ''
+            export PATH="/home/snowbear/.cargo/bin:$PATH"
             echo "🦀 Cloudflare Worker Rust Development Environment"
             echo "================================================"
             echo "Rust version: $(rustc --version)"
@@ -58,3 +59,4 @@
         };
       });
 }
+
