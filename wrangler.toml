@@ -1,23 +1,23 @@
-name = "calendar-app"
-compatibility_date = "2024-01-01"
-main = "target/wasm32-unknown-unknown/release/calendar-worker.wasm"
+name = "cloudflare-worker"
+main = "build/worker/shim.mjs"
+compatibility_date = "2023-05-18"
 
-[env.production]
-name = "calendar-app"
-
-[env.staging]
-name = "calendar-app-staging"
+[build]
+command = "cargo install -q worker-build && worker-build --release"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "calendar-db"
-database_id = "your-d1-database-id-here"
+database_name = "cloudflare-worker-db"
+database_id = "YOUR_DATABASE_ID"
 
-[vars]
-RUST_LOG = "info"
+[env.dev.d1_databases]
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "cloudflare-worker-db"
+database_id = "YOUR_DATABASE_ID"
 
-# Environment variables (set these in Cloudflare dashboard or via wrangler secret)
-# JWT_SECRET = "your-jwt-secret"
-# GOOGLE_CLIENT_ID = "your-google-client-id"
-# GOOGLE_CLIENT_SECRET = "your-google-client-secret"
-# GOOGLE_REDIRECT_URL = "https://your-domain.workers.dev/auth/callback"
+# For local development with --local flag
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "cloudflare-worker-db"
+preview_database_id = "local"

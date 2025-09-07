@@ -1,106 +1,16 @@
 [package]
-name = "calendar_app"
+name = "cloudflare-worker"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
-# Template engine that works in WASM
-tera = { version = "1.20", default-features = false }
-
-# Web framework - Axum for native only
-axum = { version = "0.7", optional = true }
-tower = { version = "0.4", optional = true }
-tower-http = { version = "0.5", features = ["fs", "cors"], optional = true }
-
-# Workers support
-worker = { version = "0.6", optional = true }
-
-# Database - SeaORM for native only
-sea-orm = { version = "1.0", features = ["macros", "with-chrono", "with-json", "with-uuid"], optional = true }
-sea-orm-migration = { version = "1.0", optional = true }
-
-# Async runtime - different features for different targets
-tokio = { version = "1", default-features = false, features = ["sync", "macros"] }
-futures = { version = "0.3" }
-
-# Additional tokio features for native only
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1", features = ["fs", "net", "rt-multi-thread"] }
-
-# Override tokio for WASM target to ensure no networking features
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "1", default-features = false, features = ["sync", "macros"] }
-
-# Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-# WASM bindings
+worker = "0.0.21"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-getrandom = { version = "0.2", features = ["js"] }
-
-# Time handling
-chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.8"
-time = { version = "0.3", features = ["serde"] }
-
-# OAuth and Google Calendar (lightweight for WASM)
-oauth2 = { version = "4.4" }
-reqwest = { version = "0.12", features = ["json"], default-features = false }
-
-# Environment variables
-dotenvy = "0.15"
-
-# Error handling
-thiserror = "1"
-anyhow = "1"
-
-# UUID
-uuid = { version = "1", features = ["v4", "serde", "js"] }
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# HTTP
-http = "1"
-
-# Authentication (using alternatives that work in WASM)
-jsonwebtoken = { version = "9", default-features = false }
-rand = { version = "0.8", features = ["getrandom"] }
-argon2 = "0.5"
-
-# Configuration
-cfg-if = "1"
-
-# Async traits
-async-trait = "0.1"
-
-[features]
-default = []
-native = ["tokio/fs", "tokio/net", "tokio/rt-multi-thread", "dep:axum", "dep:tower", "dep:tower-http", "dep:sea-orm", "dep:sea-orm-migration", "sea-orm?/sqlx-sqlite", "sea-orm?/runtime-tokio-rustls", "sea-orm-migration?/runtime-tokio-rustls", "sea-orm-migration?/sqlx-sqlite"]
-workers = ["dep:worker"]
 
 [profile.release]
-opt-level = 'z'
 lto = true
-codegen-units = 1
-strip = true
-
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-# Native server binary
-[[bin]]
-name = "calendar-server"
-path = "src/bin/server.rs"
-required-features = ["native"]
-
-# WASM worker binary  
-[[bin]]
-name = "calendar-worker"
-path = "src/main.rs"
-required-features = ["workers"]
-
-
