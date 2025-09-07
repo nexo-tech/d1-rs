@@ -1,21 +1,50 @@
-pub mod components;
-pub mod db;
-pub mod models;
-pub mod server;
+pub mod auth;
+pub mod templates;
+pub mod shared_types;
+pub mod database_trait;
 
-use cfg_if::cfg_if;
+#[cfg(feature = "native")]
+pub mod db_shared;
+#[cfg(feature = "native")]
+pub mod entities;
+#[cfg(feature = "native")]
+pub mod database;
+#[cfg(feature = "native")]
+pub mod routes;
 
-cfg_if! {
-    if #[cfg(feature = "hydrate")] {
-        use leptos::*;
-        use wasm_bindgen::prelude::wasm_bindgen;
+#[cfg(feature = "workers")]
+pub mod worker_handlers;
 
-        #[wasm_bindgen]
-        pub fn hydrate() {
-            use crate::components::App;
+// Re-export main components
+pub use auth::{User, Claims};
 
-            console_error_panic_hook::set_once();
-            leptos::mount_to_body(App);
+#[cfg(feature = "native")]
+pub use routes::{AppState, create_router};
+
+// Shared data structures for both targets
+pub use shared_types::{CreateCalendarRequest, WorkingHoursRequest, WorkingTime, BookingRequest, Calendar, Booking, CalendarWorkingHours};
+
+#[derive(serde::Serialize)]
+pub struct ApiResponse<T> {
+    pub success: bool,
+    pub data: Option<T>,
+    pub error: Option<String>,
+}
+
+impl<T> ApiResponse<T> {
+    pub fn success(data: T) -> Self {
+        Self {
+            success: true,
+            data: Some(data),
+            error: None,
+        }
+    }
+    
+    pub fn error(message: String) -> Self {
+        Self {
+            success: false,
+            data: None,
+            error: Some(message),
         }
     }
 }

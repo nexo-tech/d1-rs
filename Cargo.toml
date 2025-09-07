@@ -4,45 +4,50 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Leptos Framework
-leptos = { version = "0.6" }
-leptos_actix = { version = "0.6", optional = true }
-leptos_router = { version = "0.6" }
-leptos_meta = { version = "0.6" }
+# Template engine that works in WASM
+tera = { version = "1.20", default-features = false }
 
-# Database - SeaORM for auto-migrations
-sea-orm = { version = "1.0", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono", "with-json", "with-uuid"] }
-sea-orm-migration = { version = "1.0", features = ["runtime-tokio-rustls", "sqlx-sqlite"] }
-
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-
-# Web servers
-actix-web = { version = "4", optional = true, features = ["macros"] }
-actix-files = { version = "0.6", optional = true }
+# Web framework - Axum for native only
+axum = { version = "0.7", optional = true }
+tower = { version = "0.4", optional = true }
+tower-http = { version = "0.5", features = ["fs", "cors"], optional = true }
 
 # Workers support
-worker = { version = "0.1", optional = true }
-axum = { version = "0.7", optional = true }
-leptos_axum = { version = "0.6", optional = true }
-futures = { version = "0.3", optional = true }
-tower = { version = "0.4", optional = true }
-worker-build = { version = "0.1", optional = true }
+worker = { version = "0.6", optional = true }
+
+# Database - SeaORM for native only
+sea-orm = { version = "1.0", features = ["macros", "with-chrono", "with-json", "with-uuid"], optional = true }
+sea-orm-migration = { version = "1.0", optional = true }
+
+# Async runtime - different features for different targets
+tokio = { version = "1", default-features = false, features = ["sync", "macros"] }
+futures = { version = "0.3" }
+
+# Additional tokio features for native only
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["fs", "net", "rt-multi-thread"] }
+
+# Override tokio for WASM target to ensure no networking features
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { version = "1", default-features = false, features = ["sync", "macros"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# WASM bindings
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+getrandom = { version = "0.2", features = ["js"] }
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.8"
 time = { version = "0.3", features = ["serde"] }
 
-# OAuth and Google Calendar
-oauth2 = "4.4"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-google-calendar3 = "5"
-yup-oauth2 = "11"
+# OAuth and Google Calendar (lightweight for WASM)
+oauth2 = { version = "4.4" }
+reqwest = { version = "0.12", features = ["json"], default-features = false }
 
 # Environment variables
 dotenvy = "0.15"
@@ -52,30 +57,19 @@ thiserror = "1"
 anyhow = "1"
 
 # UUID
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "serde", "js"] }
 
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# WASM for client side  
-wasm-bindgen = "0.2"
-web-sys = { version = "0.3", features = ["HtmlDocument", "Window", "Storage"] }
-console_error_panic_hook = "0.1"
-
-# Form handling
-leptos_dom = { version = "0.6" }
-
-# Styling
-leptos-use = { version = "0.10" }
-
 # HTTP
 http = "1"
 
-# Authentication
-bcrypt = "0.15"
-jsonwebtoken = "9"
-rand = "0.8"
+# Authentication (using alternatives that work in WASM)
+jsonwebtoken = { version = "9", default-features = false }
+rand = { version = "0.8", features = ["getrandom"] }
+argon2 = "0.5"
 
 # Configuration
 cfg-if = "1"
@@ -84,27 +78,9 @@ cfg-if = "1"
 async-trait = "0.1"
 
 [features]
-default = ["ssr"]
-hydrate = ["leptos/hydrate", "leptos_meta/hydrate", "leptos_router/hydrate"]
-ssr = [
-    "dep:actix-web",
-    "dep:actix-files",
-    "leptos/ssr",
-    "leptos_actix",
-    "leptos_meta/ssr",
-    "leptos_router/ssr",
-]
-workers = [
-    "dep:worker",
-    "dep:axum",
-    "dep:leptos_axum", 
-    "dep:futures",
-    "dep:tower",
-    "dep:worker-build",
-    "leptos/ssr",
-    "leptos_meta/ssr",
-    "leptos_router/ssr",
-]
+default = []
+native = ["tokio/fs", "tokio/net", "tokio/rt-multi-thread", "dep:axum", "dep:tower", "dep:tower-http", "dep:sea-orm", "dep:sea-orm-migration", "sea-orm?/sqlx-sqlite", "sea-orm?/runtime-tokio-rustls", "sea-orm-migration?/runtime-tokio-rustls", "sea-orm-migration?/sqlx-sqlite"]
+workers = ["dep:worker"]
 
 [profile.release]
 opt-level = 'z'
@@ -115,34 +91,16 @@ strip = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+# Native server binary
 [[bin]]
 name = "calendar-server"
-required-features = ["ssr"]
+path = "src/bin/server.rs"
+required-features = ["native"]
 
+# WASM worker binary  
 [[bin]]
 name = "calendar-worker"
+path = "src/main.rs"
 required-features = ["workers"]
 
-[[bin]]
-name = "test_db"
 
-[[bin]]
-name = "simple_test"
-
-[package.metadata.leptos]
-output-name = "calendar_app"
-site-root = "target/site"
-site-pkg-dir = "pkg"
-style-file = "style/main.css"
-tailwind-input-file = "style/tailwind.css"
-tailwind-config-file = "tailwind.config.js"
-assets-dir = "public"
-site-addr = "127.0.0.1:3000"
-reload-port = 3001
-browserquery = "defaults"
-watch = false
-env = "DEV"
-bin-features = ["ssr"]
-bin-default-features = false
-lib-features = ["hydrate"]
-lib-default-features = false

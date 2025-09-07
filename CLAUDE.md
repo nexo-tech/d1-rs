@@ -6,17 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Primary Development Commands
 ```bash
-# Start development server with hot reload
-cargo leptos watch --hot-reload
-
-# Build for production
-cargo leptos build --release
-
-# Serve production build
-cargo leptos serve --release
-
 # Build for Cloudflare Workers deployment
-cargo leptos build --release --bin-features="workers"
+cargo build --target wasm32-unknown-unknown --release
+
+# Deploy to Cloudflare Workers
+wrangler deploy
+
+# Run locally with Wrangler
+wrangler dev
+
+# Run database migrations
+wrangler d1 execute DB --file=./migration.sql
 ```
 
 ### Code Quality Commands
@@ -25,91 +25,109 @@ cargo leptos build --release --bin-features="workers"
 cargo fmt
 
 # Lint code
-cargo clippy
+cargo clippy --target wasm32-unknown-unknown
 
-# Run tests
-cargo test
-
-# Run all quality checks (as in CI/CD)
-cargo fmt --all -- --check
-cargo clippy --all-targets --features workers -- -D warnings
-cargo test --features workers
+# Check compilation
+cargo check --target wasm32-unknown-unknown
 ```
 
-### Nix Environment (if using flake.nix)
+### Local Development
 ```bash
-# Enter development shell with all tools
-nix develop
+# Start development server (hot reload with wrangler)
+wrangler dev --local
+
+# View logs
+wrangler tail
 ```
 
 ## Architecture Overview
 
-This is a **multi-tenant calendar booking system** built with Rust and Leptos framework, supporting both local SQLite development and Cloudflare Workers deployment.
+This is a **simple multi-tenant calendar booking system** built with Rust for Cloudflare Workers, using server-side HTML templates (similar to the Go version).
 
 ### Core Technology Stack
-- **Framework**: Leptos (full-stack Rust framework) with SSR/hydration
-- **Database**: SeaORM with auto-migrations
-  - Local: SQLite (`sqlite://./calendar.db?mode=rwc`)
-  - Production: Cloudflare D1 (via workers feature)
-- **Frontend**: Leptos components + Tailwind CSS
-- **Authentication**: JWT tokens with bcrypt password hashing
-- **OAuth**: Google Calendar integration via OAuth2
+- **Runtime**: Cloudflare Workers (WASM)
+- **Template Engine**: Tera (server-side HTML templates)
+- **Database**: Cloudflare D1 (SQLite)
+- **Authentication**: JWT tokens with Argon2 password hashing
+- **No Client-Side JavaScript Framework** - Pure server-side rendering
+
+### Key Design Principles
+- **Simple like Go**: No complex frontend framework, just server-rendered HTML
+- **WASM Compatible**: All dependencies work in WebAssembly environment
+- **Minimal Dependencies**: Removed SeaORM, Leptos, and other complex frameworks
+- **Direct D1 Integration**: Raw SQL queries instead of ORM complexity
 
 ### Project Structure
-- `src/components/` - Leptos frontend components
-  - `app.rs` - Main application router and layout
-  - `auth.rs` - Login/register components
-  - `calendar_management.rs` - Admin dashboard for calendar configuration
-  - `public_calendar.rs` - Public booking interface
-  - `booking.rs` - Booking form and slot selection
-  
-- `src/server/` - Backend services layer
-  - `auth.rs` - JWT authentication, user management
-  - `calendar_service.rs` - Calendar CRUD operations
-  - `booking_service.rs` - Booking logic and slot availability
-  - `oauth_service.rs` - Google Calendar OAuth integration
-  - `database_service.rs` - Database abstraction (SeaORM/D1)
-  - `state.rs` - Application state management
-  
-- `src/models/` - Database entity definitions
-- `src/db/` - Database connection logic
-- `migration/` - SeaORM migration files
+- `src/main.rs` - Main Cloudflare Worker entry point with routing
+- `src/handlers.rs` - HTTP request handlers (similar to Go handlers)
+- `src/templates.rs` - HTML templates embedded as strings
+- `src/auth.rs` - JWT authentication and password hashing
+- `src/db.rs` - Direct D1 database operations (raw SQL)
+- `src/models.rs` - Data structures
 
-### Feature Flags
-- `ssr` (default) - Server-side rendering with Actix Web
-- `hydrate` - Client-side hydration for WASM
-- `workers` - Cloudflare Workers deployment with D1 database
+### Removed Components
+- ❌ Leptos framework (replaced with simple templates)
+- ❌ SeaORM (replaced with raw D1 queries)
+- ❌ Client-side hydration/WASM
+- ❌ Complex build process
+- ❌ Actix-web server (now pure Workers)
 
-### Key API Patterns
-All API endpoints are under `/api/`:
-- Authentication: `/api/register`, `/api/login`, `/api/logout`
-- Calendar management: `/api/calendars` (CRUD operations)
-- Public booking: `/api/public/calendar/{slug}`, `/api/public/slots/{slug}`, `/api/public/book/{slug}`
+### Routes
+All routes are handled server-side with HTML responses:
+
+**Public Routes:**
+- `GET /` - Redirects to login
+- `GET /book/:slug` - Public calendar booking page
+- `GET /api/slots/:slug` - Available time slots API
+- `POST /api/book/:slug` - Create booking API
+
+**Authentication:**
+- `GET /login` - Login page
+- `POST /api/login` - Login API
+- `GET /register` - Registration page  
+- `POST /api/register` - Registration API
+- `POST /api/logout` - Logout API
+
+**Dashboard (Protected):**
+- `GET /dashboard` - Dashboard home
+- `GET /dashboard/calendars` - Calendar list
+- `GET /dashboard/calendars/new` - Create calendar form
+- `POST /api/calendars` - Create calendar API
+- `GET /dashboard/calendars/:id` - Calendar details
+- `PUT /api/calendars/:id` - Update calendar API
+- `DELETE /api/calendars/:id` - Delete calendar API
+
+**Working Hours:**
+- `GET /dashboard/calendars/:id/working-hours` - Working hours form
+- `POST /api/calendars/:id/working-hours` - Update working hours API
 
 ### Database Schema
-The application uses SeaORM with automatic migrations. Key entities:
-- `users` - User accounts with email/password
-- `calendars` - Calendar configurations (name, slug, timezone, settings)
-- `calendar_working_hours` - Per-calendar availability settings
-- `bookings` - Appointment bookings
-- `sessions` - JWT session management
-- `calendar_tokens` - Google Calendar OAuth tokens
+Direct D1 SQLite tables:
+- `users` - User accounts (id, name, email, password_hash)
+- `calendars` - Calendar configurations (id, user_id, name, slug, timezone, duration, buffer)  
+- `calendar_working_hours` - Working hours per calendar (id, calendar_id, day_of_week, start_time, end_time, enabled)
+- `bookings` - Appointments (id, calendar_id, name, email, notes, start_time, end_time)
 
 ### Environment Configuration
-Required environment variables (in `.env` file):
-- `DATABASE_URL` - SQLite connection string
-- `JWT_SECRET` - Secret key for JWT signing
-- `GOOGLE_CLIENT_ID` - Google OAuth client ID (optional)
-- `GOOGLE_CLIENT_SECRET` - Google OAuth secret (optional)
-- `GOOGLE_REDIRECT_URL` - OAuth callback URL (optional)
+Set via `wrangler secret put`:
+```bash
+wrangler secret put JWT_SECRET
+```
 
-### Deployment Targets
-1. **Local Development**: Uses SQLite with Actix Web server
-2. **Cloudflare Workers**: Uses D1 database with worker runtime
-   - Configuration in `wrangler.toml`
-   - GitHub Actions workflow in `.github/workflows/deploy-cloudflare.yml`
+### Deployment
+1. **Build**: `cargo build --target wasm32-unknown-unknown --release`
+2. **Deploy**: `wrangler deploy`
 
-### Testing Strategy
-- Unit tests run with `cargo test`
-- Feature-specific tests with `cargo test --features workers`
-- All tests must pass before deployment (enforced in CI/CD)
+The application compiles to WebAssembly and runs on Cloudflare's edge network.
+
+### Key Differences from Go Version
+- ✅ Same simple routing approach
+- ✅ Same HTML template patterns  
+- ✅ Same database operations
+- ✅ Same authentication flow
+- ✅ Runs on Cloudflare Workers instead of traditional server
+
+### Testing
+- No complex test setup needed
+- Test locally with `wrangler dev --local`
+- Deploy to staging with environment-specific configs
