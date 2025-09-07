@@ -1,0 +1,16 @@
+[package]
+name = "d1orm"
+version = "0.1.0"
+edition = "2021"
+description = "Type-safe D1-first ORM for Cloudflare Workers"
+
+[dependencies]
+worker = { version = "0.4", features = ["d1"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde", "js-sys", "clock"], default-features = false }
+d1orm_derive = { path = "./d1orm_derive" }
+
+[lib]
+name = "d1orm"

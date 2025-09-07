@@ -1,146 +1,68 @@
 use worker::{*, Result as WorkerResult};
 use worker::d1::D1Database;
-use gluesql::prelude::*;
-use gluesql::core::ast::*;
-use gluesql::core::ast_builder::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
+use chrono::{DateTime, Utc};
+use d1orm::*;
 
-mod d1_storage;
-use d1_storage::D1Storage;
-
-trait FromGlueValue: Sized {
-    fn from_glue_row(labels: &[String], row: &[Value]) -> std::result::Result<Self, String>;
-}
-
-trait ToGlueValues {
-    fn to_glue_values(&self) -> HashMap<&'static str, Value>;
-}
-
-trait DatabaseEntity: FromGlueValue + ToGlueValues + Serialize {
-    const TABLE_NAME: &'static str;
-    
-    async fn find_all(glue: &mut Glue<D1Storage>) -> std::result::Result<Vec<Self>, String> {
-        let select_stmt = table(Self::TABLE_NAME).select().build()
-            .map_err(|e| format!("Failed to build query: {:?}", e))?;
-        let result = glue.execute_stmt(&select_stmt).await
-            .map_err(|e| format!("Query failed: {:?}", e))?;
-        
-        let mut entities = Vec::new();
-        if let Payload::Select { labels, rows } = result {
-            for row in rows {
-                entities.push(Self::from_glue_row(&labels, &row)?);
-            }
-        }
-        Ok(entities)
-    }
-    
-    async fn find_by_id(glue: &mut Glue<D1Storage>, id: i64) -> std::result::Result<Option<Self>, String> {
-        let select_stmt = table(Self::TABLE_NAME)
-            .select()
-            .filter(col("id").eq(id))
-            .build()
-            .map_err(|e| format!("Failed to build statement: {:?}", e))?;
-        let result = glue.execute_stmt(&select_stmt).await
-            .map_err(|e| format!("Query failed: {:?}", e))?;
-        
-        if let Payload::Select { labels, rows } = result {
-            if let Some(row) = rows.into_iter().next() {
-                return Ok(Some(Self::from_glue_row(&labels, &row)?));
-            }
-        }
-        Ok(None)
-    }
-}
-
-macro_rules! impl_glue_entity {
-    ($struct_name:ident {
-        $(
-            $field:ident: $field_type:tt
-        ),* $(,)?
-    }) => {
-        impl FromGlueValue for $struct_name {
-            fn from_glue_row(labels: &[String], row: &[Value]) -> std::result::Result<Self, String> {
-                $(
-                    let mut $field: Option<$field_type> = None;
-                )*
-                
-                for (label, value) in labels.iter().zip(row.iter()) {
-                    match label.as_str() {
-                        $(
-                            stringify!($field) => {
-                                $field = Some(impl_glue_entity!(@convert_value value, $field_type)?);
-                            }
-                        )*
-                        _ => {}
-                    }
-                }
-                
-                Ok($struct_name {
-                    $(
-                        $field: $field.ok_or_else(|| format!("Missing field: {}", stringify!($field)))?,
-                    )*
-                })
-            }
-        }
-        
-        impl ToGlueValues for $struct_name {
-            fn to_glue_values(&self) -> HashMap<&'static str, Value> {
-                let mut values = HashMap::new();
-                $(
-                    values.insert(stringify!($field), impl_glue_entity!(@to_value &self.$field, $field_type));
-                )*
-                values
-            }
-        }
-    };
-    
-    (@convert_value $value:expr, i64) => {
-        {
-            match $value {
-                Value::I64(i) => Ok(*i),
-                _ => Err(format!("Expected i64, got {:?}", $value)),
-            }
-        }
-    };
-    
-    (@convert_value $value:expr, String) => {
-        {
-            match $value {
-                Value::Str(s) => Ok(s.clone()),
-                Value::Null => Ok(String::new()),
-                _ => Err(format!("Expected String, got {:?}", $value)),
-            }
-        }
-    };
-    
-    (@to_value $field:expr, i64) => {
-        Value::I64(*$field)
-    };
-    
-    (@to_value $field:expr, String) => {
-        Value::Str($field.clone())
-    };
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Entity)]
+#[table(name = "users")]
 struct User {
+    #[primary_key]
     id: i64,
     name: String,
+    #[unique]
     email: String,
-    created_at: String,
+    created_at: DateTime<Utc>,
 }
 
-impl_glue_entity!(User {
-    id: i64,
-    name: String,
-    email: String,
-    created_at: String,
-});
+// Check if database is ready without running full migrations
+async fn is_database_ready(db: &D1Client) -> bool {
+    // Quick check - if users table exists, assume DB is ready
+    let sql = "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='users'";
+    match db.execute_returning_count(sql, &[]).await {
+        Ok(count) => count > 0,
+        Err(_) => false,
+    }
+}
 
-impl DatabaseEntity for User {
-    const TABLE_NAME: &'static str = "users";
+async fn ensure_migrations(db: &D1Client) -> d1orm::Result<()> {
+    // Quick check first - if DB is ready, skip migrations
+    if is_database_ready(db).await {
+        worker::console_log!("✅ Database ready - skipping migration check");
+        return Ok(());
+    }
+
+    worker::console_log!("🔄 Database not ready - running migrations...");
+    
+    let mut runner = MigrationRunner::new();
+    
+    // Add initial migration to create users table
+    let create_users_migration = CreateTableMigration::new("create_users", 1, "users".to_string())
+        .column("id", "INTEGER").primary_key()
+        .column("name", "TEXT").not_null()
+        .column("email", "TEXT").not_null().unique()
+        .column("created_at", "DATETIME").default("CURRENT_TIMESTAMP");
+    
+    runner.add_migration(Box::new(create_users_migration));
+    
+    worker::console_log!("📋 Added migration: create_users");
+    
+    // This returns which migrations were actually applied
+    match runner.run_pending_migrations(db).await {
+        Ok(applied) => {
+            if applied.is_empty() {
+                worker::console_log!("⏭️ No migrations needed - all up to date");
+            } else {
+                worker::console_log!("✅ Applied {} migrations: {:?}", applied.len(), applied);
+            }
+            Ok(())
+        },
+        Err(e) => {
+            worker::console_log!("❌ Migration failed: {}", e);
+            Err(e)
+        }
+    }
 }
 
 #[event(fetch)]
@@ -153,7 +75,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> WorkerResult
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Cloudflare Worker with D1 and GlueSQL</title>
+    <title>Cloudflare Worker with D1ORM</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         .card { background: #f5f5f5; padding: 20px; margin: 10px 0; border-radius: 8px; }
@@ -162,16 +84,18 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> WorkerResult
     </style>
 </head>
 <body>
-    <h1 class="header">Welcome to Cloudflare Worker with GlueSQL</h1>
+    <h1 class="header">Welcome to Cloudflare Worker with D1ORM</h1>
     <div class="card">
-        <h2>Type-Safe ORM with D1 Database</h2>
-        <p>This Cloudflare Worker uses GlueSQL, a type-safe SQL database library written in Rust, with a custom D1 storage adapter.</p>
+        <h2>Type-Safe D1-First ORM</h2>
+        <p>This Cloudflare Worker uses D1ORM, a type-safe D1-first ORM written in Rust with ergonomic query builders.</p>
         <h3>Features:</h3>
         <ul>
-            <li>✅ Full SQL support with type safety</li>
-            <li>✅ Custom D1 storage backend</li>
-            <li>✅ WASM-compatible (no incompatible dependencies)</li>
-            <li>✅ No raw SQL statements needed</li>
+            <li>✅ Type-safe query builder with method generation</li>
+            <li>✅ Direct D1 integration (no intermediate layers)</li>
+            <li>✅ WASM-optimized compilation</li>
+            <li>✅ Human-first API design</li>
+            <li>✅ Rust-based migrations</li>
+            <li>✅ Schema evolution support</li>
         </ul>
         <h3>API Endpoints:</h3>
         <ul>
@@ -190,44 +114,48 @@ POST /api/users
   "email": "john@example.com"
 }
 
-// Update user
-PUT /api/user/1
-{
-  "name": "Jane Doe",
-  "email": "jane@example.com"
-}</pre>
+// Query with type-safe methods
+users = User::query()
+    .where_name_contains("John")
+    .where_email_ends_with("@example.com")
+    .order_by_created_at_desc()
+    .limit(10)
+    .all(&db)
+    .await?;</pre>
     </div>
 </body>
 </html>
             "#)
         })
         .get_async("/users", |_req, ctx| async move {
-            let db = ctx.env.get_binding::<D1Database>("DB")?;
-            let storage = D1Storage::new(db);
-            let mut glue = Glue::new(storage);
+            let d1_db = ctx.env.get_binding::<D1Database>("DB")?;
+            let db = D1Client::new(d1_db);
             
-            // Type-safe query builder - no raw SQL!
-            let select_stmt = table("users").select().build()
-                .map_err(|e| worker::Error::RustError(format!("Failed to build query: {:?}", e)))?;
-            let result = glue.execute_stmt(&select_stmt).await
-                .map_err(|e| worker::Error::RustError(format!("Query failed: {:?}", e)))?;
+            // Run migrations - CRITICAL: panic on failure
+            ensure_migrations(&db).await.expect("CRITICAL: Database migration failed! Cannot start application.");
+            
+            let users = match User::query().all(&db).await {
+                Ok(users) => users,
+                Err(e) => {
+                    return Response::from_json(&json!({
+                        "error": format!("Failed to fetch users: {}", e)
+                    })).map(|r| r.with_status(500));
+                }
+            };
             
             let mut users_html = String::new();
-            if let Payload::Select { labels, rows } = result {
-                for row in rows {
-                    let mut user_data = String::new();
-                    for (label, value) in labels.iter().zip(row.iter()) {
-                        user_data.push_str(&format!("{}: {:?} ", label, value));
-                    }
-                    users_html.push_str(&format!("<li>{}</li>\n", user_data));
-                }
+            for user in users {
+                users_html.push_str(&format!(
+                    "<li>ID: {} | Name: {} | Email: {} | Created: {}</li>\n",
+                    user.id, user.name, user.email, user.created_at.format("%Y-%m-%d %H:%M:%S")
+                ));
             }
 
             Response::from_html(&format!(r#"
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Users - GlueSQL + D1</title>
+    <title>Users - D1ORM</title>
     <style>
         body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
         .card {{ background: #f5f5f5; padding: 20px; margin: 10px 0; border-radius: 8px; }}
@@ -236,7 +164,7 @@ PUT /api/user/1
     </style>
 </head>
 <body>
-    <h1 class="header">Users from D1 Database (via GlueSQL)</h1>
+    <h1 class="header">Users from D1 Database (via D1ORM)</h1>
     <div class="card">
         <h2>User List</h2>
         <ul>
@@ -249,11 +177,18 @@ PUT /api/user/1
             "#, users_html = users_html))
         })
         .get_async("/api/users", |_req, ctx| async move {
-            let db = ctx.env.get_binding::<D1Database>("DB")?;
-            let storage = D1Storage::new(db);
-            let mut glue = Glue::new(storage);
+            worker::console_log!("🚀 GET /api/users - Starting request");
             
-            match User::find_all(&mut glue).await {
+            let d1_db = ctx.env.get_binding::<D1Database>("DB")?;
+            let db = D1Client::new(d1_db);
+            worker::console_log!("📱 Database client created");
+            
+            // Run migrations - CRITICAL: panic on failure
+            worker::console_log!("🔄 Running migrations...");
+            ensure_migrations(&db).await.expect("CRITICAL: Database migration failed! Cannot start application.");
+            worker::console_log!("✅ Migrations completed, fetching users...");
+            
+            match User::query().all(&db).await {
                 Ok(users) => Response::from_json(&json!({
                     "success": true,
                     "data": users,
@@ -270,11 +205,10 @@ PUT /api/user/1
                 .and_then(|s| s.parse::<i64>().ok())
                 .ok_or_else(|| worker::Error::RustError("Invalid user ID".to_string()))?;
             
-            let db = ctx.env.get_binding::<D1Database>("DB")?;
-            let storage = D1Storage::new(db);
-            let mut glue = Glue::new(storage);
+            let d1_db = ctx.env.get_binding::<D1Database>("DB")?;
+            let db = D1Client::new(d1_db);
             
-            match User::find_by_id(&mut glue, id).await {
+            match User::find(&db, id).await {
                 Ok(Some(user)) => Response::from_json(&json!({
                     "success": true,
                     "data": user
@@ -297,91 +231,28 @@ PUT /api/user/1
             }
             
             let body: CreateUserRequest = req.json().await?;
+            let d1_db = ctx.env.get_binding::<D1Database>("DB")?;
+            let db = D1Client::new(d1_db);
             
-            let db = ctx.env.get_binding::<D1Database>("DB")?;
-            let storage = D1Storage::new(db);
-            let mut glue = Glue::new(storage);
+            // Run migrations - CRITICAL: panic on failure
+            ensure_migrations(&db).await.expect("CRITICAL: Database migration failed! Cannot start application.");
             
-            // First, ensure the table exists - Type-safe table creation
-            let create_table_stmt = Statement::CreateTable {
-                if_not_exists: true,
-                name: "users".to_string(),
-                columns: Some(vec![
-                    ColumnDef {
-                        name: "id".to_string(),
-                        data_type: DataType::Int,
-                        nullable: false,
-                        default: None,
-                        unique: None,
-                    },
-                    ColumnDef {
-                        name: "name".to_string(),
-                        data_type: DataType::Text,
-                        nullable: false,
-                        default: None,
-                        unique: None,
-                    },
-                    ColumnDef {
-                        name: "email".to_string(),
-                        data_type: DataType::Text,
-                        nullable: false,
-                        default: None,
-                        unique: Some(gluesql::core::ast::ColumnUniqueOption { is_primary: false }),
-                    },
-                    ColumnDef {
-                        name: "created_at".to_string(),
-                        data_type: DataType::Timestamp,
-                        nullable: true,
-                        default: None,
-                        unique: None,
-                    },
-                ]),
-                engine: None,
-                source: None,
-            };
-            
-            glue.execute_stmt(&create_table_stmt).await
-                .map_err(|e| worker::Error::RustError(format!("Failed to create table: {:?}", e)))?;
-            
-            // Type-safe insert - no raw SQL!
-            let insert_stmt = table("users")
-                .insert()
-                .columns(vec!["name", "email"])
-                .values(vec![vec![body.name.as_str(), body.email.as_str()]])
-                .build()
-                .map_err(|e| worker::Error::RustError(format!("Failed to build statement: {:?}", e)))?;
-            
-            let _result = glue.execute_stmt(&insert_stmt).await
-                .map_err(|e| worker::Error::RustError(format!("Failed to insert user: {:?}", e)))?;
-            
-            // Get the inserted user - Type-safe query
-            let select_stmt = table("users")
-                .select()
-                .filter(col("email").eq(body.email.as_str()))
-                .build()
-                .map_err(|e| worker::Error::RustError(format!("Failed to build statement: {:?}", e)))?;
-            let select_result = glue.execute_stmt(&select_stmt).await
-                .map_err(|e| worker::Error::RustError(format!("Failed to fetch user: {:?}", e)))?;
-            
-            if let Payload::Select { labels, rows } = select_result {
-                if let Some(row) = rows.into_iter().next() {
-                    match User::from_glue_row(&labels, &row) {
-                        Ok(user) => return Response::from_json(&json!({
-                            "success": true,
-                            "data": user
-                        })),
-                        Err(e) => return Response::from_json(&json!({
-                            "success": false,
-                            "error": format!("Failed to parse user: {}", e)
-                        })).map(|r| r.with_status(500)),
-                    }
-                }
+            match User::create()
+                .set_name(body.name)
+                .set_email(body.email)
+                .set_created_at(chrono::Utc::now())
+                .save(&db)
+                .await
+            {
+                Ok(user) => Response::from_json(&json!({
+                    "success": true,
+                    "data": user
+                })),
+                Err(e) => Response::from_json(&json!({
+                    "success": false,
+                    "error": e.to_string()
+                })).map(|r| r.with_status(500)),
             }
-            
-            Response::from_json(&json!({
-                "success": true,
-                "message": "User created"
-            }))
         })
         .put_async("/api/user/:id", |mut req, ctx| async move {
             let id = ctx.param("id")
@@ -395,10 +266,8 @@ PUT /api/user/1
             }
             
             let body: UpdateUserRequest = req.json().await?;
-            
-            let db = ctx.env.get_binding::<D1Database>("DB")?;
-            let storage = D1Storage::new(db);
-            let mut glue = Glue::new(storage);
+            let d1_db = ctx.env.get_binding::<D1Database>("DB")?;
+            let db = D1Client::new(d1_db);
             
             if body.name.is_none() && body.email.is_none() {
                 return Response::from_json(&json!({
@@ -407,75 +276,48 @@ PUT /api/user/1
                 })).map(|r| r.with_status(400));
             }
             
-            // Type-safe update - no raw SQL!
-            let mut update_node = table("users").update();
+            let mut update_builder = User::update(id);
             
             if let Some(name) = body.name {
-                update_node = update_node.set("name", name);
+                update_builder = update_builder.set_name(name);
             }
             if let Some(email) = body.email {
-                update_node = update_node.set("email", email);
+                update_builder = update_builder.set_email(email);
             }
             
-            let update_stmt = update_node
-                .filter(col("id").eq(id))
-                .build()
-                .map_err(|e| worker::Error::RustError(format!("Failed to build statement: {:?}", e)))?;
-            
-            glue.execute_stmt(&update_stmt).await
-                .map_err(|e| worker::Error::RustError(format!("Failed to update user: {:?}", e)))?;
-            
-            // Get the updated user - Type-safe query
-            let select_stmt = table("users")
-                .select()
-                .filter(col("id").eq(id))
-                .build()
-                .map_err(|e| worker::Error::RustError(format!("Failed to build statement: {:?}", e)))?;
-            let select_result = glue.execute_stmt(&select_stmt).await
-                .map_err(|e| worker::Error::RustError(format!("Failed to fetch user: {:?}", e)))?;
-            
-            if let Payload::Select { labels, rows } = select_result {
-                if let Some(row) = rows.into_iter().next() {
-                    match User::from_glue_row(&labels, &row) {
-                        Ok(user) => return Response::from_json(&json!({
-                            "success": true,
-                            "data": user
-                        })),
-                        Err(e) => return Response::from_json(&json!({
-                            "success": false,
-                            "error": format!("Failed to parse user: {}", e)
-                        })).map(|r| r.with_status(500)),
-                    }
-                }
+            match update_builder.save(&db).await {
+                Ok(user) => Response::from_json(&json!({
+                    "success": true,
+                    "data": user
+                })),
+                Err(d1orm::D1OrmError::NotFound) => Response::from_json(&json!({
+                    "success": false,
+                    "error": "User not found"
+                })).map(|r| r.with_status(404)),
+                Err(e) => Response::from_json(&json!({
+                    "success": false,
+                    "error": e.to_string()
+                })).map(|r| r.with_status(500)),
             }
-            
-            Response::from_json(&json!({
-                "success": false,
-                "error": "User not found"
-            })).map(|r| r.with_status(404))
         })
         .delete_async("/api/user/:id", |_req, ctx| async move {
             let id = ctx.param("id")
                 .and_then(|s| s.parse::<i64>().ok())
                 .ok_or_else(|| worker::Error::RustError("Invalid user ID".to_string()))?;
             
-            let db = ctx.env.get_binding::<D1Database>("DB")?;
-            let storage = D1Storage::new(db);
-            let mut glue = Glue::new(storage);
+            let d1_db = ctx.env.get_binding::<D1Database>("DB")?;
+            let db = D1Client::new(d1_db);
             
-            // Type-safe delete - no raw SQL!
-            let delete_stmt = table("users")
-                .delete()
-                .filter(col("id").eq(id))
-                .build()
-                .map_err(|e| worker::Error::RustError(format!("Failed to build statement: {:?}", e)))?;
-            let _result = glue.execute_stmt(&delete_stmt).await
-                .map_err(|e| worker::Error::RustError(format!("Failed to delete user: {:?}", e)))?;
-            
-            Response::from_json(&json!({
-                "success": true,
-                "message": "User deleted"
-            }))
+            match User::delete(&db, id).await {
+                Ok(()) => Response::from_json(&json!({
+                    "success": true,
+                    "message": "User deleted"
+                })),
+                Err(e) => Response::from_json(&json!({
+                    "success": false,
+                    "error": e.to_string()
+                })).map(|r| r.with_status(500)),
+            }
         })
         .run(req, env)
         .await
