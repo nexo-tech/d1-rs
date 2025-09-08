@@ -1,6 +1,6 @@
 use crate::{Result, D1Client, D1OrmError};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Duration};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -40,6 +40,23 @@ impl MigrationRunner {
         // Ensure migration table exists first
         self.ensure_migration_table(db).await?;
         
+        // Try to acquire distributed lock with timeout
+        let lock_acquired = self.acquire_migration_lock(db).await?;
+        if !lock_acquired {
+            // Another worker is running migrations, return empty (no migrations applied by us)
+            return Ok(Vec::new());
+        }
+        
+        // We have the lock, proceed with migrations
+        let result = self.run_migrations_with_lock(db).await;
+        
+        // Always release the lock, even if migrations failed
+        let _ = self.release_migration_lock(db).await;
+        
+        result
+    }
+
+    async fn run_migrations_with_lock(&self, db: &D1Client) -> Result<Vec<String>> {
         // Sort migrations by version
         let mut sorted_migrations = self.migrations.iter().collect::<Vec<_>>();
         sorted_migrations.sort_by_key(|m| m.version());
@@ -83,7 +100,8 @@ impl MigrationRunner {
     }
 
     async fn ensure_migration_table(&self, db: &D1Client) -> Result<()> {
-        let sql = r#"
+        // Create migrations table
+        let migrations_sql = r#"
             CREATE TABLE IF NOT EXISTS __migrations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 version INTEGER NOT NULL UNIQUE,
@@ -92,7 +110,67 @@ impl MigrationRunner {
             )
         "#;
 
-        db.execute(sql, &[]).await?;
+        db.execute(migrations_sql, &[]).await?;
+
+        // Create migration locks table for distributed locking
+        let locks_sql = r#"
+            CREATE TABLE IF NOT EXISTS __migration_locks (
+                lock_name TEXT PRIMARY KEY,
+                worker_id TEXT NOT NULL,
+                acquired_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                expires_at DATETIME NOT NULL
+            )
+        "#;
+
+        db.execute(locks_sql, &[]).await?;
+        Ok(())
+    }
+
+    async fn acquire_migration_lock(&self, db: &D1Client) -> Result<bool> {
+        // Generate a unique worker ID for this instance
+        let worker_id = format!("worker_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let lock_name = "migration_runner";
+        
+        // Lock expires in 30 seconds to prevent deadlocks
+        let expires_at = Utc::now() + Duration::seconds(30);
+        
+        // First, clean up any expired locks
+        let cleanup_sql = "DELETE FROM __migration_locks WHERE expires_at < CURRENT_TIMESTAMP";
+        let _ = db.execute(cleanup_sql, &[]).await;
+        
+        // Try to acquire the lock by inserting a record
+        let acquire_sql = "INSERT INTO __migration_locks (lock_name, worker_id, expires_at) VALUES (?, ?, ?)";
+        let params = vec![
+            serde_json::json!(lock_name),
+            serde_json::json!(worker_id),
+            serde_json::json!(expires_at.format("%Y-%m-%d %H:%M:%S").to_string())
+        ];
+        
+        match db.execute(acquire_sql, &params).await {
+            Ok(_) => {
+                // Successfully acquired the lock
+                Ok(true)
+            },
+            Err(e) => {
+                // Check if this is actually a constraint violation (lock exists)
+                // or some other error that we should propagate
+                let error_str = format!("{:?}", e);
+                if error_str.contains("UNIQUE constraint") || error_str.contains("PRIMARY KEY constraint") {
+                    // Another worker has the lock
+                    Ok(false)
+                } else {
+                    // Some other error - propagate it
+                    Err(e)
+                }
+            }
+        }
+    }
+
+    async fn release_migration_lock(&self, db: &D1Client) -> Result<()> {
+        let sql = "DELETE FROM __migration_locks WHERE lock_name = ?";
+        let params = vec![serde_json::json!("migration_runner")];
+        
+        let _ = db.execute(sql, &params).await;
         Ok(())
     }
 

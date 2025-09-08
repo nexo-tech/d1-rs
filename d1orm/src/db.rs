@@ -18,22 +18,28 @@ impl D1Client {
     pub async fn execute(&self, sql: &str, params: &[Value]) -> Result<D1QueryResult> {
         let mut stmt = self.db.prepare(sql);
         
-        for param in params {
-            stmt = match param {
-                Value::Null => stmt.bind(&[JsValue::NULL]).map_err(|e| D1OrmError::Database(format!("{:?}", e)))?,
-                Value::Bool(b) => stmt.bind(&[(*b as i32).into()]).map_err(|e| D1OrmError::Database(format!("{:?}", e)))?,
+        // Convert all parameters to JsValue and bind them all at once
+        let js_params: Vec<JsValue> = params.iter().map(|param| {
+            match param {
+                Value::Null => JsValue::NULL,
+                Value::Bool(b) => (*b as i32).into(),
                 Value::Number(n) => {
                     if let Some(i) = n.as_i64() {
-                        stmt.bind(&[i.into()]).map_err(|e| D1OrmError::Database(format!("{:?}", e)))?
+                        // D1 doesn't support BigInt, so convert to i32 like we do in types.rs
+                        (i as i32).into()
                     } else if let Some(f) = n.as_f64() {
-                        stmt.bind(&[f.into()]).map_err(|e| D1OrmError::Database(format!("{:?}", e)))?
+                        f.into()
                     } else {
-                        stmt.bind(&[JsValue::NULL]).map_err(|e| D1OrmError::Database(format!("{:?}", e)))?
+                        JsValue::NULL
                     }
                 },
-                Value::String(s) => stmt.bind(&[s.as_str().into()]).map_err(|e| D1OrmError::Database(format!("{:?}", e)))?,
-                _ => stmt.bind(&[JsValue::NULL]).map_err(|e| D1OrmError::Database(format!("{:?}", e)))?,
-            };
+                Value::String(s) => s.as_str().into(),
+                _ => JsValue::NULL,
+            }
+        }).collect();
+        
+        if !js_params.is_empty() {
+            stmt = stmt.bind(&js_params).map_err(|e| D1OrmError::Database(format!("{:?}", e)))?;
         }
         
         let result = stmt.all().await.map_err(|e| D1OrmError::Database(format!("{:?}", e)))?;
@@ -71,6 +77,31 @@ impl D1Client {
         }
         
         Ok(0)
+    }
+
+    pub async fn execute_insert_returning_id(&self, sql: &str, params: &[Value]) -> Result<i64> {
+        // Execute the INSERT
+        self.execute(sql, params).await?;
+        
+        // Get the last inserted row ID
+        let result = self.execute("SELECT last_insert_rowid() as id", &[]).await?;
+        
+        if let Some(row) = result.rows.into_iter().next() {
+            if let Value::Object(obj) = row {
+                if let Some(id_value) = obj.get("id") {
+                    if let Value::Number(n) = id_value {
+                        // Handle both i64 and u64 numbers
+                        if let Some(i) = n.as_i64() {
+                            return Ok(i);
+                        } else if let Some(i) = n.as_u64() {
+                            return Ok(i as i64);
+                        }
+                    }
+                }
+            }
+        }
+        
+        Err(D1OrmError::Database("Failed to get last insert row ID".to_string()))
     }
 }
 

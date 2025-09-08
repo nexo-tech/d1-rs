@@ -133,7 +133,15 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         impl d1orm::CreateBuilder<#name> for #create_builder_name {
             async fn save(self, db: &d1orm::D1Client) -> d1orm::Result<#name> {
                 let (sql, params) = self.insert_query.to_sql();
-                let result = db.execute_returning_one(&sql, &params).await?;
+                
+                // Execute INSERT and get the last inserted row ID
+                let inserted_id = db.execute_insert_returning_id(&sql, &params).await?;
+                
+                // Select the inserted record back using the ID
+                let select_sql = format!("SELECT * FROM {} WHERE {} = ? LIMIT 1", #table_name, stringify!(#primary_key_field));
+                let select_params = vec![d1orm::types::SqlType::to_sql_value(&inserted_id)];
+                
+                let result = db.execute_returning_one(&select_sql, &select_params).await?;
                 
                 if let Some(row) = result {
                     let map: serde_json::Map<String, serde_json::Value> = row.into_iter().collect();
@@ -141,7 +149,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                         .map_err(|e| d1orm::D1OrmError::SerializationError(e.to_string()))?;
                     Ok(entity)
                 } else {
-                    Err(d1orm::D1OrmError::Database("Failed to create entity".to_string()))
+                    Err(d1orm::D1OrmError::Database("Failed to retrieve created entity".to_string()))
                 }
             }
         }
@@ -172,7 +180,15 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         impl d1orm::UpdateBuilder<#name> for #update_builder_name {
             async fn save(self, db: &d1orm::D1Client) -> d1orm::Result<#name> {
                 let (sql, params) = self.update_query.to_sql();
-                let result = db.execute_returning_one(&sql, &params).await?;
+                
+                // Execute UPDATE
+                db.execute(&sql, &params).await?;
+                
+                // Select the updated record back using the primary key
+                let select_sql = format!("SELECT * FROM {} WHERE {} = ? LIMIT 1", #table_name, stringify!(#primary_key_field));
+                let select_params = vec![d1orm::types::SqlType::to_sql_value(&self.primary_key)];
+                
+                let result = db.execute_returning_one(&select_sql, &select_params).await?;
                 
                 if let Some(row) = result {
                     let map: serde_json::Map<String, serde_json::Value> = row.into_iter().collect();
