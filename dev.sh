@@ -43,4 +43,4 @@ echo "   Visit http://localhost:8787 to see your worker"
 echo ""
 
 # Start local development server
-wrangler dev --local
+wrangler dev --local --ip 0.0.0.0

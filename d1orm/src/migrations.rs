@@ -56,6 +56,40 @@ impl MigrationRunner {
         result
     }
 
+    /// Verifies if all expected migrations are applied by comparing the highest
+    /// expected migration version with the highest applied migration version.
+    /// Returns true if all migrations are up to date, false otherwise.
+    pub async fn verify_migrations_up_to_date(&self, db: &D1Client) -> Result<bool> {
+        // Ensure migration table exists first
+        self.ensure_migration_table(db).await?;
+        
+        // Get the highest expected migration version
+        let expected_max_version = self.migrations
+            .iter()
+            .map(|m| m.version())
+            .max()
+            .unwrap_or(0);
+            
+        // If no migrations are registered, consider it up to date
+        if expected_max_version == 0 {
+            return Ok(true);
+        }
+        
+        // Get applied migration versions
+        let applied_versions = self.get_applied_migrations(db).await?;
+        let applied_max_version = applied_versions.iter().max().copied().unwrap_or(0);
+        
+        // Check if all expected migrations are applied
+        for migration in &self.migrations {
+            if !applied_versions.contains(&migration.version()) {
+                return Ok(false);
+            }
+        }
+        
+        // All migrations are applied
+        Ok(applied_max_version >= expected_max_version)
+    }
+
     async fn run_migrations_with_lock(&self, db: &D1Client) -> Result<Vec<String>> {
         // Sort migrations by version
         let mut sorted_migrations = self.migrations.iter().collect::<Vec<_>>();
