@@ -79,30 +79,6 @@ impl D1Client {
         Ok(0)
     }
 
-    pub async fn execute_insert_returning_id(&self, sql: &str, params: &[Value]) -> Result<i64> {
-        // Execute the INSERT
-        self.execute(sql, params).await?;
-        
-        // Get the last inserted row ID
-        let result = self.execute("SELECT last_insert_rowid() as id", &[]).await?;
-        
-        if let Some(row) = result.rows.into_iter().next() {
-            if let Value::Object(obj) = row {
-                if let Some(id_value) = obj.get("id") {
-                    if let Value::Number(n) = id_value {
-                        // Handle both i64 and u64 numbers
-                        if let Some(i) = n.as_i64() {
-                            return Ok(i);
-                        } else if let Some(i) = n.as_u64() {
-                            return Ok(i as i64);
-                        }
-                    }
-                }
-            }
-        }
-        
-        Err(D1OrmError::Database("Failed to get last insert row ID".to_string()))
-    }
 }
 
 pub struct D1QueryResult {

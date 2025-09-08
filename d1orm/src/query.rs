@@ -143,7 +143,7 @@ impl InsertQuery {
         let columns = self.columns.join(", ");
         let placeholders = vec!["?"; self.values.len()].join(", ");
         
-        let sql = format!("INSERT INTO {} ({}) VALUES ({})", 
+        let sql = format!("INSERT INTO {} ({}) VALUES ({}) RETURNING *", 
                          self.table, columns, placeholders);
         
         (sql, self.values.clone())
@@ -205,6 +205,7 @@ impl UpdateQuery {
             }
         }
 
+        sql.push_str(" RETURNING *");
 
         (sql, params)
     }
