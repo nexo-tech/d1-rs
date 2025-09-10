@@ -15,6 +15,9 @@ d1orm = { path = "./d1orm" }
 async-trait = "0.1"
 getrandom = { version = "0.2", features = ["js"] }
 chrono = { version = "0.4", features = ["serde", "js-sys"], default-features = false }
+reqwest = { version = "0.11", features = ["json"] }
+url = "2.4"
+base64 = "0.21"
 
 [profile.release]
 lto = true
