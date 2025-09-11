@@ -2,11 +2,10 @@ use worker::{*, Result as WorkerResult};
 use worker::d1::D1Database;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Datelike};
 use d1orm::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use url::Url;
-use base64::Engine;
 
 // Custom deserializer for D1 datetime format
 mod datetime_format {
@@ -32,7 +31,7 @@ mod datetime_format {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Entity)]
+#[derive(Debug, Serialize, Deserialize, Clone, Entity)]
 #[table(name = "tokens")]
 struct Token {
     #[primary_key]
@@ -50,7 +49,7 @@ struct Token {
     updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Entity)]
+#[derive(Debug, Serialize, Deserialize, Clone, Entity)]
 #[table(name = "calendars")]
 struct Calendar {
     #[primary_key]
@@ -63,7 +62,7 @@ struct Calendar {
     created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Entity)]
+#[derive(Debug, Serialize, Deserialize, Clone, Entity)]
 #[table(name = "working_hours")]
 struct WorkingHours {
     #[primary_key]
@@ -78,7 +77,7 @@ struct WorkingHours {
     updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Entity)]
+#[derive(Debug, Serialize, Deserialize, Clone, Entity)]
 #[table(name = "bookings")]
 struct Booking {
     #[primary_key]
@@ -164,7 +163,7 @@ struct OAuthTokenResponse {
     expires_in: i64,
 }
 
-async fn exchange_code_for_token(code: &str, ctx: &RouteContext<()>) -> Result<OAuthTokenResponse, worker::Error> {
+async fn exchange_code_for_token(code: &str, ctx: &RouteContext<()>) -> WorkerResult<OAuthTokenResponse> {
     let client_id = ctx.env.var("GOOGLE_CLIENT_ID")?.to_string();
     let client_secret = ctx.env.var("GOOGLE_CLIENT_SECRET")?.to_string();
     let redirect_uri = ctx.env.var("GOOGLE_REDIRECT_URL")?.to_string();
@@ -196,7 +195,7 @@ async fn exchange_code_for_token(code: &str, ctx: &RouteContext<()>) -> Result<O
     Ok(token_response)
 }
 
-async fn get_user_info(access_token: &str) -> Result<GoogleUserInfo, worker::Error> {
+async fn get_user_info(access_token: &str) -> WorkerResult<GoogleUserInfo> {
     let client = reqwest::Client::new();
     let response = client.get("https://www.googleapis.com/oauth2/v2/userinfo")
         .bearer_auth(access_token)
@@ -215,13 +214,21 @@ async fn get_user_info(access_token: &str) -> Result<GoogleUserInfo, worker::Err
     Ok(user_info)
 }
 
-fn generate_oauth_url(ctx: &RouteContext<()>, state: &str) -> Result<String, worker::Error> {
+fn generate_oauth_url(ctx: &RouteContext<()>, state: &str) -> WorkerResult<String> {
+    console_log!("Getting GOOGLE_CLIENT_ID from env");
     let client_id = ctx.env.var("GOOGLE_CLIENT_ID")?.to_string();
-    let redirect_uri = ctx.env.var("GOOGLE_REDIRECT_URL")?.to_string();
+    console_log!("Client ID: {}", client_id);
     
+    console_log!("Getting GOOGLE_REDIRECT_URL from env");
+    let redirect_uri = ctx.env.var("GOOGLE_REDIRECT_URL")?.to_string();
+    console_log!("Redirect URI: {}", redirect_uri);
+    
+    console_log!("Parsing base OAuth URL");
     let mut url = Url::parse("https://accounts.google.com/o/oauth2/v2/auth")
         .map_err(|e| worker::Error::RustError(format!("Invalid URL: {}", e)))?;
+    console_log!("Base URL parsed successfully");
         
+    console_log!("Adding query parameters");
     url.query_pairs_mut()
         .append_pair("client_id", &client_id)
         .append_pair("redirect_uri", &redirect_uri)
@@ -230,8 +237,11 @@ fn generate_oauth_url(ctx: &RouteContext<()>, state: &str) -> Result<String, wor
         .append_pair("access_type", "offline")
         .append_pair("approval_prompt", "force")
         .append_pair("state", state);
+    console_log!("Query parameters added");
         
-    Ok(url.to_string())
+    let final_url = url.to_string();
+    console_log!("Final URL length: {}", final_url.len());
+    Ok(final_url)
 }
 
 fn generate_state() -> String {
@@ -262,7 +272,7 @@ struct CalendarEventsResponse {
     items: Vec<CalendarEvent>,
 }
 
-async fn fetch_calendar_events(access_token: &str, start_time: &DateTime<Utc>, end_time: &DateTime<Utc>) -> Result<Vec<serde_json::Value>, worker::Error> {
+async fn fetch_calendar_events(access_token: &str, start_time: &DateTime<Utc>, end_time: &DateTime<Utc>) -> WorkerResult<Vec<serde_json::Value>> {
     let client = reqwest::Client::new();
     let url = format!("https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin={}&timeMax={}&singleEvents=true&orderBy=startTime",
         start_time.to_rfc3339(),
@@ -307,7 +317,7 @@ async fn fetch_calendar_events(access_token: &str, start_time: &DateTime<Utc>, e
     Ok(events)
 }
 
-async fn create_calendar_event(access_token: &str, start_time: &DateTime<Utc>, end_time: &DateTime<Utc>, title: &str, guest_email: &str, notes: Option<&str>) -> Result<String, worker::Error> {
+async fn create_calendar_event(access_token: &str, start_time: &DateTime<Utc>, end_time: &DateTime<Utc>, title: &str, guest_email: &str, notes: Option<&str>) -> WorkerResult<String> {
     let client = reqwest::Client::new();
     let url = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
     
@@ -351,7 +361,7 @@ async fn create_calendar_event(access_token: &str, start_time: &DateTime<Utc>, e
     Ok(event_id.to_string())
 }
 
-async fn refresh_access_token(refresh_token: &str, ctx: &RouteContext<()>) -> Result<OAuthTokenResponse, worker::Error> {
+async fn refresh_access_token(refresh_token: &str, ctx: &RouteContext<()>) -> WorkerResult<OAuthTokenResponse> {
     let client_id = ctx.env.var("GOOGLE_CLIENT_ID")?.to_string();
     let client_secret = ctx.env.var("GOOGLE_CLIENT_SECRET")?.to_string();
     
@@ -484,16 +494,56 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> WorkerResult
 </html>
             "#)
         })
-        // Google OAuth endpoints
+        // Google OAuth endpoints (no database needed for this route)
         .get_async("/auth/google", |_req, ctx| async move {
+            console_log!("Starting /auth/google route");
+            
+            // Check if environment variables are set
+            let client_id_check = ctx.env.var("GOOGLE_CLIENT_ID");
+            if client_id_check.is_err() {
+                console_error!("GOOGLE_CLIENT_ID not found in environment variables");
+                return Response::error("Configuration error: GOOGLE_CLIENT_ID not set", 500);
+            }
+            
+            let redirect_url_check = ctx.env.var("GOOGLE_REDIRECT_URL");
+            if redirect_url_check.is_err() {
+                console_error!("GOOGLE_REDIRECT_URL not found in environment variables");
+                return Response::error("Configuration error: GOOGLE_REDIRECT_URL not set", 500);
+            }
+            
+            console_log!("Environment variables found, generating OAuth URL");
+            
             let state = generate_state();
-            let auth_url = generate_oauth_url(&ctx, &state)?;
+            let auth_url = match generate_oauth_url(&ctx, &state) {
+                Ok(url) => url,
+                Err(e) => {
+                    console_error!("Failed to generate OAuth URL: {:?}", e);
+                    return Response::error(format!("Failed to generate OAuth URL: {}", e), 500);
+                }
+            };
             
-            let response = Response::redirect(Url::parse(&auth_url).unwrap())?;
+            console_log!("OAuth URL generated: {}", auth_url);
             
-            response.with_headers([
-                ("Set-Cookie", &format!("oauth_state={}; HttpOnly; Secure; SameSite=Lax; Max-Age=300", state))
-            ])
+            console_log!("Creating headers");
+            let mut headers = Headers::new();
+            headers.set("Set-Cookie", &format!("oauth_state={}; HttpOnly; Secure; SameSite=Lax; Max-Age=300", state))?;
+            console_log!("Headers created");
+            
+            console_log!("Creating manual redirect response");
+            
+            // Create a manual redirect response instead of using Response::redirect
+            let mut response = Response::empty()?;
+            response = response.with_status(302);
+            
+            console_log!("Setting Location header");
+            headers.set("Location", &auth_url)?;
+            console_log!("Location header set");
+            
+            console_log!("Applying headers to response");
+            response = response.with_headers(headers);
+            console_log!("Headers applied");
+            
+            Ok(response)
         })
         .get_async("/auth/callback", |req, ctx| async move {
             let url = req.url()?;
@@ -1038,7 +1088,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> WorkerResult
     </script>
 </body>
 </html>
-                    "#, email, email))
+                    "#, email, email, email))
                 },
                 Ok(None) => {
                     Response::from_html(&format!(r#"
@@ -1138,11 +1188,11 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> WorkerResult
                         match refresh_access_token(&token.refresh_token, &ctx).await {
                             Ok(new_token) => {
                                 // Update token in database
-                                let mut updated_token = token.clone();
-                                updated_token.access_token = new_token.access_token.clone();
-                                updated_token.expiry = now + chrono::Duration::seconds(new_token.expires_in);
-                                updated_token.updated_at = now;
-                                let _ = updated_token.save(&db).await;
+                                let _ = Token::update(token.id)
+                                    .set_access_token(new_token.access_token.clone())
+                                    .set_expiry(now + chrono::Duration::seconds(new_token.expires_in))
+                                    .set_updated_at(now)
+                                    .save(&db).await;
                                 new_token.access_token
                             },
                             Err(_) => token.access_token.clone(), // Use existing token if refresh fails
@@ -1252,11 +1302,11 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> WorkerResult
                 match refresh_access_token(&token.refresh_token, &ctx).await {
                     Ok(new_token) => {
                         // Update token in database
-                        let mut updated_token = token.clone();
-                        updated_token.access_token = new_token.access_token.clone();
-                        updated_token.expiry = now + chrono::Duration::seconds(new_token.expires_in);
-                        updated_token.updated_at = now;
-                        let _ = updated_token.save(&db).await;
+                        let _ = Token::update(token.id)
+                            .set_access_token(new_token.access_token.clone())
+                            .set_expiry(now + chrono::Duration::seconds(new_token.expires_in))
+                            .set_updated_at(now)
+                            .save(&db).await;
                         new_token.access_token
                     },
                     Err(e) => return Response::from_json(&json!({
@@ -1330,14 +1380,15 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> WorkerResult
             // Check if working hours already exist (since we only store one record)
             let existing_wh = WorkingHours::query().first(&db).await.unwrap_or(None);
             
-            let result = if let Some(mut wh) = existing_wh {
+            let result = if let Some(wh) = existing_wh {
                 // Update existing record
-                wh.start_time = body.start_time;
-                wh.end_time = body.end_time;
-                wh.timezone = body.timezone;
-                wh.working_days = body.working_days;
-                wh.updated_at = chrono::Utc::now();
-                wh.save(&db).await
+                WorkingHours::update(wh.id)
+                    .set_start_time(body.start_time.clone())
+                    .set_end_time(body.end_time.clone())
+                    .set_timezone(body.timezone.clone())
+                    .set_working_days(body.working_days.clone())
+                    .set_updated_at(chrono::Utc::now())
+                    .save(&db).await
             } else {
                 // Create new record
                 WorkingHours::create()
