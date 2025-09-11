@@ -2,7 +2,7 @@
   description = "Minimal Rust development environment";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -36,10 +36,14 @@
             openssl
             just
             nodejs_22
+            bzip2
+            worker-build
           ];
           
           shellHook = ''
-            export PATH="/home/snowbear/.cargo/bin:$PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+            export LDFLAGS="-L${pkgs.bzip2}/lib $LDFLAGS"
+            export CPPFLAGS="-I${pkgs.bzip2}/include $CPPFLAGS"
             echo "🦀 Cloudflare Worker Rust Development Environment"
             echo "================================================"
             echo "Rust version: $(rustc --version)"
