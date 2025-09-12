@@ -7,22 +7,40 @@ pub async fn fetch_calendar_events(
     access_token: &str,
     start_time: &DateTime<Utc>,
     end_time: &DateTime<Utc>,
+    calendar_id: Option<&str>,
 ) -> WorkerResult<Vec<serde_json::Value>> {
     let client = reqwest::Client::new();
+    let calendar = calendar_id.unwrap_or("primary");
+    
+    // Format datetime as RFC3339 with Z suffix for UTC (Google Calendar API requirement)
+    let time_min = start_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let time_max = end_time.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    
     let url = format!(
-        "https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin={}&timeMax={}&singleEvents=true&orderBy=startTime",
-        start_time.to_rfc3339(),
-        end_time.to_rfc3339()
+        "https://www.googleapis.com/calendar/v3/calendars/{}/events",
+        calendar
     );
     
     let response = client.get(&url)
         .bearer_auth(access_token)
+        .header("Accept", "application/json")
+        .query(&[
+            ("timeMin", time_min.as_str()),
+            ("timeMax", time_max.as_str()),
+            ("singleEvents", "true"),
+            ("orderBy", "startTime"),
+        ])
         .send()
         .await
         .map_err(|e| worker::Error::RustError(format!("HTTP request failed: {}", e)))?;
     
     if !response.status().is_success() {
-        return Err(worker::Error::RustError(format!("Calendar API request failed: {}", response.status())));
+        let status = response.status();
+        let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        worker::console_error!("Calendar API error - Status: {}, Body: {}", status, error_body);
+        worker::console_error!("Request URL: {}", url);
+        worker::console_error!("Access token (first 20 chars): {}...", &access_token[..std::cmp::min(20, access_token.len())]);
+        return Err(worker::Error::RustError(format!("Calendar API request failed: {} - {}", status, error_body)));
     }
     
     let events_response: CalendarEventsResponse = response.json()

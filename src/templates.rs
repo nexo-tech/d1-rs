@@ -114,10 +114,10 @@ pub fn dashboard_page(emails: &[String]) -> String {
                     <div class="calendar-email">{}</div>
                     <div class="calendar-link">
                         <strong>Booking link:</strong> 
-                        <code>/calendar/{}</code>
+                        <a href="/calendar/{}" target="_blank">/calendar/{}</a>
                     </div>
                 </div>
-            "#, email, email))
+            "#, email, email, email))
             .collect::<Vec<_>>()
             .join("")
     };
@@ -137,6 +137,8 @@ pub fn dashboard_page(emails: &[String]) -> String {
         .calendar-item {{ background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 10px; }}
         .calendar-email {{ font-weight: 500; color: #333; margin-bottom: 5px; }}
         .calendar-link {{ color: #666; font-size: 14px; }}
+        .calendar-link a {{ color: #4CAF50; text-decoration: none; font-weight: 500; }}
+        .calendar-link a:hover {{ color: #45a049; text-decoration: underline; }}
         .calendar-link code {{ color: #e83e8c; background: #fff; padding: 2px 6px; border-radius: 3px; }}
     </style>
 </head>
@@ -208,6 +210,7 @@ pub fn working_hours_form(start_time: &str, end_time: &str, timezone: &str, days
                     <option value="America/Los_Angeles"{}>America/Los_Angeles</option>
                     <option value="Europe/London"{}>Europe/London</option>
                     <option value="Europe/Paris"{}>Europe/Paris</option>
+                    <option value="Europe/Zagreb"{}>Europe/Zagreb</option>
                     <option value="Asia/Tokyo"{}>Asia/Tokyo</option>
                 </select>
             </div>
@@ -314,6 +317,7 @@ pub fn working_hours_form(start_time: &str, end_time: &str, timezone: &str, days
         if timezone == "America/Los_Angeles" { " selected" } else { "" },
         if timezone == "Europe/London" { " selected" } else { "" },
         if timezone == "Europe/Paris" { " selected" } else { "" },
+        if timezone == "Europe/Zagreb" { " selected" } else { "" },
         if timezone == "Asia/Tokyo" { " selected" } else { "" },
         if days.contains(&"monday") { " checked" } else { "" },
         if days.contains(&"tuesday") { " checked" } else { "" },
@@ -345,6 +349,10 @@ pub fn public_calendar_page(email: &str) -> String {
         .calendar-day {{ background: white; padding: 15px 10px; text-align: center; cursor: pointer; min-height: 50px; display: flex; align-items: center; justify-content: center; }}
         .calendar-day:hover {{ background: #e8f5e9; }}
         .calendar-day.selected {{ background: #4CAF50; color: white; }}
+        .calendar-day.today {{ background: #e3f2fd; border: 2px solid #2196F3; font-weight: bold; }}
+        .calendar-day.today.selected {{ background: #4CAF50; color: white; border-color: #4CAF50; }}
+        .calendar-day.past {{ opacity: 0.3; cursor: not-allowed; color: #ccc; }}
+        .calendar-day.past:hover {{ background: white; }}
         .timezone-info {{ background: #e3f2fd; padding: 10px; border-radius: 5px; margin-bottom: 20px; }}
         .slot-item {{ background: white; margin-bottom: 10px; padding: 15px; border-radius: 5px; border-left: 4px solid #4CAF50; cursor: pointer; }}
         .slot-item:hover {{ background: #f9f9f9; }}
@@ -379,6 +387,13 @@ pub fn public_calendar_page(email: &str) -> String {
                     Times shown in: <span id="user-timezone"></span>
                 </div>
                 <h3>Available Time Slots</h3>
+                <div style="margin-bottom: 15px;">
+                    <label for="slot-type" style="display: block; margin-bottom: 5px; font-weight: 500; color: #555;">Slot Duration:</label>
+                    <select id="slot-type" onchange="filterSlotsByType()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; background: white;">
+                        <option value="30">30 minutes</option>
+                        <option value="60">60 minutes</option>
+                    </select>
+                </div>
                 <div id="selected-date">Select a date to view available slots</div>
                 <div id="time-slots"></div>
             </div>
@@ -391,6 +406,7 @@ pub fn public_calendar_page(email: &str) -> String {
         let currentYear = new Date().getFullYear();
         let selectedDate = null;
         let userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        let allSlots = []; // Store all fetched slots for filtering
 
         document.getElementById('user-timezone').textContent = userTimezone;
 
@@ -402,6 +418,8 @@ pub fn public_calendar_page(email: &str) -> String {
             
             const firstDay = new Date(currentYear, currentMonth, 1).getDay();
             const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const today = new Date();
+            const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
             
             let daysHTML = '';
             
@@ -412,12 +430,25 @@ pub fn public_calendar_page(email: &str) -> String {
             
             for (let day = 1; day <= daysInMonth; day++) {{
                 const dateStr = currentYear + '-' + String(currentMonth + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-                const isToday = new Date().getDate() === day && 
-                               new Date().getMonth() === currentMonth && 
-                               new Date().getFullYear() === currentYear;
+                const currentDate = new Date(currentYear, currentMonth, day);
+                const isToday = dateStr === todayStr;
+                const isPast = currentDate < new Date(today.getFullYear(), today.getMonth(), today.getDate());
                 
-                const classes = 'calendar-day' + (isToday ? ' today' : '');
-                daysHTML += '<div class="' + classes + '" onclick="selectDate(\'' + dateStr + '\')" data-date="' + dateStr + '">' + day + '</div>';
+                let classes = 'calendar-day';
+                let onclick = '';
+                let style = '';
+                
+                if (isToday) {{
+                    classes += ' today';
+                    onclick = `onclick="selectDate('${{dateStr}}')"`; // Today is selectable
+                }} else if (isPast) {{
+                    classes += ' past';
+                    style = 'opacity: 0.3; cursor: not-allowed; color: #ccc;'; // Past dates are disabled
+                }} else {{
+                    onclick = `onclick="selectDate('${{dateStr}}')"`; // Future dates are selectable
+                }}
+                
+                daysHTML += `<div class="${{classes}}" ${{onclick}} data-date="${{dateStr}}" style="${{style}}">${{day}}</div>`;
             }}
             
             const calendarGrid = document.getElementById('calendar-grid');
@@ -425,6 +456,11 @@ pub fn public_calendar_page(email: &str) -> String {
             existingDays.forEach(day => day.remove());
             
             calendarGrid.insertAdjacentHTML('beforeend', daysHTML);
+            
+            // Auto-select today's date if viewing current month
+            if (currentMonth === today.getMonth() && currentYear === today.getFullYear()) {{
+                selectDate(todayStr);
+            }}
         }}
 
         function selectDate(dateStr) {{
@@ -454,7 +490,8 @@ pub fn public_calendar_page(email: &str) -> String {
             slotsDiv.innerHTML = '<p>Loading available times...</p>';
             
             try {{
-                const response = await fetch(`/api/slots/${{calendarEmail}}?date=${{date}}&timezone=${{userTimezone}}`);
+                const slotType = document.getElementById('slot-type').value;
+                const response = await fetch(`/api/slots/${{calendarEmail}}?date=${{date}}&timezone=${{userTimezone}}&slot_type=${{slotType}}`);
                 const data = await response.json();
                 
                 if (data.slots && data.slots.length > 0) {{
@@ -476,6 +513,14 @@ pub fn public_calendar_page(email: &str) -> String {
                 slotsDiv.innerHTML = '<p>Error loading available times. Please try again.</p>';
             }}
         }}
+
+        function filterSlotsByType() {{
+            // When user changes slot type, refetch slots from backend with new type
+            if (selectedDate) {{
+                fetchAvailableSlots(selectedDate);
+            }}
+        }}
+
 
         function bookSlot(startTime, endTime, displayTime) {{
             const formHTML = `

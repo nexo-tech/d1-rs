@@ -39,6 +39,7 @@ pub async fn get_available_slots_handler(req: Request, ctx: RouteContext<()>) ->
         .ok_or_else(|| worker::Error::RustError("Date parameter required".to_string()))?;
     
     let timezone = query_pairs.get("timezone").unwrap_or(&"UTC".to_string()).clone();
+    let slot_type = query_pairs.get("slot_type").unwrap_or(&"30".to_string()).clone();
     
     let db = get_database(&ctx)?;
     
@@ -119,105 +120,116 @@ pub async fn get_available_slots_handler(req: Request, ctx: RouteContext<()>) ->
     );
     let end_of_day = start_of_day + Duration::days(1);
     
-    let existing_events = fetch_calendar_events(&token.access_token, &start_of_day, &end_of_day).await?;
+    let existing_events = fetch_calendar_events(&token.access_token, &start_of_day, &end_of_day, None).await?;
     
     // Generate time slots
     let mut slots = Vec::new();
     let mut current_time = NaiveTime::from_hms_opt(start_hour, start_minute, 0).unwrap();
     let end_time = NaiveTime::from_hms_opt(end_hour, end_minute, 0).unwrap();
+    let now = Utc::now();
     
-    // Generate both 30-minute and 60-minute slots
+    // Generate slots based on requested type
     while current_time < end_time {
-        // 30-minute slot
-        let slot_end_30 = current_time + Duration::minutes(30);
-        if slot_end_30 <= end_time {
-            let slot_start_dt = DateTime::<Utc>::from_naive_utc_and_offset(
-                NaiveDateTime::new(naive_date, current_time),
-                Utc
-            );
-            let slot_end_dt = DateTime::<Utc>::from_naive_utc_and_offset(
-                NaiveDateTime::new(naive_date, slot_end_30),
-                Utc
-            );
-            
-            // Check if this slot conflicts with any existing event
-            let mut is_available = true;
-            for event in &existing_events {
-                if let (Some(event_start_str), Some(event_end_str)) = 
-                    (event.get("start").and_then(|s| s.as_str()),
-                     event.get("end").and_then(|e| e.as_str())) {
-                    
-                    if let (Ok(event_start), Ok(event_end)) = 
-                        (DateTime::parse_from_rfc3339(event_start_str),
-                         DateTime::parse_from_rfc3339(event_end_str)) {
-                        
-                        let event_start_utc = event_start.with_timezone(&Utc);
-                        let event_end_utc = event_end.with_timezone(&Utc);
-                        
-                        // Check for overlap
-                        if slot_start_dt < event_end_utc && slot_end_dt > event_start_utc {
-                            is_available = false;
-                            break;
+        // Generate 30-minute slot if requested
+        if slot_type == "30" {
+            let slot_end_30 = current_time + Duration::minutes(30);
+            if slot_end_30 <= end_time {
+                let slot_start_dt = DateTime::<Utc>::from_naive_utc_and_offset(
+                    NaiveDateTime::new(naive_date, current_time),
+                    Utc
+                );
+                let slot_end_dt = DateTime::<Utc>::from_naive_utc_and_offset(
+                    NaiveDateTime::new(naive_date, slot_end_30),
+                    Utc
+                );
+                
+                // Check if this slot conflicts with any existing event
+                let mut is_available = slot_end_dt > now; // Slot must end after current time
+                
+                if is_available {
+                    for event in &existing_events {
+                        if let (Some(event_start_str), Some(event_end_str)) = 
+                            (event.get("start").and_then(|s| s.as_str()),
+                             event.get("end").and_then(|e| e.as_str())) {
+                            
+                            if let (Ok(event_start), Ok(event_end)) = 
+                                (DateTime::parse_from_rfc3339(event_start_str),
+                                 DateTime::parse_from_rfc3339(event_end_str)) {
+                                
+                                let event_start_utc = event_start.with_timezone(&Utc);
+                                let event_end_utc = event_end.with_timezone(&Utc);
+                                
+                                // Check for overlap
+                                if slot_start_dt < event_end_utc && slot_end_dt > event_start_utc {
+                                    is_available = false;
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
+                
+                slots.push(json!({
+                    "start": slot_start_dt.to_rfc3339(),
+                    "end": slot_end_dt.to_rfc3339(),
+                    "display": format!("{} - {} (30 min)", 
+                        current_time.format("%I:%M %p"),
+                        slot_end_30.format("%I:%M %p")),
+                    "duration": 30,
+                    "available": is_available
+                }));
             }
-            
-            slots.push(json!({
-                "start": slot_start_dt.to_rfc3339(),
-                "end": slot_end_dt.to_rfc3339(),
-                "display": format!("{} - {} (30 min)", 
-                    current_time.format("%I:%M %p"),
-                    slot_end_30.format("%I:%M %p")),
-                "duration": 30,
-                "available": is_available
-            }));
         }
         
-        // 60-minute slot
-        let slot_end_60 = current_time + Duration::minutes(60);
-        if slot_end_60 <= end_time {
-            let slot_start_dt = DateTime::<Utc>::from_naive_utc_and_offset(
-                NaiveDateTime::new(naive_date, current_time),
-                Utc
-            );
-            let slot_end_dt = DateTime::<Utc>::from_naive_utc_and_offset(
-                NaiveDateTime::new(naive_date, slot_end_60),
-                Utc
-            );
-            
-            // Check if this slot conflicts with any existing event
-            let mut is_available = true;
-            for event in &existing_events {
-                if let (Some(event_start_str), Some(event_end_str)) = 
-                    (event.get("start").and_then(|s| s.as_str()),
-                     event.get("end").and_then(|e| e.as_str())) {
-                    
-                    if let (Ok(event_start), Ok(event_end)) = 
-                        (DateTime::parse_from_rfc3339(event_start_str),
-                         DateTime::parse_from_rfc3339(event_end_str)) {
-                        
-                        let event_start_utc = event_start.with_timezone(&Utc);
-                        let event_end_utc = event_end.with_timezone(&Utc);
-                        
-                        // Check for overlap
-                        if slot_start_dt < event_end_utc && slot_end_dt > event_start_utc {
-                            is_available = false;
-                            break;
+        // Generate 60-minute slot if requested
+        if slot_type == "60" {
+            let slot_end_60 = current_time + Duration::minutes(60);
+            if slot_end_60 <= end_time {
+                let slot_start_dt = DateTime::<Utc>::from_naive_utc_and_offset(
+                    NaiveDateTime::new(naive_date, current_time),
+                    Utc
+                );
+                let slot_end_dt = DateTime::<Utc>::from_naive_utc_and_offset(
+                    NaiveDateTime::new(naive_date, slot_end_60),
+                    Utc
+                );
+                
+                // Check if this slot conflicts with any existing event
+                let mut is_available = slot_end_dt > now; // Slot must end after current time
+                
+                if is_available {
+                    for event in &existing_events {
+                        if let (Some(event_start_str), Some(event_end_str)) = 
+                            (event.get("start").and_then(|s| s.as_str()),
+                             event.get("end").and_then(|e| e.as_str())) {
+                            
+                            if let (Ok(event_start), Ok(event_end)) = 
+                                (DateTime::parse_from_rfc3339(event_start_str),
+                                 DateTime::parse_from_rfc3339(event_end_str)) {
+                                
+                                let event_start_utc = event_start.with_timezone(&Utc);
+                                let event_end_utc = event_end.with_timezone(&Utc);
+                                
+                                // Check for overlap
+                                if slot_start_dt < event_end_utc && slot_end_dt > event_start_utc {
+                                    is_available = false;
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
+                
+                slots.push(json!({
+                    "start": slot_start_dt.to_rfc3339(),
+                    "end": slot_end_dt.to_rfc3339(),
+                    "display": format!("{} - {} (60 min)", 
+                        current_time.format("%I:%M %p"),
+                        slot_end_60.format("%I:%M %p")),
+                    "duration": 60,
+                    "available": is_available
+                }));
             }
-            
-            slots.push(json!({
-                "start": slot_start_dt.to_rfc3339(),
-                "end": slot_end_dt.to_rfc3339(),
-                "display": format!("{} - {} (60 min)", 
-                    current_time.format("%I:%M %p"),
-                    slot_end_60.format("%I:%M %p")),
-                "duration": 60,
-                "available": is_available
-            }));
         }
         
         // Move to next 30-minute interval

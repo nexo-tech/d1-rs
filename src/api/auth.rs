@@ -45,6 +45,14 @@ pub async fn auth_callback_handler(req: Request, ctx: RouteContext<()>) -> Worke
     
     // Verify state matches
     let cookie_header = req.headers().get("Cookie")?;
+    
+    // Debug: Log all cookies
+    if let Some(cookies) = &cookie_header {
+        worker::console_log!("Received cookies: {}", cookies);
+    } else {
+        worker::console_log!("No cookies received");
+    }
+    
     let stored_state = cookie_header
         .and_then(|cookies| {
             cookies.split(';')
@@ -75,3 +83,4 @@ pub async fn auth_callback_handler(req: Request, ctx: RouteContext<()>) -> Worke
     
     Ok(response)
 }
+

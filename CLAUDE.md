@@ -176,7 +176,7 @@ Set these in Cloudflare Workers dashboard under Settings > Environment Variables
 - **Secure Storage**: Tokens encrypted at rest in D1 database
 
 ### Working Hours Logic
-- **Timezone Support**: Proper timezone handling for global users
+- **Timezone Support**: Proper timezone handling for global users (includes UTC, US timezones, Europe/London, Europe/Paris, Europe/Zagreb, Asia/Tokyo)
 - **Flexible Schedules**: Day-specific availability settings
 - **Slot Generation**: Creates 30 and 60-minute booking slots
 - **Conflict Resolution**: Respects existing Google Calendar events
