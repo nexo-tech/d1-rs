@@ -499,9 +499,27 @@ pub fn public_calendar_page(email: &str) -> String {
                     data.slots.forEach(slot => {{
                         const isAvailable = slot.available;
                         const className = isAvailable ? 'slot-item' : 'slot-item unavailable';
-                        const onclick = isAvailable ? `onclick="bookSlot('${{slot.start}}', '${{slot.end}}', '${{slot.display}}')"` : '';
+                        
+                        // Convert UTC times to user's timezone for display
+                        const startTime = new Date(slot.start);
+                        const endTime = new Date(slot.end);
+                        const startDisplay = startTime.toLocaleTimeString('en-US', {{
+                            timeZone: userTimezone,
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                        }});
+                        const endDisplay = endTime.toLocaleTimeString('en-US', {{
+                            timeZone: userTimezone,
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                        }});
+                        const displayText = `${{startDisplay}} - ${{endDisplay}} (${{slot.duration}} min)`;
+                        
+                        const onclick = isAvailable ? `onclick="bookSlot('${{slot.start}}', '${{slot.end}}', '${{displayText}}')"` : '';
                         slotsHTML += `<div class="${{className}}" ${{onclick}}>
-                            <strong>${{slot.display}}</strong>
+                            <strong>${{displayText}}</strong>
                             ${{!isAvailable ? '<br><small>Unavailable</small>' : ''}}
                         </div>`;
                     }});

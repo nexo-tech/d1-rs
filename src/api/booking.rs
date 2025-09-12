@@ -172,9 +172,6 @@ pub async fn get_available_slots_handler(req: Request, ctx: RouteContext<()>) ->
                 slots.push(json!({
                     "start": slot_start_dt.to_rfc3339(),
                     "end": slot_end_dt.to_rfc3339(),
-                    "display": format!("{} - {} (30 min)", 
-                        current_time.format("%I:%M %p"),
-                        slot_end_30.format("%I:%M %p")),
                     "duration": 30,
                     "available": is_available
                 }));
@@ -223,9 +220,6 @@ pub async fn get_available_slots_handler(req: Request, ctx: RouteContext<()>) ->
                 slots.push(json!({
                     "start": slot_start_dt.to_rfc3339(),
                     "end": slot_end_dt.to_rfc3339(),
-                    "display": format!("{} - {} (60 min)", 
-                        current_time.format("%I:%M %p"),
-                        slot_end_60.format("%I:%M %p")),
                     "duration": 60,
                     "available": is_available
                 }));
