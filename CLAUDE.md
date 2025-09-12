@@ -98,10 +98,16 @@ The application uses multiple tables:
 ## Configuration
 
 ### Required Environment Variables
-Set these in Cloudflare Workers environment or `.env` for local development:
 
+#### Local Development
+Environment variables are loaded from `.dev.vars` file for local development:
+- Copy `.dev.vars.example` to `.dev.vars` and update with your values
+- `.dev.vars` is git-ignored and contains sensitive credentials
+
+#### Production 
+Set these in Cloudflare Workers dashboard under Settings > Environment Variables:
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID from Google Cloud Console
-- `GOOGLE_CLIENT_SECRET` - Google OAuth client secret
+- `GOOGLE_CLIENT_SECRET` - Google OAuth client secret  
 - `GOOGLE_REDIRECT_URL` - OAuth redirect URL (e.g., https://your-worker.your-subdomain.workers.dev/auth/callback)
 
 ### Required Setup
@@ -118,7 +124,7 @@ Set these in Cloudflare Workers environment or `.env` for local development:
    - Set environment variables in Cloudflare dashboard or `wrangler.toml`
 
 3. **Local Development**:
-   - Create `.env` file with Google OAuth credentials
+   - Copy `.dev.vars.example` to `.dev.vars` and update with your Google OAuth credentials
    - Install wasm32-unknown-unknown target: `rustup target add wasm32-unknown-unknown`
 
 ### Build Configuration

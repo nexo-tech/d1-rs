@@ -1,101 +1,150 @@
-# Cloudflare Worker with Rust & D1
+# Time Forge - Calendar Booking System
 
-A minimal Cloudflare Worker built with Rust featuring D1 database integration and local development support.
+A Cloudflare Worker application built with Rust that implements a Google Calendar-integrated booking system with D1 database integration.
 
 ## Features
 
-- 🦀 Rust-based Cloudflare Worker
-- 🗄️ D1 database integration  
-- 🌐 Two HTML routes (/, /about, /users)
-- 🛠️ Local development with `wrangler dev`
-- ⚡ Nix flake for development environment
-- 🔧 Just commands for easy workflow
+- **Google Calendar Integration** - OAuth authentication and real-time calendar sync
+- **Working Hours Management** - Configure availability and working days  
+- **Public Booking Interface** - Share links for others to book time with you
+- **Real-time Conflict Detection** - Prevents double-booking with existing events
+- **D1 Database** - Type-safe database operations with custom ORM
+- **Edge Deployment** - Fast global performance via Cloudflare Workers
 
 ## Quick Start
 
-### 1. Development Environment
+### Prerequisites
+
+- Rust toolchain with `wasm32-unknown-unknown` target
+- Google Cloud Console project with Calendar API enabled
+- Cloudflare account with Workers and D1 access
+
+### Environment Setup
+
+1. **Install Rust target:**
+   ```bash
+   rustup target add wasm32-unknown-unknown
+   ```
+
+2. **Configure environment variables:**
+   ```bash
+   cp .dev.vars.example .dev.vars
+   # Edit .dev.vars with your Google OAuth credentials
+   ```
+
+3. **Create D1 database:**
+   ```bash
+   just db-create
+   # Update wrangler.toml with the returned database ID
+   ```
+
+### Google Cloud Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing one
+3. Enable the Google Calendar API
+4. Create OAuth 2.0 credentials:
+   - Application type: Web application
+   - Authorized redirect URI: `http://localhost:8787/auth/callback` (for development)
+5. Copy Client ID and Client Secret to your `.dev.vars` file
+
+### Development Commands
 
 ```bash
-# Using Nix (recommended)
-nix develop
+# Start local development server
+just dev
 
-# Or install dependencies manually:
-# - Rust toolchain with wasm32-unknown-unknown target
-# - Node.js and wrangler CLI
-# - just command runner
+# Build the worker
+just build  
+
+# Deploy to production
+just deploy
+
+# Database operations
+just db-migrate      # Apply migrations to production
+just db-local        # Apply migrations locally  
+just db-query "SQL"  # Query production database
 ```
 
-### 2. Setup
+## Project Structure
 
-```bash
-just setup  # Guides you through configuration
+```
+src/
+├── lib.rs           # Main router and entry point
+├── models.rs        # Data models and DTOs
+├── auth.rs          # OAuth authentication logic  
+├── calendar.rs      # Google Calendar API integration
+├── database.rs      # Database initialization and migrations
+├── templates.rs     # HTML templates
+└── api/             # API route handlers
+    ├── auth.rs      # Authentication endpoints
+    ├── booking.rs   # Booking system endpoints  
+    ├── calendar.rs  # Calendar management endpoints
+    └── working_hours.rs # Working hours configuration
 ```
 
-### 3. Local Development
+## API Endpoints
 
-```bash
-just dev    # Start local server at http://localhost:8787
-```
+### Public Routes
+- `GET /` - Home page with Google OAuth login
+- `GET /calendar/:email` - Public booking interface
+- `GET /api/slots/:email` - Get available time slots
 
-### 4. Deploy
-
-```bash
-just deploy # Deploy to Cloudflare
-```
-
-## Available Commands
-
-Run `just` to see all available commands:
-
-- `just setup` - Initial project setup
-- `just dev` - Start local development server
-- `just build` - Build the worker
-- `just deploy` - Deploy to Cloudflare
-- `just db-create` - Create D1 database
-- `just db-migrate` - Apply database schema
-- `just db-local` - Apply schema to local DB
-- `just db-query "SQL"` - Query production database
-- `just db-query-local "SQL"` - Query local database
-- `just logs` - View live logs
-
-## Configuration
-
-1. Copy `.env.example` to `.env`
-2. Set your Cloudflare API token and account ID
-3. Create a D1 database: `just db-create`
-4. Update `wrangler.toml` with your database ID
+### Authenticated Routes  
+- `GET /auth/google` - Initiate Google OAuth flow
+- `GET /auth/callback` - Handle OAuth callback
+- `GET /dashboard` - Management dashboard
+- `GET /working-hours` - Working hours configuration
+- `POST /api/working-hours` - Save working hours
+- `POST /api/book` - Create booking
 
 ## Environment Variables
 
-Create `.env` file with:
-
-```bash
-CLOUDFLARE_API_TOKEN=your_token_here
-CLOUDFLARE_ACCOUNT_ID=your_account_id_here
-CLOUDFLARE_DATABASE_ID=your_database_id_here
+### Local Development (`.dev.vars`)
+```env
+GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_SECRET=your_client_secret  
+GOOGLE_REDIRECT_URL=http://localhost:8787/auth/callback
 ```
 
-## Routes
+### Production (Cloudflare Dashboard)
+Set the same variables in your Cloudflare Workers environment settings with production URLs.
 
-- `/` - Home page with navigation
-- `/about` - About page with feature list
-- `/users` - Users page (demonstrates D1 database queries)
+## Usage Workflow
 
-## Local Development
+### For Calendar Owners
+1. Visit your worker URL and sign in with Google Calendar
+2. Configure working hours at `/working-hours`  
+3. Share your booking link: `/calendar/your-email@gmail.com`
 
-The worker runs locally with `wrangler dev --local` which includes:
-- Local D1 database simulation
-- Hot reload on file changes
-- Same runtime environment as production
-
-## Deployment
-
-The deployment process:
-1. Builds the Rust code to WASM
-2. Creates/updates D1 database
-3. Applies database schema
-4. Deploys to Cloudflare Workers
+### For Booking Guests
+1. Visit the shared calendar link
+2. Select an available time slot
+3. Fill in booking details
+4. Receive calendar invitation via email
 
 ## Database Schema
 
-See `schema.sql` for the database structure. The example includes a `users` table with sample data for demonstration.
+- **tokens** - OAuth token storage with automatic refresh
+- **working_hours** - Global availability settings
+- **calendars** - Calendar metadata (legacy)
+- **bookings** - Local booking records
+
+## Security Features
+
+- OAuth state parameter validation prevents CSRF attacks
+- Tokens stored securely in D1 database  
+- No permanent storage of Google Calendar data
+- HTTPS required for OAuth redirect URLs
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes following the existing code structure
+4. Test locally with `just dev`
+5. Submit a pull request
+
+## License
+
+[Add your license here]

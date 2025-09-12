@@ -1,0 +1,12 @@
+# Example local development environment variables for Cloudflare Workers
+# Copy this file to .dev.vars and update with your actual values
+
+# Google OAuth Configuration
+# Get these from Google Cloud Console -> APIs & Credentials -> OAuth 2.0 Client IDs
+GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+GOOGLE_REDIRECT_URL=http://localhost:8787/auth/callback
+
+# Additional environment variables can be added here as needed
+# DATABASE_URL=your_database_url
+# API_KEY=your_api_key

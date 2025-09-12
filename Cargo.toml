@@ -8,9 +8,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 worker = { version = "0.4", features = ["d1"] }
+console_error_panic_hook = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 wasm-bindgen = "0.2"
+js-sys = "0.3"
 d1orm = { path = "./d1orm" }
 async-trait = "0.1"
 getrandom = { version = "0.2", features = ["js"] }
@@ -18,6 +20,10 @@ chrono = { version = "0.4", features = ["serde", "js-sys"], default-features = f
 reqwest = { version = "0.11", features = ["json"] }
 url = "2.4"
 base64 = "0.21"
+
+[profile.dev]
+debug = true
+opt-level = 0
 
 [profile.release]
 lto = true
