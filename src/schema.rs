@@ -183,7 +183,7 @@ impl Column {
 }
 
 /// Modern table definition builder with fluent API
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TableDefinition {
     pub name: String,
     pub columns: Vec<Column>,
@@ -252,15 +252,12 @@ impl TableDefinition {
     pub fn from_columns(name: String, columns: Vec<crate::schema_evolution::ColumnDefinition>) -> Self {
         let mut table = Self::new(name);
         for col in columns {
-            let column = Column {
-                name: col.name.clone(),
-                column_type: col.column_type,
-                nullable: col.nullable,
-                default: col.default,
-                unique: col.unique,
-                primary_key: col.primary_key,
-                auto_increment: col.auto_increment,
-            };
+            let mut column = Column::new(col.name.clone(), col.column_type);
+            column.constraints.not_null = !col.nullable;
+            column.constraints.default = col.default;
+            column.constraints.unique = col.unique;
+            column.constraints.primary_key = col.primary_key;
+            column.constraints.autoincrement = col.auto_increment;
             table.columns.push(column);
         }
         table

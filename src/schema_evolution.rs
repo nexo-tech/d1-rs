@@ -1,7 +1,6 @@
 use crate::{D1Client, Result, D1RsError};
 use crate::schema::{ColumnType, DefaultValue, TableDefinition};
-use crate::relations::{RelationBuilder, RelationType};
-use serde_json::Value;
+use crate::relations::RelationBuilder;
 
 /// Schema evolution operations for migrations
 #[derive(Debug, Clone)]
@@ -188,14 +187,14 @@ impl SchemaOperation {
                 Ok(vec![format!("ALTER TABLE {} ADD COLUMN {}", table, column.to_sql())])
             }
             
-            SchemaOperation::DropColumn { table, column } => {
+            SchemaOperation::DropColumn { table: _, column: _ } => {
                 // SQLite doesn't support DROP COLUMN directly, need to recreate table
                 Err(D1RsError::Database(
                     "SQLite doesn't support DROP COLUMN. Use a custom migration instead.".to_string()
                 ))
             }
             
-            SchemaOperation::ModifyColumn { table, column, new_definition } => {
+            SchemaOperation::ModifyColumn { table: _, column: _, new_definition: _ } => {
                 // SQLite doesn't support ALTER COLUMN directly, need to recreate table
                 Err(D1RsError::Database(
                     "SQLite doesn't support ALTER COLUMN. Use a custom migration instead.".to_string()
@@ -242,7 +241,7 @@ impl SchemaOperation {
                 Ok(vec![sql])
             }
             
-            SchemaOperation::DropForeignKey { table, constraint_name } => {
+            SchemaOperation::DropForeignKey { table: _, constraint_name: _ } => {
                 // SQLite doesn't support dropping foreign key constraints directly
                 Err(D1RsError::Database(
                     "SQLite doesn't support DROP CONSTRAINT. Use a custom migration instead.".to_string()
@@ -275,7 +274,7 @@ impl SchemaMigration {
     }
     
     /// Create a new table
-    pub fn create_table(mut self, name: &str) -> TableMigrationBuilder {
+    pub fn create_table(self, name: &str) -> TableMigrationBuilder {
         TableMigrationBuilder::new(self, name.to_string())
     }
     
@@ -298,12 +297,12 @@ impl SchemaMigration {
     }
     
     /// Modify an existing table
-    pub fn alter_table(mut self, name: &str) -> AlterTableBuilder {
+    pub fn alter_table(self, name: &str) -> AlterTableBuilder {
         AlterTableBuilder::new(self, name.to_string())
     }
     
     /// Create a relation between tables
-    pub fn create_relation(mut self, name: &str, from_table: &str, to_table: &str) -> RelationMigrationBuilder {
+    pub fn create_relation(self, name: &str, from_table: &str, to_table: &str) -> RelationMigrationBuilder {
         RelationMigrationBuilder::new(self, name.to_string(), from_table.to_string(), to_table.to_string())
     }
     
@@ -354,32 +353,32 @@ impl TableMigrationBuilder {
     }
     
     /// Add an integer column
-    pub fn integer(mut self, name: &str) -> ColumnMigrationBuilder {
+    pub fn integer(self, name: &str) -> ColumnMigrationBuilder {
         ColumnMigrationBuilder::new(self, name.to_string(), ColumnType::Integer)
     }
     
     /// Add a text column
-    pub fn text(mut self, name: &str) -> ColumnMigrationBuilder {
+    pub fn text(self, name: &str) -> ColumnMigrationBuilder {
         ColumnMigrationBuilder::new(self, name.to_string(), ColumnType::Text)
     }
     
     /// Add a boolean column
-    pub fn boolean(mut self, name: &str) -> ColumnMigrationBuilder {
+    pub fn boolean(self, name: &str) -> ColumnMigrationBuilder {
         ColumnMigrationBuilder::new(self, name.to_string(), ColumnType::Boolean)
     }
     
     /// Add a datetime column
-    pub fn datetime(mut self, name: &str) -> ColumnMigrationBuilder {
+    pub fn datetime(self, name: &str) -> ColumnMigrationBuilder {
         ColumnMigrationBuilder::new(self, name.to_string(), ColumnType::DateTime)
     }
     
     /// Add a real/float column
-    pub fn real(mut self, name: &str) -> ColumnMigrationBuilder {
+    pub fn real(self, name: &str) -> ColumnMigrationBuilder {
         ColumnMigrationBuilder::new(self, name.to_string(), ColumnType::Real)
     }
     
     /// Add a JSON column
-    pub fn json(mut self, name: &str) -> ColumnMigrationBuilder {
+    pub fn json(self, name: &str) -> ColumnMigrationBuilder {
         ColumnMigrationBuilder::new(self, name.to_string(), ColumnType::Json)
     }
     
@@ -459,7 +458,7 @@ impl AlterTableBuilder {
     }
     
     /// Add a column to the table
-    pub fn add_column(mut self, name: &str, column_type: ColumnType) -> ColumnMigrationBuilder {
+    pub fn add_column(self, name: &str, column_type: ColumnType) -> ColumnMigrationBuilder {
         let table_builder = TableMigrationBuilder {
             migration: self.migration,
             table_name: self.table_name,
@@ -469,7 +468,7 @@ impl AlterTableBuilder {
     }
     
     /// Rename a column
-    pub fn rename_column(mut self, old_name: &str, new_name: &str) -> Self {
+    pub fn rename_column(mut self, old_name: &str, new_name: &str) -> SchemaMigration {
         self.migration.operations.push(SchemaOperation::RenameColumn {
             table: self.table_name.clone(),
             old_name: old_name.to_string(),
@@ -479,7 +478,7 @@ impl AlterTableBuilder {
     }
     
     /// Add an index
-    pub fn add_index(mut self, name: &str, columns: Vec<&str>) -> Self {
+    pub fn add_index(mut self, name: &str, columns: Vec<&str>) -> SchemaMigration {
         self.migration.operations.push(SchemaOperation::AddIndex {
             table: self.table_name.clone(),
             name: name.to_string(),
@@ -490,7 +489,7 @@ impl AlterTableBuilder {
     }
     
     /// Add a unique index
-    pub fn add_unique_index(mut self, name: &str, columns: Vec<&str>) -> Self {
+    pub fn add_unique_index(mut self, name: &str, columns: Vec<&str>) -> SchemaMigration {
         self.migration.operations.push(SchemaOperation::AddIndex {
             table: self.table_name.clone(),
             name: name.to_string(),

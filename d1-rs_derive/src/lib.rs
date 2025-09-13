@@ -3,7 +3,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, DeriveInput, Fields, Type, Field, Attribute};
 
-#[proc_macro_derive(Entity, attributes(table, primary_key, unique, not_null))]
+#[proc_macro_derive(Entity, attributes(table, primary_key, unique, not_null, edge))]
 pub fn derive_entity(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
@@ -208,14 +208,31 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 fn extract_table_name(attrs: &[Attribute], default_name: &str) -> String {
     for attr in attrs {
         if attr.path().is_ident("table") {
-            if let Ok(name_value) = attr.meta.require_name_value() {
-                if name_value.path.is_ident("name") {
+            // Handle both formats: #[table(name = "table_name")] and #[table = "table_name"]
+            match &attr.meta {
+                // Handle #[table(name = "table_name")]
+                syn::Meta::List(meta_list) => {
+                    // Parse the tokens inside the parentheses
+                    let parsed: Result<syn::MetaNameValue, _> = syn::parse2(meta_list.tokens.clone());
+                    if let Ok(name_value) = parsed {
+                        if name_value.path.is_ident("name") {
+                            if let syn::Expr::Lit(expr_lit) = &name_value.value {
+                                if let syn::Lit::Str(lit_str) = &expr_lit.lit {
+                                    return lit_str.value();
+                                }
+                            }
+                        }
+                    }
+                }
+                // Handle #[table = "table_name"]
+                syn::Meta::NameValue(name_value) => {
                     if let syn::Expr::Lit(expr_lit) = &name_value.value {
                         if let syn::Lit::Str(lit_str) = &expr_lit.lit {
                             return lit_str.value();
                         }
                     }
                 }
+                _ => {}
             }
         }
     }

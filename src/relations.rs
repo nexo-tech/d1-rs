@@ -87,7 +87,7 @@ impl TraversalContext {
 
 /// Trait for entities that participate in relations
 #[async_trait]
-pub trait RelationalEntity: Entity {
+pub trait RelationalEntity: Entity + Send {
     /// Get all edges (relations) for this entity type
     fn edges() -> Vec<Box<dyn RelationEdge>>;
     
@@ -190,6 +190,7 @@ impl RelationEdge for ConcreteRelationEdge {
 }
 
 /// Builder for creating relations in migrations
+#[derive(Debug, Clone)]
 pub struct RelationBuilder {
     pub from_table: String,
     pub to_table: String,
@@ -199,12 +200,13 @@ pub struct RelationBuilder {
 
 impl RelationBuilder {
     pub fn new(name: String, from_table: String, to_table: String) -> Self {
+        let foreign_key = format!("{}_id", from_table);
         Self {
             from_table,
             to_table,
             name,
             relation_type: RelationType::OneToMany {
-                foreign_key: format!("{}_id", from_table),
+                foreign_key,
                 references: "id".to_string(),
             },
         }
@@ -311,6 +313,7 @@ pub trait WithRelations<T: RelationalEntity> {
 }
 
 /// Extension methods for entity results to enable graph traversal
+#[async_trait]
 pub trait GraphTraversal<T: RelationalEntity> {
     /// Traverse to related entities
     async fn traverse(&mut self, db: &D1Client, path: &str) -> Result<Vec<Value>>;
@@ -320,7 +323,10 @@ pub trait GraphTraversal<T: RelationalEntity> {
 }
 
 #[async_trait]
-impl<T: RelationalEntity> GraphTraversal<T> for T {
+impl<T: RelationalEntity> GraphTraversal<T> for T
+where 
+    T::PrimaryKey: crate::types::SqlType
+{
     async fn traverse(&mut self, db: &D1Client, path: &str) -> Result<Vec<Value>> {
         let mut context = TraversalContext::new().with_includes(vec![path.to_string()]);
         
