@@ -9,6 +9,7 @@ pub mod schema;
 pub mod relations;
 pub mod edges;
 pub mod schema_evolution;
+pub mod auto_migration;
 
 pub use db::*;
 pub use query::*;
@@ -18,6 +19,7 @@ pub use schema::*;
 pub use relations::*;
 pub use edges::*;
 pub use schema_evolution::*;
+pub use auto_migration::*;
 
 pub use async_trait::async_trait;
 use std::fmt;
