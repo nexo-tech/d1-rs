@@ -89,16 +89,55 @@ impl D1QueryResult {
     pub fn into_entities<T: serde::de::DeserializeOwned>(self) -> Result<Vec<T>> {
         self.rows
             .into_iter()
-            .map(|row| serde_json::from_value(row).map_err(|e| D1OrmError::SerializationError(e.to_string())))
+            .map(|row| Self::deserialize_with_boolean_conversion(row))
             .collect()
     }
 
     pub fn into_entity<T: serde::de::DeserializeOwned>(mut self) -> Result<Option<T>> {
         if let Some(row) = self.rows.pop() {
-            let entity = serde_json::from_value(row).map_err(|e| D1OrmError::SerializationError(e.to_string()))?;
+            let entity = Self::deserialize_with_boolean_conversion(row)?;
             Ok(Some(entity))
         } else {
             Ok(None)
+        }
+    }
+
+    /// Smart deserialization that automatically handles SQLite boolean conversion
+    /// First tries normal deserialization, then converts integer 0/1 to booleans if needed
+    fn deserialize_with_boolean_conversion<T: serde::de::DeserializeOwned>(value: Value) -> Result<T> {
+        // First attempt: try normal deserialization
+        match serde_json::from_value::<T>(value.clone()) {
+            Ok(entity) => Ok(entity),
+            Err(e) => {
+                // If it failed and mentions boolean/integer type mismatch, try converting
+                let error_msg = e.to_string();
+                if error_msg.contains("expected a boolean") && error_msg.contains("integer") {
+                    let converted_value = Self::convert_integers_to_booleans(value);
+                    serde_json::from_value(converted_value)
+                        .map_err(|e| D1OrmError::SerializationError(e.to_string()))
+                } else {
+                    Err(D1OrmError::SerializationError(e.to_string()))
+                }
+            }
+        }
+    }
+
+    /// Convert integer 0/1 values to booleans throughout the JSON value
+    fn convert_integers_to_booleans(mut value: Value) -> Value {
+        match &mut value {
+            Value::Object(map) => {
+                for val in map.values_mut() {
+                    if let Value::Number(n) = val {
+                        if let Some(i) = n.as_i64() {
+                            if i == 0 || i == 1 {
+                                *val = Value::Bool(i != 0);
+                            }
+                        }
+                    }
+                }
+                value
+            }
+            _ => value
         }
     }
 }

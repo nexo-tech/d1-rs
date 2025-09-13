@@ -1,4 +1,4 @@
-use crate::models::{GoogleUserInfo, OAuthTokenResponse, Token};
+use crate::models::{GoogleUserInfo, OAuthTokenResponse, Token, User};
 use chrono::{Duration, Utc};
 use d1orm::*;
 use url::Url;
@@ -163,8 +163,31 @@ pub async fn save_token(
     let now = Utc::now();
     
     // Check if token already exists for this user
+    // First, find or create user
+    let user = User::query()
+        .where_email_eq(user_email.clone())
+        .first(db)
+        .await
+        .map_err(|e| worker::Error::RustError(format!("Database query failed: {}", e)))?;
+    
+    let user = if let Some(user) = user {
+        user
+    } else {
+        // Create new user - for now just use email as name, could be improved later
+        User::create()
+            .set_email(user_email.clone())
+            .set_name(user_email.clone())
+            .set_is_active(true)
+            .set_created_at(now)
+            .set_updated_at(now)
+            .save(db).await
+            .map_err(|e| worker::Error::RustError(format!("Failed to create user: {}", e)))?
+    };
+    
+    // Check if token already exists for this user and email
     let existing_token = Token::query()
-        .where_user_email_eq(user_email.clone())
+        .where_user_id_eq(user.id)
+        .where_calendar_email_eq(user_email.clone())
         .first(db)
         .await
         .map_err(|e| worker::Error::RustError(format!("Database query failed: {}", e)))?;
@@ -196,7 +219,9 @@ pub async fn save_token(
     } else {
         // Insert new token
         let inserted_token = Token::create()
-            .set_user_email(user_email.clone())
+            .set_user_id(user.id)
+            .set_calendar_email(user_email.clone())
+            .set_is_primary(true) // First token for user is primary
             .set_access_token(token_response.access_token)
             .set_refresh_token(token_response.refresh_token
                 .ok_or_else(|| worker::Error::RustError("No refresh token provided".to_string()))?)

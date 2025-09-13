@@ -16,7 +16,7 @@ pub async fn public_calendar_handler(_req: Request, ctx: RouteContext<()>) -> Wo
     let db = get_database(&ctx)?;
     
     // Check if token exists for this email
-    match Token::query().where_user_email_eq(email.to_string()).first(&db).await {
+    match Token::query().where_calendar_email_eq(email.to_string()).first(&db).await {
         Ok(Some(_)) => {
             Response::from_html(public_calendar_page(email))
         }
@@ -45,7 +45,7 @@ pub async fn get_available_slots_handler(req: Request, ctx: RouteContext<()>) ->
     
     // Get token for this email
     let mut token = Token::query()
-        .where_user_email_eq(email.to_string())
+        .where_calendar_email_eq(email.to_string())
         .first(&db).await
         .map_err(|e| worker::Error::RustError(format!("Database query failed: {}", e)))?
         .ok_or_else(|| worker::Error::RustError("Calendar not found".to_string()))?;
@@ -244,7 +244,7 @@ pub async fn create_booking_handler(mut req: Request, ctx: RouteContext<()>) -> 
     
     // Get token for the calendar owner
     let mut token = Token::query()
-        .where_user_email_eq(booking_request.calendar_email.clone())
+        .where_calendar_email_eq(booking_request.calendar_email.clone())
         .first(&db).await
         .map_err(|e| worker::Error::RustError(format!("Database query failed: {}", e)))?
         .ok_or_else(|| worker::Error::RustError("Calendar not found".to_string()))?;

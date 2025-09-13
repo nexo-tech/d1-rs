@@ -9,18 +9,28 @@ static MIGRATIONS_INITIALIZED: AtomicBool = AtomicBool::new(false);
 pub fn get_migration_runner() -> MigrationRunner {
     let mut runner = MigrationRunner::new();
     
-    // Register application-specific migrations
-    let create_tokens_migration = CreateTableMigration::new("create_tokens", 1, "tokens".to_string())
+    // New structure: users first, then tokens with foreign key
+    let create_users_migration = CreateTableMigration::new("create_users", 1, "users".to_string())
         .column("id", "INTEGER").primary_key()
-        .column("user_email", "TEXT").not_null().unique()
+        .column("email", "TEXT").not_null().unique()
+        .column("name", "TEXT").not_null()
+        .column("is_active", "INTEGER").not_null().default("1")
+        .column("created_at", "DATETIME").default("CURRENT_TIMESTAMP")
+        .column("updated_at", "DATETIME").default("CURRENT_TIMESTAMP");
+
+    let create_tokens_migration = CreateTableMigration::new("create_tokens", 2, "tokens".to_string())
+        .column("id", "INTEGER").primary_key()
+        .column("user_id", "INTEGER").not_null()
+        .column("calendar_email", "TEXT").not_null()
         .column("access_token", "TEXT").not_null()
         .column("refresh_token", "TEXT").not_null()
         .column("token_type", "TEXT").not_null()
+        .column("is_primary", "INTEGER").not_null().default("0")
         .column("expiry", "DATETIME").not_null()
         .column("created_at", "DATETIME").default("CURRENT_TIMESTAMP")
         .column("updated_at", "DATETIME").default("CURRENT_TIMESTAMP");
     
-    let create_calendars_migration = CreateTableMigration::new("create_calendars", 2, "calendars".to_string())
+    let create_calendars_migration = CreateTableMigration::new("create_calendars", 3, "calendars".to_string())
         .column("id", "INTEGER").primary_key()
         .column("user_id", "INTEGER").not_null()
         .column("title", "TEXT").not_null()
@@ -28,7 +38,7 @@ pub fn get_migration_runner() -> MigrationRunner {
         .column("timezone", "TEXT").not_null()
         .column("created_at", "DATETIME").default("CURRENT_TIMESTAMP");
     
-    let create_working_hours_migration = CreateTableMigration::new("create_working_hours", 3, "working_hours".to_string())
+    let create_working_hours_migration = CreateTableMigration::new("create_working_hours", 4, "working_hours".to_string())
         .column("id", "INTEGER").primary_key()
         .column("start_time", "TEXT").not_null()
         .column("end_time", "TEXT").not_null()
@@ -37,7 +47,7 @@ pub fn get_migration_runner() -> MigrationRunner {
         .column("created_at", "DATETIME").default("CURRENT_TIMESTAMP")
         .column("updated_at", "DATETIME").default("CURRENT_TIMESTAMP");
     
-    let create_bookings_migration = CreateTableMigration::new("create_bookings", 4, "bookings".to_string())
+    let create_bookings_migration = CreateTableMigration::new("create_bookings", 5, "bookings".to_string())
         .column("id", "INTEGER").primary_key()
         .column("calendar_id", "INTEGER").not_null()
         .column("guest_email", "TEXT").not_null()
@@ -49,6 +59,7 @@ pub fn get_migration_runner() -> MigrationRunner {
         .column("status", "TEXT").not_null()
         .column("created_at", "DATETIME").default("CURRENT_TIMESTAMP");
     
+    runner.add_migration(Box::new(create_users_migration));
     runner.add_migration(Box::new(create_tokens_migration));
     runner.add_migration(Box::new(create_calendars_migration));
     runner.add_migration(Box::new(create_working_hours_migration));

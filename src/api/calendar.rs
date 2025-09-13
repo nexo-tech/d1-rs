@@ -13,7 +13,7 @@ pub async fn dashboard_handler(_req: Request, ctx: RouteContext<()>) -> WorkerRe
         .all(&db).await
         .map_err(|e| worker::Error::RustError(format!("Database query failed: {}", e)))?;
     
-    let emails: Vec<String> = tokens.iter().map(|t| t.user_email.clone()).collect();
+    let emails: Vec<String> = tokens.iter().map(|t| t.calendar_email.clone()).collect();
     
     Response::from_html(dashboard_page(&emails))
 }
@@ -26,7 +26,7 @@ pub async fn get_emails_handler(_req: Request, ctx: RouteContext<()>) -> WorkerR
         .all(&db).await
         .map_err(|e| worker::Error::RustError(format!("Database query failed: {}", e)))?;
     
-    let emails: Vec<String> = tokens.iter().map(|t| t.user_email.clone()).collect();
+    let emails: Vec<String> = tokens.iter().map(|t| t.calendar_email.clone()).collect();
     
     Response::from_json(&json!({
         "emails": emails

@@ -26,16 +26,33 @@ pub mod datetime_format {
     }
 }
 
+
+#[derive(Debug, Serialize, Deserialize, Clone, Entity)]
+#[table(name = "users")]
+pub struct User {
+    #[primary_key]
+    pub id: i64,
+    #[unique]
+    pub email: String, // Primary Google account email
+    pub name: String,
+    pub is_active: bool,
+    #[serde(with = "datetime_format")]
+    pub created_at: DateTime<Utc>,
+    #[serde(with = "datetime_format")]
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Entity)]
 #[table(name = "tokens")]
 pub struct Token {
     #[primary_key]
     pub id: i64,
-    #[unique]
-    pub user_email: String,
+    pub user_id: i64, // Foreign key to users table
+    pub calendar_email: String, // Email of this specific calendar/token
     pub access_token: String,
     pub refresh_token: String,
     pub token_type: String,
+    pub is_primary: bool, // Whether this is the user's primary calendar
     #[serde(with = "datetime_format")]
     pub expiry: DateTime<Utc>,
     #[serde(with = "datetime_format")]
