@@ -179,9 +179,18 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         let through_table = edge.through_table.as_ref()
             .ok_or_else(|| D1RsError::ValidationError("Many-to-many relation requires through_table".to_string()))?;
         
-        // Use proper column names for junction table
-        let child_foreign_key = "category_id";  // Fixed column name
-        let parent_foreign_key = "post_id";     // Fixed column name
+        // Generate proper column names based on entity types
+        // Parent foreign key is what's specified in the edge (usually like "post_id")
+        let parent_foreign_key = &edge.foreign_key;
+        
+        // Child foreign key: derive from target entity name
+        let child_foreign_key = format!("{}_id", 
+            edge.target_entity.to_lowercase()
+                .chars()
+                .enumerate()
+                .map(|(i, c)| if i > 0 && c.is_uppercase() { format!("_{}", c.to_lowercase()) } else { c.to_string() })
+                .collect::<String>()
+        );
         
         let sql = format!(
             "SELECT c.* FROM {} c \
