@@ -1,6 +1,6 @@
 mod common;
 
-use d1orm::*;
+use d1_rs::*;
 
 #[tokio::test]
 async fn test_migration_runner() {

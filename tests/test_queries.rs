@@ -1,8 +1,8 @@
 mod common;
 
 use common::*;
-use d1orm::*;
-use d1orm::Entity;
+use d1_rs::*;
+use d1_rs::Entity;
 
 #[tokio::test]
 async fn test_query_all() {

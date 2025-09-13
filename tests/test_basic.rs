@@ -1,4 +1,4 @@
-use d1orm::*;
+use d1_rs::*;
 use serde_json::Value;
 
 #[tokio::test]
@@ -70,7 +70,7 @@ async fn test_boolean_conversion() {
     assert_eq!(result.rows.len(), 1);
     
     // Test the boolean conversion feature
-    #[derive(serde::Deserialize, serde::Serialize, Debug, d1orm::Entity)]
+    #[derive(serde::Deserialize, serde::Serialize, Debug, d1_rs::Entity)]
     #[table(name = "test_bools")]
     struct TestBool {
         #[primary_key]

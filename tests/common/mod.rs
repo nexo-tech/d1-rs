@@ -1,6 +1,6 @@
-use d1orm::*;
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use d1_rs::*;
+use serde::{Deserialize, Serialize};
 
 // Test model definitions
 #[derive(Debug, Serialize, Deserialize, Clone, Entity, PartialEq)]
@@ -28,9 +28,12 @@ pub struct TestPost {
     pub created_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 pub async fn setup_test_db() -> D1Client {
-    let db = D1Client::new_in_memory().await.expect("Failed to create in-memory database");
-    
+    let db = D1Client::new_in_memory()
+        .await
+        .expect("Failed to create in-memory database");
+
     // Create test tables
     let create_users = r#"
         CREATE TABLE test_users (
@@ -42,7 +45,7 @@ pub async fn setup_test_db() -> D1Client {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     "#;
-    
+
     let create_posts = r#"
         CREATE TABLE test_posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,64 +58,100 @@ pub async fn setup_test_db() -> D1Client {
             FOREIGN KEY (user_id) REFERENCES test_users(id)
         )
     "#;
-    
-    db.execute(create_users, &[]).await.expect("Failed to create users table");
-    db.execute(create_posts, &[]).await.expect("Failed to create posts table");
-    
+
+    db.execute(create_users, &[])
+        .await
+        .expect("Failed to create users table");
+    db.execute(create_posts, &[])
+        .await
+        .expect("Failed to create posts table");
+
     db
 }
 
+#[allow(dead_code)]
 pub async fn seed_test_data(db: &D1Client) {
     use serde_json::Value;
-    
+
     // Insert test users
     let insert_user = "INSERT INTO test_users (email, name, is_active, score) VALUES (?, ?, ?, ?)";
-    
-    db.execute(insert_user, &[
-        Value::String("alice@example.com".to_string()),
-        Value::String("Alice".to_string()),
-        Value::Bool(true),
-        Value::Number(100.into()),
-    ]).await.expect("Failed to insert alice");
-    
-    db.execute(insert_user, &[
-        Value::String("bob@example.com".to_string()),
-        Value::String("Bob".to_string()),
-        Value::Bool(false),
-        Value::Number(50.into()),
-    ]).await.expect("Failed to insert bob");
-    
-    db.execute(insert_user, &[
-        Value::String("charlie@example.com".to_string()),
-        Value::String("Charlie".to_string()),
-        Value::Bool(true),
-        Value::Null,
-    ]).await.expect("Failed to insert charlie");
-    
+
+    db.execute(
+        insert_user,
+        &[
+            Value::String("alice@example.com".to_string()),
+            Value::String("Alice".to_string()),
+            Value::Bool(true),
+            Value::Number(100.into()),
+        ],
+    )
+    .await
+    .expect("Failed to insert alice");
+
+    db.execute(
+        insert_user,
+        &[
+            Value::String("bob@example.com".to_string()),
+            Value::String("Bob".to_string()),
+            Value::Bool(false),
+            Value::Number(50.into()),
+        ],
+    )
+    .await
+    .expect("Failed to insert bob");
+
+    db.execute(
+        insert_user,
+        &[
+            Value::String("charlie@example.com".to_string()),
+            Value::String("Charlie".to_string()),
+            Value::Bool(true),
+            Value::Null,
+        ],
+    )
+    .await
+    .expect("Failed to insert charlie");
+
     // Insert test posts
     let insert_post = "INSERT INTO test_posts (user_id, title, content, is_published, views) VALUES (?, ?, ?, ?, ?)";
-    
-    db.execute(insert_post, &[
-        Value::Number(1.into()),
-        Value::String("First Post".to_string()),
-        Value::String("Content of first post".to_string()),
-        Value::Bool(true),
-        Value::Number(100.into()),
-    ]).await.expect("Failed to insert first post");
-    
-    db.execute(insert_post, &[
-        Value::Number(1.into()),
-        Value::String("Second Post".to_string()),
-        Value::String("Content of second post".to_string()),
-        Value::Bool(false),
-        Value::Number(0.into()),
-    ]).await.expect("Failed to insert second post");
-    
-    db.execute(insert_post, &[
-        Value::Number(2.into()),
-        Value::String("Bob's Post".to_string()),
-        Value::String("Bob's content".to_string()),
-        Value::Bool(true),
-        Value::Number(50.into()),
-    ]).await.expect("Failed to insert Bob's post");
+
+    db.execute(
+        insert_post,
+        &[
+            Value::Number(1.into()),
+            Value::String("First Post".to_string()),
+            Value::String("Content of first post".to_string()),
+            Value::Bool(true),
+            Value::Number(100.into()),
+        ],
+    )
+    .await
+    .expect("Failed to insert first post");
+
+    db.execute(
+        insert_post,
+        &[
+            Value::Number(1.into()),
+            Value::String("Second Post".to_string()),
+            Value::String("Content of second post".to_string()),
+            Value::Bool(false),
+            Value::Number(0.into()),
+        ],
+    )
+    .await
+    .expect("Failed to insert second post");
+
+    db.execute(
+        insert_post,
+        &[
+            Value::Number(2.into()),
+            Value::String("Bob's Post".to_string()),
+            Value::String("Bob's content".to_string()),
+            Value::Bool(true),
+            Value::Number(50.into()),
+        ],
+    )
+    .await
+    .expect("Failed to insert Bob's post");
 }
+

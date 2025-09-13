@@ -483,7 +483,7 @@ impl crate::migrations::Migration for SchemaMigration {
             MigrationOperation::DropColumn { table: _, column: _ } => {
                 // SQLite doesn't support DROP COLUMN directly, need to recreate table
                 // For now, just error - this is a complex operation
-                return Err(crate::D1OrmError::Database(
+                return Err(crate::D1RsError::Database(
                     "DROP COLUMN not supported yet - requires table recreation".to_string()
                 ));
             }
@@ -517,19 +517,19 @@ impl crate::migrations::Migration for SchemaMigration {
             }
             MigrationOperation::DropTable(_table_name) => {
                 // Can't easily reverse a DROP TABLE without knowing the schema
-                return Err(crate::D1OrmError::Database(
+                return Err(crate::D1RsError::Database(
                     "Cannot reverse DROP TABLE - original schema unknown".to_string()
                 ));
             }
             MigrationOperation::AddColumn { table: _, column: _ } => {
                 // SQLite doesn't support DROP COLUMN directly
-                return Err(crate::D1OrmError::Database(
+                return Err(crate::D1RsError::Database(
                     "Cannot reverse ADD COLUMN - requires table recreation".to_string()
                 ));
             }
             MigrationOperation::DropColumn { table: _, column } => {
                 // Can't reverse without knowing original column definition
-                return Err(crate::D1OrmError::Database(
+                return Err(crate::D1RsError::Database(
                     format!("Cannot reverse DROP COLUMN {} - original definition unknown", column)
                 ));
             }
@@ -539,7 +539,7 @@ impl crate::migrations::Migration for SchemaMigration {
             }
             MigrationOperation::DropIndex(index_name) => {
                 // Can't reverse without knowing original index definition
-                return Err(crate::D1OrmError::Database(
+                return Err(crate::D1RsError::Database(
                     format!("Cannot reverse DROP INDEX {} - original definition unknown", index_name)
                 ));
             }

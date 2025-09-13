@@ -1,4 +1,4 @@
-pub use d1orm_derive::*;
+pub use d1_rs_derive::*;
 
 pub mod db;
 pub mod query;
@@ -20,27 +20,27 @@ use std::fmt;
 use worker::d1::D1Database;
 
 #[derive(Debug)]
-pub enum D1OrmError {
+pub enum D1RsError {
     Database(String),
     NotFound,
     ValidationError(String),
     SerializationError(String),
 }
 
-impl fmt::Display for D1OrmError {
+impl fmt::Display for D1RsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            D1OrmError::Database(msg) => write!(f, "Database error: {}", msg),
-            D1OrmError::NotFound => write!(f, "Entity not found"),
-            D1OrmError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
-            D1OrmError::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
+            D1RsError::Database(msg) => write!(f, "Database error: {}", msg),
+            D1RsError::NotFound => write!(f, "Entity not found"),
+            D1RsError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
+            D1RsError::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
         }
     }
 }
 
-impl std::error::Error for D1OrmError {}
+impl std::error::Error for D1RsError {}
 
-pub type Result<T> = std::result::Result<T, D1OrmError>;
+pub type Result<T> = std::result::Result<T, D1RsError>;
 
 pub trait Entity: Sized + serde::Serialize + serde::de::DeserializeOwned {
     type PrimaryKey: Clone + fmt::Debug + serde::Serialize + serde::de::DeserializeOwned;

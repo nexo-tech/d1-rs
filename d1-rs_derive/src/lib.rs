@@ -32,7 +32,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let boolean_field_metadata = generate_boolean_field_metadata(named_fields);
 
     let expanded = quote! {
-        impl d1orm::Entity for #name {
+        impl d1_rs::Entity for #name {
             type PrimaryKey = #primary_key_type;
             type QueryBuilder = #query_builder_name;
             type CreateBuilder = #create_builder_name;
@@ -60,17 +60,17 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 #boolean_field_metadata
             }
             
-            async fn find(db: &d1orm::D1Client, key: Self::PrimaryKey) -> d1orm::Result<Option<Self>> {
+            async fn find(db: &d1_rs::D1Client, key: Self::PrimaryKey) -> d1_rs::Result<Option<Self>> {
                 let sql = concat!("SELECT * FROM ", #table_name, " WHERE ", stringify!(#primary_key_field), " = ? LIMIT 1");
-                let params = vec![d1orm::types::SqlType::to_sql_value(&key)];
+                let params = vec![d1_rs::types::SqlType::to_sql_value(&key)];
                 
                 let result = db.execute(sql, &params).await?;
                 result.into_entity()
             }
             
-            async fn delete(db: &d1orm::D1Client, key: Self::PrimaryKey) -> d1orm::Result<()> {
+            async fn delete(db: &d1_rs::D1Client, key: Self::PrimaryKey) -> d1_rs::Result<()> {
                 let sql = concat!("DELETE FROM ", #table_name, " WHERE ", stringify!(#primary_key_field), " = ?");
-                let params = vec![d1orm::types::SqlType::to_sql_value(&key)];
+                let params = vec![d1_rs::types::SqlType::to_sql_value(&key)];
                 
                 db.execute(sql, &params).await?;
                 Ok(())
@@ -78,13 +78,13 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         }
 
         pub struct #query_builder_name {
-            query: d1orm::query::Query,
+            query: d1_rs::query::Query,
         }
 
         impl #query_builder_name {
             pub fn new() -> Self {
                 Self {
-                    query: d1orm::query::Query::new(#table_name.to_string()),
+                    query: d1_rs::query::Query::new(#table_name.to_string()),
                 }
             }
 
@@ -107,14 +107,14 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             #query_methods
         }
 
-        impl d1orm::QueryBuilder<#name> for #query_builder_name {
-            async fn all(self, db: &d1orm::D1Client) -> d1orm::Result<Vec<#name>> {
+        impl d1_rs::QueryBuilder<#name> for #query_builder_name {
+            async fn all(self, db: &d1_rs::D1Client) -> d1_rs::Result<Vec<#name>> {
                 let (sql, params) = self.query.to_sql();
                 let result = db.execute(&sql, &params).await?;
                 result.into_entities()
             }
 
-            async fn first(self, db: &d1orm::D1Client) -> d1orm::Result<Option<#name>> {
+            async fn first(self, db: &d1_rs::D1Client) -> d1_rs::Result<Option<#name>> {
                 let mut query = self.query;
                 query.limit(1);
                 let (sql, params) = query.to_sql();
@@ -122,28 +122,28 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 result.into_entity()
             }
 
-            async fn count(self, db: &d1orm::D1Client) -> d1orm::Result<i64> {
+            async fn count(self, db: &d1_rs::D1Client) -> d1_rs::Result<i64> {
                 let (sql, params) = self.query.to_count_sql();
                 db.execute_returning_count(&sql, &params).await
             }
         }
 
         pub struct #create_builder_name {
-            insert_query: d1orm::query::InsertQuery,
+            insert_query: d1_rs::query::InsertQuery,
         }
 
         impl #create_builder_name {
             pub fn new() -> Self {
                 Self {
-                    insert_query: d1orm::query::InsertQuery::new(#table_name.to_string()),
+                    insert_query: d1_rs::query::InsertQuery::new(#table_name.to_string()),
                 }
             }
 
             #create_methods
         }
 
-        impl d1orm::CreateBuilder<#name> for #create_builder_name {
-            async fn save(self, db: &d1orm::D1Client) -> d1orm::Result<#name> {
+        impl d1_rs::CreateBuilder<#name> for #create_builder_name {
+            async fn save(self, db: &d1_rs::D1Client) -> d1_rs::Result<#name> {
                 let (sql, params) = self.insert_query.to_sql();
                 let result = db.execute_returning_one(&sql, &params).await?;
                 
@@ -152,26 +152,26 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                     // Convert SQLite integers back to booleans in the result
                     let converted_value = #name::convert_from_sqlite(serde_json::Value::Object(map));
                     let entity: #name = serde_json::from_value(converted_value)
-                        .map_err(|e| d1orm::D1OrmError::SerializationError(e.to_string()))?;
+                        .map_err(|e| d1_rs::D1RsError::SerializationError(e.to_string()))?;
                     Ok(entity)
                 } else {
-                    Err(d1orm::D1OrmError::Database("Failed to create entity".to_string()))
+                    Err(d1_rs::D1RsError::Database("Failed to create entity".to_string()))
                 }
             }
         }
 
         pub struct #update_builder_name {
             primary_key: #primary_key_type,
-            update_query: d1orm::query::UpdateQuery,
+            update_query: d1_rs::query::UpdateQuery,
         }
 
         impl #update_builder_name {
             pub fn new(key: #primary_key_type) -> Self {
-                let mut update_query = d1orm::query::UpdateQuery::new(#table_name.to_string());
+                let mut update_query = d1_rs::query::UpdateQuery::new(#table_name.to_string());
                 update_query.where_clause(
                     stringify!(#primary_key_field), 
                     "=", 
-                    d1orm::types::SqlType::to_sql_value(&key)
+                    d1_rs::types::SqlType::to_sql_value(&key)
                 );
                 
                 Self {
@@ -183,8 +183,8 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             #update_methods
         }
 
-        impl d1orm::UpdateBuilder<#name> for #update_builder_name {
-            async fn save(self, db: &d1orm::D1Client) -> d1orm::Result<#name> {
+        impl d1_rs::UpdateBuilder<#name> for #update_builder_name {
+            async fn save(self, db: &d1_rs::D1Client) -> d1_rs::Result<#name> {
                 let (sql, params) = self.update_query.to_sql();
                 let result = db.execute_returning_one(&sql, &params).await?;
                 
@@ -193,10 +193,10 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                     // Convert SQLite integers back to booleans in the result
                     let converted_value = #name::convert_from_sqlite(serde_json::Value::Object(map));
                     let entity: #name = serde_json::from_value(converted_value)
-                        .map_err(|e| d1orm::D1OrmError::SerializationError(e.to_string()))?;
+                        .map_err(|e| d1_rs::D1RsError::SerializationError(e.to_string()))?;
                     Ok(entity)
                 } else {
-                    Err(d1orm::D1OrmError::NotFound)
+                    Err(d1_rs::D1RsError::NotFound)
                 }
             }
         }
@@ -318,22 +318,22 @@ fn generate_query_methods(fields: &syn::punctuated::Punctuated<Field, syn::token
                 
                 quote! {
                     pub fn #where_gt_method(mut self, value: #field_type) -> Self {
-                        self.query.where_clause(#field_name, ">", d1orm::types::SqlType::to_sql_value(&value));
+                        self.query.where_clause(#field_name, ">", d1_rs::types::SqlType::to_sql_value(&value));
                         self
                     }
                     
                     pub fn #where_gte_method(mut self, value: #field_type) -> Self {
-                        self.query.where_clause(#field_name, ">=", d1orm::types::SqlType::to_sql_value(&value));
+                        self.query.where_clause(#field_name, ">=", d1_rs::types::SqlType::to_sql_value(&value));
                         self
                     }
                     
                     pub fn #where_lt_method(mut self, value: #field_type) -> Self {
-                        self.query.where_clause(#field_name, "<", d1orm::types::SqlType::to_sql_value(&value));
+                        self.query.where_clause(#field_name, "<", d1_rs::types::SqlType::to_sql_value(&value));
                         self
                     }
                     
                     pub fn #where_lte_method(mut self, value: #field_type) -> Self {
-                        self.query.where_clause(#field_name, "<=", d1orm::types::SqlType::to_sql_value(&value));
+                        self.query.where_clause(#field_name, "<=", d1_rs::types::SqlType::to_sql_value(&value));
                         self
                     }
                 }
@@ -343,12 +343,12 @@ fn generate_query_methods(fields: &syn::punctuated::Punctuated<Field, syn::token
             
             Some(quote! {
                 pub fn #where_eq_method(mut self, value: #field_type) -> Self {
-                    self.query.where_clause(#field_name, "=", d1orm::types::SqlType::to_sql_value(&value));
+                    self.query.where_clause(#field_name, "=", d1_rs::types::SqlType::to_sql_value(&value));
                     self
                 }
                 
                 pub fn #where_ne_method(mut self, value: #field_type) -> Self {
-                    self.query.where_clause(#field_name, "!=", d1orm::types::SqlType::to_sql_value(&value));
+                    self.query.where_clause(#field_name, "!=", d1_rs::types::SqlType::to_sql_value(&value));
                     self
                 }
                 
@@ -358,7 +358,7 @@ fn generate_query_methods(fields: &syn::punctuated::Punctuated<Field, syn::token
                         let _condition = format!("{} IN ({})", #field_name, _placeholders);
                         // For IN queries, we need a different approach - for now use the first value
                         if let Some(first_value) = values.first() {
-                            self.query.where_clause(#field_name, "=", d1orm::types::SqlType::to_sql_value(first_value));
+                            self.query.where_clause(#field_name, "=", d1_rs::types::SqlType::to_sql_value(first_value));
                         }
                     }
                     self
@@ -412,7 +412,7 @@ fn generate_create_methods(fields: &syn::punctuated::Punctuated<Field, syn::toke
             
             Some(quote! {
                 pub fn #method_name(mut self, value: #field_type) -> Self {
-                    self.insert_query.set(#field_name, d1orm::types::SqlType::to_sql_value(&value));
+                    self.insert_query.set(#field_name, d1_rs::types::SqlType::to_sql_value(&value));
                     self
                 }
             })
@@ -435,7 +435,7 @@ fn generate_update_methods(fields: &syn::punctuated::Punctuated<Field, syn::toke
             
             Some(quote! {
                 pub fn #method_name(mut self, value: #field_type) -> Self {
-                    self.update_query.set(#field_name, d1orm::types::SqlType::to_sql_value(&value));
+                    self.update_query.set(#field_name, d1_rs::types::SqlType::to_sql_value(&value));
                     self
                 }
             })

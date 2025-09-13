@@ -1,4 +1,4 @@
-use crate::{Result, D1OrmError};
+use crate::{Result, D1RsError};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -35,7 +35,7 @@ impl D1Client {
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()
-            .map_err(|e| D1OrmError::Database(e.to_string()))?;
+            .map_err(|e| D1RsError::Database(e.to_string()))?;
         Ok(Self::new_sqlite(conn))
     }
 
@@ -76,11 +76,11 @@ impl D1Client {
         }).collect();
         
         if !js_params.is_empty() {
-            stmt = stmt.bind(&js_params).map_err(|e| D1OrmError::Database(format!("{:?}", e)))?;
+            stmt = stmt.bind(&js_params).map_err(|e| D1RsError::Database(format!("{:?}", e)))?;
         }
         
-        let result = stmt.all().await.map_err(|e| D1OrmError::Database(format!("{:?}", e)))?;
-        let rows = result.results::<serde_json::Value>().map_err(|e| D1OrmError::Database(format!("{:?}", e)))?;
+        let result = stmt.all().await.map_err(|e| D1RsError::Database(format!("{:?}", e)))?;
+        let rows = result.results::<serde_json::Value>().map_err(|e| D1RsError::Database(format!("{:?}", e)))?;
         
         Ok(D1QueryResult { rows })
     }
@@ -115,7 +115,7 @@ impl D1Client {
         
         if is_select {
             let mut stmt = conn.prepare(sql)
-                .map_err(|e| D1OrmError::Database(e.to_string()))?;
+                .map_err(|e| D1RsError::Database(e.to_string()))?;
             
             let column_names: Vec<String> = stmt.column_names()
                 .iter()
@@ -139,18 +139,18 @@ impl D1Client {
                 }
                 
                 Ok(Value::Object(obj))
-            }).map_err(|e| D1OrmError::Database(e.to_string()))?;
+            }).map_err(|e| D1RsError::Database(e.to_string()))?;
             
             let rows: Result<Vec<Value>> = rows_result
                 .collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(|e| D1OrmError::Database(e.to_string()));
+                .map_err(|e| D1RsError::Database(e.to_string()));
             
             Ok(D1QueryResult { rows: rows? })
         } else {
             // For queries with RETURNING, use query_map directly without separate execute
             if sql.contains("RETURNING") {
                 let mut stmt = conn.prepare(sql)
-                    .map_err(|e| D1OrmError::Database(e.to_string()))?;
+                    .map_err(|e| D1RsError::Database(e.to_string()))?;
                 
                 let column_names: Vec<String> = stmt.column_names()
                     .iter()
@@ -174,17 +174,17 @@ impl D1Client {
                     }
                     
                     Ok(Value::Object(obj))
-                }).map_err(|e| D1OrmError::Database(e.to_string()))?;
+                }).map_err(|e| D1RsError::Database(e.to_string()))?;
                 
                 let rows: Result<Vec<Value>> = rows_result
                     .collect::<std::result::Result<Vec<_>, _>>()
-                    .map_err(|e| D1OrmError::Database(e.to_string()));
+                    .map_err(|e| D1RsError::Database(e.to_string()));
                 
                 Ok(D1QueryResult { rows: rows? })
             } else if sql.trim_start().to_uppercase().starts_with("INSERT") {
                 // For INSERT without RETURNING
                 conn.execute(sql, params_from_iter(sqlite_params.iter()))
-                    .map_err(|e| D1OrmError::Database(e.to_string()))?;
+                    .map_err(|e| D1RsError::Database(e.to_string()))?;
                 // Get last insert rowid for simple INSERTs
                 let id = conn.last_insert_rowid();
                 let mut obj = serde_json::Map::new();
@@ -193,7 +193,7 @@ impl D1Client {
             } else {
                 // For UPDATE/DELETE without RETURNING
                 conn.execute(sql, params_from_iter(sqlite_params.iter()))
-                    .map_err(|e| D1OrmError::Database(e.to_string()))?;
+                    .map_err(|e| D1RsError::Database(e.to_string()))?;
                 Ok(D1QueryResult { rows: vec![] })
             }
         }
@@ -265,7 +265,7 @@ impl D1QueryResult {
             .into_iter()
             .map(|row| {
                 serde_json::from_value(row)
-                    .map_err(|e| D1OrmError::SerializationError(e.to_string()))
+                    .map_err(|e| D1RsError::SerializationError(e.to_string()))
             })
             .collect()
     }
@@ -273,7 +273,7 @@ impl D1QueryResult {
     pub fn into_simple_entity<T: serde::de::DeserializeOwned>(mut self) -> Result<Option<T>> {
         if let Some(row) = self.rows.pop() {
             let entity = serde_json::from_value(row)
-                .map_err(|e| D1OrmError::SerializationError(e.to_string()))?;
+                .map_err(|e| D1RsError::SerializationError(e.to_string()))?;
             Ok(Some(entity))
         } else {
             Ok(None)
@@ -290,7 +290,7 @@ impl D1QueryResult {
         
         // Then deserialize the converted data
         serde_json::from_value(converted_value)
-            .map_err(|e| D1OrmError::SerializationError(e.to_string()))
+            .map_err(|e| D1RsError::SerializationError(e.to_string()))
     }
 
 }

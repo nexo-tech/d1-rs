@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc, NaiveDateTime};
 use serde_json::Value;
-use crate::{Result, D1OrmError};
+use crate::{Result, D1RsError};
 
 pub trait SqlType {
     fn to_sql_value(&self) -> Value;
@@ -21,10 +21,10 @@ impl SqlType for i32 {
                 } else if let Some(i) = n.as_u64() {
                     Ok(i as i32)
                 } else {
-                    Err(D1OrmError::SerializationError("Expected integer".to_string()))
+                    Err(D1RsError::SerializationError("Expected integer".to_string()))
                 }
             },
-            _ => Err(D1OrmError::SerializationError("Expected number for i32".to_string())),
+            _ => Err(D1RsError::SerializationError("Expected number for i32".to_string())),
         }
     }
 
@@ -47,10 +47,10 @@ impl SqlType for i64 {
                 } else if let Some(i) = n.as_u64() {
                     Ok(i as i64)
                 } else {
-                    Err(D1OrmError::SerializationError("Expected integer".to_string()))
+                    Err(D1RsError::SerializationError("Expected integer".to_string()))
                 }
             },
-            _ => Err(D1OrmError::SerializationError("Expected number for i64".to_string())),
+            _ => Err(D1RsError::SerializationError("Expected number for i64".to_string())),
         }
     }
 
@@ -68,7 +68,7 @@ impl SqlType for String {
         match value {
             Value::String(s) => Ok(s.clone()),
             Value::Null => Ok(String::new()),
-            _ => Err(D1OrmError::SerializationError("Expected string".to_string())),
+            _ => Err(D1RsError::SerializationError("Expected string".to_string())),
         }
     }
 
@@ -86,7 +86,7 @@ impl SqlType for bool {
         match value {
             Value::Number(n) => Ok(n.as_i64().unwrap_or(0) != 0),
             Value::Bool(b) => Ok(*b),
-            _ => Err(D1OrmError::SerializationError("Expected boolean".to_string())),
+            _ => Err(D1RsError::SerializationError("Expected boolean".to_string())),
         }
     }
 
@@ -106,10 +106,10 @@ impl SqlType for DateTime<Utc> {
                 if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
                     Ok(DateTime::from_naive_utc_and_offset(naive, Utc))
                 } else {
-                    Err(D1OrmError::SerializationError("Invalid datetime format".to_string()))
+                    Err(D1RsError::SerializationError("Invalid datetime format".to_string()))
                 }
             },
-            _ => Err(D1OrmError::SerializationError("Expected string for datetime".to_string())),
+            _ => Err(D1RsError::SerializationError("Expected string for datetime".to_string())),
         }
     }
 
