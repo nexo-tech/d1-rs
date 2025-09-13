@@ -6,6 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 d1-rs is a type-safe ORM for Cloudflare D1 with SQLite testing support. It uses conditional compilation to work with both Cloudflare D1 (WASM target) and native SQLite (for testing), providing zero runtime overhead by only including necessary backends.
 
+## 🚀 CRITICAL: Performance & Memory Efficiency
+
+**ALWAYS prioritize performance and memory efficiency:**
+
+- **COUNT queries MUST use SQL COUNT(*)** - NEVER load all records into memory to count with `.len()`
+- **Use LIMIT 1 for first() queries** - don't load all records then take first  
+- **Generate efficient SQL** - avoid N+1 queries through proper eager loading
+- **Memory usage should be minimal** - don't keep unnecessary data in memory
+- **Zero-copy optimizations where possible**
+- **Proper SQL generation** - Use database features, not Rust loops for aggregations
+
 ## Development Commands
 
 ### Testing

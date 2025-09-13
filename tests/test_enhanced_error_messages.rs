@@ -107,10 +107,7 @@ async fn test_relation_not_found_error() {
         .expect("Failed to create user");
 
     // Try to access a non-existent relation
-    let result = user.posts() // This exists
-        // Simulate accessing a wrong relation by creating a new association manually
-        // For this test, we'll test the error construction directly
-        ;
+    let mut result = user.posts(); // This exists
     
     // This should work fine since "posts" exists
     let posts = result.all(&db).await;
