@@ -44,8 +44,8 @@ let users = User::query()
     .all(&db)
     .await?;
 
-// Relations (one-to-many)
-let posts = user.traverse(&db, "posts").await?;
+// Relations (type-safe, no string literals!)
+let posts = user.posts().all(&db).await?;
 ```
 
 ## 🚀 **Key Features**
@@ -61,11 +61,11 @@ let posts = user.traverse(&db, "posts").await?;
 - **Automatic CRUD operations**
 - **Rich query builder** with method chaining
 
-### **Graph-Based Relations**
+### **Type-Safe Relations**
 - **One-to-one**, **one-to-many**, **many-to-many** relations
-- **Eager loading** and cycle prevention
-- **Type-safe traversal** with compile-time validation
-- **Junction table** handling
+- **Zero string literals** - fully type-safe at compile time
+- **Association methods** generated automatically (`user.posts().all()`)
+- **Junction table** handling and migration auto-generation
 
 ### **Schema Evolution**
 - **Fluent migration API** with full ALTER TABLE support
@@ -109,41 +109,50 @@ let migration = SchemaMigration::new("create_blog".to_string())
         .text("content").not_null().build()
     .build()
     
-    // Define relations
-    .create_relation("user_posts", "users", "posts")
-        .one_to_many("user_id", "id")
+    // Relations defined separately with type-safe macro
     .build();
 
 migration.execute(&db).await?;
 ```
 
-## 🔗 **Relations Made Easy**
+## 🔗 **Type-Safe Relations**
 
 ```rust
-#[derive(Entity, RelationalEntity)]
+use d1_rs::*;
+
+#[derive(Debug, Serialize, Deserialize, Clone, Entity, PartialEq)]
 pub struct User {
     #[primary_key] pub id: i64,
     pub name: String,
+    pub email: String,
 }
 
-#[derive(Entity, RelationalEntity)]  
+#[derive(Debug, Serialize, Deserialize, Clone, Entity, PartialEq)]  
 pub struct Post {
     #[primary_key] pub id: i64,
     pub user_id: i64,
     pub title: String,
+    pub content: String,
 }
 
-// Eager loading
-let users_with_posts = User::query()
-    .with(vec!["posts"])
-    .all(&db)
-    .await?;
+// Define relations with type-safe macro - NO STRING LITERALS!
+relations! {
+    User {
+        has_many posts: Post via user_id,
+    }
+    
+    Post {
+        belongs_to user: User via user_id,
+    }
+}
 
-// Graph traversal
-let user_categories = user
-    .traverse(&db, "posts")
-    .traverse(&db, "categories")
-    .await?;
+// Use type-safe association methods
+let user_posts = user.posts().all(&db).await?;
+let post_count = user.posts().count(&db).await?;
+let first_post = user.posts().first(&db).await?;
+
+// Belongs-to relations
+let post_author = post.user().first(&db).await?;
 ```
 
 ## 🧪 **Testing**

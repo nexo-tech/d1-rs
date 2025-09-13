@@ -7,6 +7,7 @@ pub mod migrations;
 pub mod types;
 pub mod schema;
 pub mod relations;
+pub mod edges;
 pub mod schema_evolution;
 
 pub use db::*;
@@ -15,6 +16,7 @@ pub use migrations::*;
 pub use types::*;
 pub use schema::*;
 pub use relations::*;
+pub use edges::*;
 pub use schema_evolution::*;
 
 pub use async_trait::async_trait;

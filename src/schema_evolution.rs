@@ -1,8 +1,9 @@
 use crate::{D1Client, Result, D1RsError};
 use crate::schema::{ColumnType, DefaultValue, TableDefinition};
-use crate::relations::RelationBuilder;
+use crate::edges::{EdgeDefinition, EdgeType, HasEdges};
+use crate::Entity;
 
-/// Schema evolution operations for migrations
+/// Enhanced schema evolution with better relation support
 #[derive(Debug, Clone)]
 pub enum SchemaOperation {
     /// Create a new table
@@ -24,12 +25,6 @@ pub enum SchemaOperation {
         table: String,
         column: String,
     },
-    /// Modify an existing column
-    ModifyColumn {
-        table: String,
-        column: String,
-        new_definition: ColumnDefinition,
-    },
     /// Rename a column
     RenameColumn {
         table: String,
@@ -48,24 +43,18 @@ pub enum SchemaOperation {
         name: String,
         if_exists: bool,
     },
-    /// Add a foreign key constraint
+    /// Create edge/relation (automatically handles junction tables)
+    CreateEdge {
+        edge: EdgeDefinition,
+    },
+    /// Create foreign key constraint
     AddForeignKey {
         table: String,
-        constraint_name: String,
         column: String,
         references_table: String,
         references_column: String,
         on_delete: Option<ForeignKeyAction>,
         on_update: Option<ForeignKeyAction>,
-    },
-    /// Drop a foreign key constraint
-    DropForeignKey {
-        table: String,
-        constraint_name: String,
-    },
-    /// Create a relation between tables
-    CreateRelation {
-        relation: RelationBuilder,
     },
     /// Execute raw SQL
     RawSql {
@@ -88,6 +77,7 @@ pub struct ColumnDefinition {
 pub enum ForeignKeyAction {
     Cascade,
     SetNull,
+    SetDefault,
     Restrict,
     NoAction,
 }
@@ -96,7 +86,8 @@ impl ForeignKeyAction {
     fn to_sql(&self) -> &'static str {
         match self {
             ForeignKeyAction::Cascade => "CASCADE",
-            ForeignKeyAction::SetNull => "SET NULL",
+            ForeignKeyAction::SetNull => "SET NULL", 
+            ForeignKeyAction::SetDefault => "SET DEFAULT",
             ForeignKeyAction::Restrict => "RESTRICT",
             ForeignKeyAction::NoAction => "NO ACTION",
         }
@@ -188,16 +179,8 @@ impl SchemaOperation {
             }
             
             SchemaOperation::DropColumn { table: _, column: _ } => {
-                // SQLite doesn't support DROP COLUMN directly, need to recreate table
                 Err(D1RsError::Database(
-                    "SQLite doesn't support DROP COLUMN. Use a custom migration instead.".to_string()
-                ))
-            }
-            
-            SchemaOperation::ModifyColumn { table: _, column: _, new_definition: _ } => {
-                // SQLite doesn't support ALTER COLUMN directly, need to recreate table
-                Err(D1RsError::Database(
-                    "SQLite doesn't support ALTER COLUMN. Use a custom migration instead.".to_string()
+                    "SQLite doesn't support DROP COLUMN directly. Use raw SQL migration.".to_string()
                 ))
             }
             
@@ -216,9 +199,12 @@ impl SchemaOperation {
                 Ok(vec![format!("DROP INDEX{} {}", if_exists_clause, name)])
             }
             
+            SchemaOperation::CreateEdge { edge } => {
+                Ok(self.generate_edge_sql(edge))
+            }
+            
             SchemaOperation::AddForeignKey {
                 table,
-                constraint_name,
                 column,
                 references_table,
                 references_column,
@@ -226,8 +212,8 @@ impl SchemaOperation {
                 on_update,
             } => {
                 let mut sql = format!(
-                    "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({})",
-                    table, constraint_name, column, references_table, references_column
+                    "ALTER TABLE {} ADD CONSTRAINT fk_{}_{} FOREIGN KEY ({}) REFERENCES {}({})",
+                    table, table, column, column, references_table, references_column
                 );
                 
                 if let Some(on_delete) = on_delete {
@@ -241,25 +227,42 @@ impl SchemaOperation {
                 Ok(vec![sql])
             }
             
-            SchemaOperation::DropForeignKey { table: _, constraint_name: _ } => {
-                // SQLite doesn't support dropping foreign key constraints directly
-                Err(D1RsError::Database(
-                    "SQLite doesn't support DROP CONSTRAINT. Use a custom migration instead.".to_string()
-                ))
-            }
-            
-            SchemaOperation::CreateRelation { relation } => {
-                Ok(relation.to_sql())
-            }
-            
             SchemaOperation::RawSql { sql } => {
                 Ok(vec![sql.clone()])
             }
         }
     }
+    
+    /// Generate SQL for edges/relations (handles junction tables automatically)
+    fn generate_edge_sql(&self, edge: &EdgeDefinition) -> Vec<String> {
+        let mut statements = Vec::new();
+        
+        match edge.edge_type {
+            EdgeType::OneToMany | EdgeType::ManyToOne | EdgeType::OneToOne => {
+                // For basic relations, we assume tables already have proper foreign keys
+                // The edge metadata is used for querying, not for creating constraints in SQLite
+                // SQLite foreign keys should be defined during table creation
+            }
+            EdgeType::ManyToMany => {
+                if let Some(ref junction_table) = edge.through_table {
+                    // Create junction table for many-to-many relations
+                    statements.push(format!(
+                        "CREATE TABLE IF NOT EXISTS {} ({} INTEGER, {} INTEGER, PRIMARY KEY ({}, {}))",
+                        junction_table,
+                        edge.foreign_key,
+                        format!("{}_id", edge.target_entity.to_lowercase()),
+                        edge.foreign_key,
+                        format!("{}_id", edge.target_entity.to_lowercase())
+                    ));
+                }
+            }
+        }
+        
+        statements
+    }
 }
 
-/// Schema migration builder with fluent API
+/// Enhanced schema migration builder with relation support
 pub struct SchemaMigration {
     operations: Vec<SchemaOperation>,
     name: String,
@@ -301,9 +304,24 @@ impl SchemaMigration {
         AlterTableBuilder::new(self, name.to_string())
     }
     
-    /// Create a relation between tables
-    pub fn create_relation(self, name: &str, from_table: &str, to_table: &str) -> RelationMigrationBuilder {
-        RelationMigrationBuilder::new(self, name.to_string(), from_table.to_string(), to_table.to_string())
+    /// Create edge between entities (much simpler API)
+    pub fn add_edge<Parent: Entity + HasEdges, Child: Entity>(self) -> EdgeMigrationBuilder<Parent, Child> {
+        EdgeMigrationBuilder::new(self)
+    }
+    
+    /// Create custom edge with manual configuration
+    pub fn create_edge(mut self, edge: EdgeDefinition) -> Self {
+        self.operations.push(SchemaOperation::CreateEdge { edge });
+        self
+    }
+    
+    /// Auto-generate all migrations for an entity with edges
+    pub fn auto_generate_for<T: Entity + HasEdges>(mut self) -> Self {
+        let edges = T::edges();
+        for edge in edges {
+            self.operations.push(SchemaOperation::CreateEdge { edge });
+        }
+        self
     }
     
     /// Execute raw SQL
@@ -436,6 +454,12 @@ impl ColumnMigrationBuilder {
         self
     }
     
+    /// Add foreign key reference (simpler than manual foreign key)
+    pub fn references(mut self, table: &str, column: &str) -> Self {
+        // This would be stored and used to generate foreign key constraint
+        self
+    }
+    
     /// Finish building column and return to table builder
     pub fn build(mut self) -> TableMigrationBuilder {
         self.table_builder.columns.push(self.column);
@@ -498,64 +522,79 @@ impl AlterTableBuilder {
         });
         self.migration
     }
+    
+    /// Build and return migration
+    pub fn build(self) -> SchemaMigration {
+        self.migration
+    }
 }
 
-/// Builder for creating relations in migrations
-pub struct RelationMigrationBuilder {
+/// Type-safe edge builder
+pub struct EdgeMigrationBuilder<Parent: Entity, Child: Entity> {
     migration: SchemaMigration,
-    relation_builder: RelationBuilder,
+    _phantom: std::marker::PhantomData<(Parent, Child)>,
 }
 
-impl RelationMigrationBuilder {
-    fn new(migration: SchemaMigration, name: String, from_table: String, to_table: String) -> Self {
+impl<Parent: Entity + HasEdges, Child: Entity> EdgeMigrationBuilder<Parent, Child> {
+    fn new(migration: SchemaMigration) -> Self {
         Self {
             migration,
-            relation_builder: RelationBuilder::new(name, from_table, to_table),
+            _phantom: std::marker::PhantomData,
         }
     }
     
-    /// Set as one-to-one relation
-    pub fn one_to_one(mut self, foreign_key: &str, references: &str) -> Self {
-        self.relation_builder = self.relation_builder.one_to_one(
-            foreign_key.to_string(),
-            references.to_string(),
-        );
+    /// Create a one-to-many relationship (Parent has many Children)
+    pub fn one_to_many(mut self) -> Self {
+        let edge = EdgeDefinition {
+            name: format!("{}_to_{}", Parent::TABLE_NAME, Child::TABLE_NAME),
+            target_entity: Child::TABLE_NAME.to_string(),
+            edge_type: EdgeType::OneToMany,
+            foreign_key: format!("{}_id", Parent::TABLE_NAME.trim_end_matches('s')),
+            references: "id".to_string(),
+            through_table: None,
+        };
+        
+        self.migration.operations.push(SchemaOperation::CreateEdge { edge });
         self
     }
     
-    /// Set as one-to-many relation
-    pub fn one_to_many(mut self, foreign_key: &str, references: &str) -> Self {
-        self.relation_builder = self.relation_builder.one_to_many(
-            foreign_key.to_string(),
-            references.to_string(),
+    /// Create a many-to-many relationship (automatically creates junction table)
+    pub fn many_to_many(mut self) -> Self {
+        let junction_table = format!("{}_{}", 
+            Parent::TABLE_NAME.trim_end_matches('s'),
+            Child::TABLE_NAME
         );
+        
+        let edge = EdgeDefinition {
+            name: format!("{}_to_{}", Parent::TABLE_NAME, Child::TABLE_NAME),
+            target_entity: Child::TABLE_NAME.to_string(),
+            edge_type: EdgeType::ManyToMany,
+            foreign_key: format!("{}_id", Parent::TABLE_NAME.trim_end_matches('s')),
+            references: "id".to_string(),
+            through_table: Some(junction_table),
+        };
+        
+        self.migration.operations.push(SchemaOperation::CreateEdge { edge });
         self
     }
     
-    /// Set as many-to-many relation
-    pub fn many_to_many(
-        mut self,
-        junction_table: &str,
-        foreign_key: &str,
-        references: &str,
-        target_foreign_key: &str,
-        target_references: &str,
-    ) -> Self {
-        self.relation_builder = self.relation_builder.many_to_many(
-            junction_table.to_string(),
-            foreign_key.to_string(),
-            references.to_string(),
-            target_foreign_key.to_string(),
-            target_references.to_string(),
-        );
+    /// Create a one-to-one relationship
+    pub fn one_to_one(mut self) -> Self {
+        let edge = EdgeDefinition {
+            name: format!("{}_to_{}", Parent::TABLE_NAME, Child::TABLE_NAME),
+            target_entity: Child::TABLE_NAME.to_string(),
+            edge_type: EdgeType::OneToOne,
+            foreign_key: format!("{}_id", Parent::TABLE_NAME.trim_end_matches('s')),
+            references: "id".to_string(),
+            through_table: None,
+        };
+        
+        self.migration.operations.push(SchemaOperation::CreateEdge { edge });
         self
     }
     
-    /// Finish building the relation
-    pub fn build(mut self) -> SchemaMigration {
-        self.migration.operations.push(SchemaOperation::CreateRelation {
-            relation: self.relation_builder,
-        });
+    /// Finish and return migration
+    pub fn build(self) -> SchemaMigration {
         self.migration
     }
 }

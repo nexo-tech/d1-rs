@@ -5,8 +5,9 @@ Let's build a simple blog application to get you familiar with d1-rs! This tutor
 ## What We'll Build
 
 A basic blog system with:
-- Users who can write posts
+- Users who can write posts  
 - Posts with titles, content, and metadata
+- Type-safe relations between users and posts
 - Simple querying and CRUD operations
 
 ## Step 1: Define Your Entities
@@ -59,7 +60,40 @@ pub struct Post {
 }
 ```
 
-## Step 2: Create Database Schema
+## Step 2: Define Relations
+
+Now let's define the relationships between our entities using d1-rs's type-safe relations system:
+
+```rust
+// src/models/relations.rs
+use d1_rs::*;
+use super::{User, Post};
+
+// Define relations with the type-safe macro - NO STRING LITERALS!
+relations! {
+    User {
+        has_many posts: Post via user_id,
+    }
+    
+    Post {
+        belongs_to user: User via user_id,
+    }
+}
+```
+
+Don't forget to include this in your models module:
+
+```rust
+// src/models/mod.rs
+pub mod user;
+pub mod post;
+pub mod relations; // Add this line
+
+pub use user::*;
+pub use post::*;
+```
+
+## Step 3: Create Database Schema
 
 Now let's create a migration to set up our database schema:
 
@@ -97,7 +131,52 @@ pub async fn run_migrations(db: &D1Client) -> Result<()> {
 }
 ```
 
-## Step 3: Basic CRUD Operations
+## Step 4: Using Type-Safe Relations
+
+Now let's see the power of our type-safe relations system:
+
+```rust
+// src/lib.rs - Add these methods to the Blog impl
+impl Blog {
+    // Get a user's posts using type-safe association method - NO STRING LITERALS!
+    pub async fn get_user_posts_typed(&self, user_id: i64) -> Result<Vec<Post>> {
+        if let Some(user) = User::find(&self.db, user_id).await? {
+            user.posts().all(&self.db).await  // Type-safe!
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    // Count user's posts without loading them
+    pub async fn count_user_posts(&self, user_id: i64) -> Result<i64> {
+        if let Some(user) = User::find(&self.db, user_id).await? {
+            user.posts().count(&self.db).await  // Efficient counting
+        } else {
+            Ok(0)
+        }
+    }
+
+    // Get post author using type-safe association
+    pub async fn get_post_author(&self, post_id: i64) -> Result<Option<User>> {
+        if let Some(post) = Post::find(&self.db, post_id).await? {
+            post.user().first(&self.db).await  // Type-safe!
+        } else {
+            Ok(None)
+        }
+    }
+
+    // Get user's first post 
+    pub async fn get_user_first_post(&self, user_id: i64) -> Result<Option<Post>> {
+        if let Some(user) = User::find(&self.db, user_id).await? {
+            user.posts().first(&self.db).await  // Get first post only
+        } else {
+            Ok(None)
+        }
+    }
+}
+```
+
+## Step 5: Basic CRUD Operations
 
 Let's implement some basic operations for our blog:
 
@@ -181,7 +260,7 @@ impl Blog {
 }
 ```
 
-## Step 4: Testing Your Application
+## Step 6: Testing Your Application
 
 Let's write some tests to make sure everything works:
 
@@ -224,10 +303,24 @@ mod tests {
         assert_eq!(published_posts.len(), 1);
         assert_eq!(published_posts[0].id, post.id);
 
-        // Get user's posts
+        // Get user's posts (traditional way)
         let user_posts = blog.get_user_posts(user.id).await.unwrap();
         assert_eq!(user_posts.len(), 1);
         assert_eq!(user_posts[0].id, post.id);
+
+        // Test type-safe relations
+        let typed_posts = blog.get_user_posts_typed(user.id).await.unwrap();
+        assert_eq!(typed_posts.len(), 1);
+        assert_eq!(typed_posts[0].id, post.id);
+
+        // Test post count using association method
+        let post_count = blog.count_user_posts(user.id).await.unwrap();
+        assert_eq!(post_count, 1);
+
+        // Test getting post author using type-safe association
+        let author = blog.get_post_author(post.id).await.unwrap();
+        assert!(author.is_some());
+        assert_eq!(author.unwrap().id, user.id);
     }
 
     #[tokio::test]
@@ -250,7 +343,7 @@ mod tests {
 }
 ```
 
-## Step 5: Run Your Tests
+## Step 7: Run Your Tests
 
 ```bash
 cargo test
@@ -271,10 +364,12 @@ test result: ok. 2 passed; 0 failed
 In this quick start, you've learned:
 
 1. **Entity Definition**: How to create database models with the `#[derive(Entity)]` macro
-2. **Schema Migration**: Using `SchemaMigration` to create database tables
-3. **CRUD Operations**: Creating, reading, updating with the fluent API
-4. **Type-Safe Queries**: Using generated query methods like `where_is_active_eq()`
-5. **Testing**: Writing tests with in-memory SQLite databases
+2. **Type-Safe Relations**: Using the `relations!` macro to define relationships without string literals
+3. **Schema Migration**: Using `SchemaMigration` to create database tables
+4. **Association Methods**: Using generated methods like `user.posts().all()` and `post.user().first()`
+5. **CRUD Operations**: Creating, reading, updating with the fluent API
+6. **Type-Safe Queries**: Using generated query methods like `where_is_active_eq()`
+7. **Testing**: Writing tests with in-memory SQLite databases
 
 ## Next Steps
 

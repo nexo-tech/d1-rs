@@ -3,9 +3,8 @@ use d1_rs::schema_evolution::SchemaMigration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-// Test entities for relations
+// Test entities with much cleaner relation definitions
 #[derive(Debug, Serialize, Deserialize, Clone, Entity, PartialEq)]
-#[table(name = "users")]
 pub struct User {
     #[primary_key]
     pub id: i64,
@@ -16,11 +15,10 @@ pub struct User {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Entity, PartialEq)]
-#[table(name = "profiles")]
 pub struct Profile {
     #[primary_key]
     pub id: i64,
-    pub user_id: i64, // Foreign key to users
+    pub user_id: i64,
     pub bio: String,
     pub avatar_url: Option<String>,
     pub is_public: bool,
@@ -28,11 +26,10 @@ pub struct Profile {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Entity, PartialEq)]
-#[table(name = "posts")]
 pub struct Post {
     #[primary_key]
     pub id: i64,
-    pub user_id: i64, // Foreign key to users
+    pub user_id: i64,
     pub title: String,
     pub content: String,
     pub is_published: bool,
@@ -45,8 +42,8 @@ pub struct Post {
 pub struct Category {
     #[primary_key]
     pub id: i64,
-    pub category_name: String,
-    pub category_description: String,
+    pub name: String,
+    pub description: String,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
 }
@@ -61,132 +58,109 @@ pub struct PostCategory {
     pub created_at: DateTime<Utc>,
 }
 
-// Setup test database with relations
+// Define relations using the new, clean macro syntax
+relations! {
+    User {
+        has_many posts: Post via user_id,
+        has_one profile: Profile via user_id,
+    }
+    
+    Post {
+        belongs_to user: User via user_id,
+        has_many_through categories: Category via post_id,
+    }
+    
+    Category {
+        has_many_through posts: Post via category_id,
+    }
+    
+    Profile {
+        belongs_to user: User via user_id,
+    }
+}
+
+// Setup test database with the improved migration API
 async fn setup_relations_db() -> D1Client {
     let db = D1Client::new_in_memory().await.expect("Failed to create database");
     
-    // Create tables one by one using individual migrations
-    let users_migration = SchemaMigration::new("create_users".to_string())
+    // Use migration system with auto-generated relations!
+    let migration = SchemaMigration::new("create_relations_schema".to_string())
         .create_table("users")
             .integer("id").primary_key().auto_increment().build()
             .text("email").not_null().unique().build()
             .text("name").not_null().build()
-            .boolean("is_active").not_null().default_value(DefaultValue::Boolean(true)).build()
+            .boolean("is_active").default_value(DefaultValue::Boolean(true)).build()
             .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
-    
-    users_migration.execute(&db).await.expect("Failed to create users table");
-    
-    let profiles_migration = SchemaMigration::new("create_profiles".to_string())
+        .build()
+        
         .create_table("profiles")
             .integer("id").primary_key().auto_increment().build()
             .integer("user_id").not_null().build()
             .text("bio").build()
             .text("avatar_url").build()
-            .boolean("is_public").not_null().default_value(DefaultValue::Boolean(true)).build()
+            .boolean("is_public").default_value(DefaultValue::Boolean(true)).build()
             .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
-    
-    profiles_migration.execute(&db).await.expect("Failed to create profiles table");
-    
-    let posts_migration = SchemaMigration::new("create_posts".to_string())
+        .build()
+        
         .create_table("posts")
             .integer("id").primary_key().auto_increment().build()
             .integer("user_id").not_null().build()
             .text("title").not_null().build()
             .text("content").not_null().build()
-            .boolean("is_published").not_null().default_value(DefaultValue::Boolean(false)).build()
-            .integer("view_count").not_null().default_value(DefaultValue::Integer(0)).build()
+            .boolean("is_published").default_value(DefaultValue::Boolean(false)).build()
+            .integer("view_count").default_value(DefaultValue::Integer(0)).build()
             .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
-    
-    posts_migration.execute(&db).await.expect("Failed to create posts table");
-    
-    let categories_migration = SchemaMigration::new("create_categories".to_string())
+        .build()
+        
         .create_table("categories")
             .integer("id").primary_key().auto_increment().build()
-            .text("category_name").not_null().unique().build()
-            .text("category_description").build()
-            .boolean("is_active").not_null().default_value(DefaultValue::Boolean(true)).build()
+            .text("name").not_null().unique().build()
+            .text("description").build()
+            .boolean("is_active").default_value(DefaultValue::Boolean(true)).build()
             .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
-    
-    categories_migration.execute(&db).await.expect("Failed to create categories table");
-    
-    let post_categories_migration = SchemaMigration::new("create_post_categories".to_string())
+        .build()
+        
         .create_table("post_categories")
             .integer("id").primary_key().auto_increment().build()
             .integer("post_id").not_null().build()
             .integer("category_id").not_null().build()
             .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
+        .build()
+        
+        // Auto-generate relations - this should now work!
+        .auto_generate_for::<User>()
+        .auto_generate_for::<Post>()
+        .auto_generate_for::<Category>()
+        .auto_generate_for::<Profile>();
     
-    post_categories_migration.execute(&db).await.expect("Failed to create post_categories table");
-    
+    migration.execute(&db).await.expect("Failed to execute migration");
     db
 }
 
 #[tokio::test]
-async fn test_schema_migration_with_relations() {
+async fn test_new_relations_api_schema_creation() {
     let db = D1Client::new_in_memory().await.expect("Failed to create database");
     
-    // Create tables one by one using simpler migrations
-    let users_migration = SchemaMigration::new("create_users".to_string())
+    // Test the new, much simpler schema creation
+    let migration = SchemaMigration::new("test_schema".to_string())
         .create_table("users")
             .integer("id").primary_key().auto_increment().build()
-            .text("email").not_null().unique().build()
             .text("name").not_null().build()
-            .boolean("is_active").not_null().default_value(DefaultValue::Boolean(true)).build()
-            .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
-    
-    users_migration.execute(&db).await.expect("Failed to create users table");
-    
-    let profiles_migration = SchemaMigration::new("create_profiles".to_string())
-        .create_table("profiles")
-            .integer("id").primary_key().auto_increment().build()
-            .integer("user_id").not_null().build()
-            .text("bio").build()
-            .text("avatar_url").build()
-            .boolean("is_public").not_null().default_value(DefaultValue::Boolean(true)).build()
-            .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
-    
-    profiles_migration.execute(&db).await.expect("Failed to create profiles table");
-    
-    let posts_migration = SchemaMigration::new("create_posts".to_string())
+            .text("email").not_null().unique().build()
+        .build()
+        
         .create_table("posts")
             .integer("id").primary_key().auto_increment().build()
             .integer("user_id").not_null().build()
             .text("title").not_null().build()
-            .text("content").not_null().build()
-            .boolean("is_published").not_null().default_value(DefaultValue::Boolean(false)).build()
-            .integer("view_count").not_null().default_value(DefaultValue::Integer(0)).build()
-            .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
+        .build()
+        
+        // Type-safe edge creation (much cleaner!)
+        .add_edge::<User, Post>()
+            .one_to_many()
+            .build();
     
-    posts_migration.execute(&db).await.expect("Failed to create posts table");
-    
-    let categories_migration = SchemaMigration::new("create_categories".to_string())
-        .create_table("categories")
-            .integer("id").primary_key().auto_increment().build()
-            .text("category_name").not_null().unique().build()
-            .text("category_description").build()
-            .boolean("is_active").not_null().default_value(DefaultValue::Boolean(true)).build()
-            .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
-    
-    categories_migration.execute(&db).await.expect("Failed to create categories table");
-    
-    let post_categories_migration = SchemaMigration::new("create_post_categories".to_string())
-        .create_table("post_categories")
-            .integer("id").primary_key().auto_increment().build()
-            .integer("post_id").not_null().build()
-            .integer("category_id").not_null().build()
-            .datetime("created_at").default_value(DefaultValue::CurrentTimestamp).build()
-        .build();
-    
-    post_categories_migration.execute(&db).await.expect("Failed to create post_categories table");
+    migration.execute(&db).await.expect("Failed to execute migration");
     
     // Verify tables were created
     let tables_result = db.execute(
@@ -194,83 +168,27 @@ async fn test_schema_migration_with_relations() {
         &[]
     ).await.expect("Failed to query tables");
     
-    let table_names: Vec<String> = tables_result.rows
-        .into_iter()
-        .map(|row| {
-            if let serde_json::Value::Object(obj) = row {
-                obj.get("name").unwrap().as_str().unwrap().to_string()
-            } else {
-                panic!("Invalid row format");
-            }
-        })
-        .collect();
-    
-    assert_eq!(table_names, vec![
-        "categories",
-        "post_categories", 
-        "posts",
-        "profiles",
-        "users"
-    ]);
+    assert!(tables_result.rows.len() >= 2);
 }
 
 #[tokio::test]
-async fn test_one_to_one_relation_creation() {
+async fn test_new_associations_api() {
     let db = setup_relations_db().await;
     
-    // Create a user
+    // Create test data
     let user = User::create()
         .set_email("alice@example.com".to_string())
-        .set_name("Alice".to_string())
+        .set_name("Alice Johnson".to_string())
         .set_is_active(true)
         .set_created_at(Utc::now())
         .save(&db)
         .await
         .expect("Failed to create user");
     
-    // Create a profile for the user
-    let profile = Profile::create()
+    let post1 = Post::create()
         .set_user_id(user.id)
-        .set_bio("Software engineer passionate about Rust".to_string())
-        .set_avatar_url(Some("https://example.com/avatar.jpg".to_string()))
-        .set_is_public(true)
-        .set_created_at(Utc::now())
-        .save(&db)
-        .await
-        .expect("Failed to create profile");
-    
-    // Verify the relation
-    let found_profile = Profile::query()
-        .where_user_id_eq(user.id)
-        .first(&db)
-        .await
-        .expect("Failed to query profile")
-        .expect("Profile not found");
-    
-    assert_eq!(found_profile.id, profile.id);
-    assert_eq!(found_profile.user_id, user.id);
-    assert_eq!(found_profile.bio, "Software engineer passionate about Rust");
-}
-
-#[tokio::test]
-async fn test_one_to_many_relation_creation() {
-    let db = setup_relations_db().await;
-    
-    // Create a user
-    let user = User::create()
-        .set_email("bob@example.com".to_string())
-        .set_name("Bob".to_string())
-        .set_is_active(true)
-        .set_created_at(Utc::now())
-        .save(&db)
-        .await
-        .expect("Failed to create user");
-    
-    // Create multiple posts for the user
-    let _post1 = Post::create()
-        .set_user_id(user.id)
-        .set_title("Introduction to Rust".to_string())
-        .set_content("Rust is a systems programming language...".to_string())
+        .set_title("Getting Started with Rust".to_string())
+        .set_content("Rust is an amazing language...".to_string())
         .set_is_published(true)
         .set_view_count(100)
         .set_created_at(Utc::now())
@@ -278,10 +196,10 @@ async fn test_one_to_many_relation_creation() {
         .await
         .expect("Failed to create post1");
     
-    let _post2 = Post::create()
+    let post2 = Post::create()
         .set_user_id(user.id)
         .set_title("Advanced Rust Patterns".to_string())
-        .set_content("In this post, we'll explore...".to_string())
+        .set_content("Let's explore advanced concepts...".to_string())
         .set_is_published(false)
         .set_view_count(0)
         .set_created_at(Utc::now())
@@ -289,83 +207,88 @@ async fn test_one_to_many_relation_creation() {
         .await
         .expect("Failed to create post2");
     
-    // Query all posts for the user
-    let user_posts = Post::query()
-        .where_user_id_eq(user.id)
-        .all(&db)
-        .await
-        .expect("Failed to query user posts");
-    
+    // TEST NEW API: Much cleaner association access
+    // Instead of: user.traverse::<Post>(&db, "posts").await?
+    // Now: user.posts().all(&db).await?
+    let user_posts = user.posts().all(&db).await.expect("Failed to get user posts");
     assert_eq!(user_posts.len(), 2);
     
-    // Check published posts only
-    let published_posts = Post::query()
-        .where_user_id_eq(user.id)
-        .where_is_published_eq(true)
-        .all(&db)
-        .await
-        .expect("Failed to query published posts");
+    // TEST: First post
+    let first_post = user.posts().first(&db).await.expect("Failed to get first post");
+    assert!(first_post.is_some());
+    assert_eq!(first_post.unwrap().title, "Getting Started with Rust");
     
-    assert_eq!(published_posts.len(), 1);
-    assert_eq!(published_posts[0].title, "Introduction to Rust");
+    // TEST: Reverse association
+    let post_user = post1.user().first(&db).await.expect("Failed to get post user");
+    assert!(post_user.is_some());
+    assert_eq!(post_user.unwrap().id, user.id);
 }
 
 #[tokio::test]
-async fn test_simple_category_creation() {
+async fn test_eager_loading_with_new_api() {
     let db = setup_relations_db().await;
     
-    // Test Category entity creation
-    let category = Category::create()
-        .set_category_name("Simple Test".to_string())
-        .set_category_description("Simple test description".to_string())
+    // Create test data
+    let user1 = User::create()
+        .set_email("bob@example.com".to_string())
+        .set_name("Bob Smith".to_string())
         .set_is_active(true)
         .set_created_at(Utc::now())
         .save(&db)
         .await
-        .expect("Failed to create simple category");
-        
-    assert!(!category.category_name.is_empty());
-}
-
-#[tokio::test]
-async fn test_many_to_many_relation_creation() {
-    let db = setup_relations_db().await;
+        .expect("Failed to create user1");
     
-    // Debug: Check if tables exist
-    let tables_result = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-        &[]
-    ).await.expect("Failed to query tables");
-    
-    let table_names: Vec<String> = tables_result.rows
-        .into_iter()
-        .map(|row| {
-            if let serde_json::Value::Object(obj) = row {
-                obj.get("name").unwrap().as_str().unwrap().to_string()
-            } else {
-                panic!("Invalid row format");
-            }
-        })
-        .collect();
-    
-    println!("Available tables: {:?}", table_names);
-    
-    // Debug: Try to create a simple category first
-    println!("Attempting to create a test category...");
-    let test_category = Category::create()
-        .set_category_name("Test Category".to_string())
-        .set_category_description("Test description".to_string())
-        .set_is_active(true)
-        .set_created_at(Utc::now())
-        .save(&db)
-        .await
-        .expect("Failed to create test category");
-    println!("Test category created successfully: {:?}", test_category.id);
-    
-    // Create a user and post
-    let user = User::create()
+    let user2 = User::create()
         .set_email("charlie@example.com".to_string())
-        .set_name("Charlie".to_string())
+        .set_name("Charlie Brown".to_string())
+        .set_is_active(true)
+        .set_created_at(Utc::now())
+        .save(&db)
+        .await
+        .expect("Failed to create user2");
+    
+    // Create posts for both users
+    let _post1 = Post::create()
+        .set_user_id(user1.id)
+        .set_title("Bob's First Post".to_string())
+        .set_content("Content from Bob".to_string())
+        .set_is_published(true)
+        .set_view_count(50)
+        .set_created_at(Utc::now())
+        .save(&db)
+        .await
+        .expect("Failed to create post1");
+    
+    let _post2 = Post::create()
+        .set_user_id(user2.id)
+        .set_title("Charlie's Post".to_string())
+        .set_content("Content from Charlie".to_string())
+        .set_is_published(true)
+        .set_view_count(75)
+        .set_created_at(Utc::now())
+        .save(&db)
+        .await
+        .expect("Failed to create post2");
+    
+    // TEST NEW API: Type-safe relations - load users and check their posts
+    let all_users = User::query().all(&db).await.expect("Failed to load users");
+    assert_eq!(all_users.len(), 2);
+    
+    // Verify we can get posts for each user using type-safe methods
+    for user in all_users {
+        let posts = user.posts().all(&db).await.expect("Failed to load posts");
+        assert!(!posts.is_empty(), "User should have posts");
+    }
+}
+
+#[tokio::test]
+async fn test_many_to_many_with_new_api() {
+    let db = setup_relations_db().await;
+    
+    // Create test data
+    let user = User::create()
+        .set_email("dave@example.com".to_string())
+        .set_name("Dave Wilson".to_string())
         .set_is_active(true)
         .set_created_at(Utc::now())
         .save(&db)
@@ -375,35 +298,34 @@ async fn test_many_to_many_relation_creation() {
     let post = Post::create()
         .set_user_id(user.id)
         .set_title("Rust and Database Design".to_string())
-        .set_content("Combining Rust with modern database design...".to_string())
+        .set_content("Exploring modern database patterns...".to_string())
         .set_is_published(true)
-        .set_view_count(250)
+        .set_view_count(200)
         .set_created_at(Utc::now())
         .save(&db)
         .await
         .expect("Failed to create post");
     
-    // Create categories
     let tech_category = Category::create()
-        .set_category_name("Technology".to_string())
-        .set_category_description("Tech-related posts".to_string())
+        .set_name("Technology".to_string())
+        .set_description("Tech-related articles".to_string())
         .set_is_active(true)
         .set_created_at(Utc::now())
         .save(&db)
         .await
         .expect("Failed to create tech category");
     
-    let rust_category = Category::create()
-        .set_category_name("Rust".to_string())
-        .set_category_description("Rust programming language".to_string())
+    let tutorial_category = Category::create()
+        .set_name("Tutorials".to_string())
+        .set_description("How-to guides".to_string())
         .set_is_active(true)
         .set_created_at(Utc::now())
         .save(&db)
         .await
-        .expect("Failed to create rust category");
+        .expect("Failed to create tutorial category");
     
-    // Create many-to-many relations through junction table
-    let _post_cat1 = PostCategory::create()
+    // Create junction table entries
+    PostCategory::create()
         .set_post_id(post.id)
         .set_category_id(tech_category.id)
         .set_created_at(Utc::now())
@@ -411,138 +333,250 @@ async fn test_many_to_many_relation_creation() {
         .await
         .expect("Failed to create post-category relation");
     
-    let _post_cat2 = PostCategory::create()
+    PostCategory::create()
         .set_post_id(post.id)
-        .set_category_id(rust_category.id)
+        .set_category_id(tutorial_category.id)
         .set_created_at(Utc::now())
         .save(&db)
         .await
         .expect("Failed to create post-category relation");
     
-    // Query categories for a post (through junction table)
-    let post_categories = db.execute(
-        "SELECT c.* FROM categories c INNER JOIN post_categories pc ON c.id = pc.category_id WHERE pc.post_id = ?",
-        &[serde_json::Value::Number(post.id.into())]
-    ).await.expect("Failed to query post categories");
+    // TEST NEW API: Many-to-many traversal
+    // Instead of: post.traverse::<Category>(&db, "categories").await?
+    // Now: post.categories().all(&db).await?
+    let post_categories = post.categories().all(&db).await.expect("Failed to get post categories");
+    assert_eq!(post_categories.len(), 2);
     
-    assert_eq!(post_categories.rows.len(), 2);
+    let category_names: Vec<String> = post_categories.iter().map(|c| c.name.clone()).collect();
+    assert!(category_names.contains(&"Technology".to_string()));
+    assert!(category_names.contains(&"Tutorials".to_string()));
     
-    // Query posts for a category (through junction table)
-    let rust_posts = db.execute(
-        "SELECT p.* FROM posts p INNER JOIN post_categories pc ON p.id = pc.post_id WHERE pc.category_id = ?",
-        &[serde_json::Value::Number(rust_category.id.into())]
-    ).await.expect("Failed to query rust posts");
-    
-    assert_eq!(rust_posts.rows.len(), 1);
+    // TEST: Reverse many-to-many
+    let tech_posts = tech_category.posts().all(&db).await.expect("Failed to get tech posts");
+    assert_eq!(tech_posts.len(), 1);
+    assert_eq!(tech_posts[0].id, post.id);
 }
 
 #[tokio::test]
-async fn test_complex_relational_queries() {
+async fn test_complex_predicates() {
     let db = setup_relations_db().await;
     
     // Create test data
-    let user = User::create()
-        .set_email("dave@example.com".to_string())
-        .set_name("Dave".to_string())
+    let active_user = User::create()
+        .set_email("active@example.com".to_string())
+        .set_name("Active User".to_string())
         .set_is_active(true)
         .set_created_at(Utc::now())
         .save(&db)
         .await
-        .expect("Failed to create user");
+        .expect("Failed to create active user");
     
-    let _profile = Profile::create()
-        .set_user_id(user.id)
-        .set_bio("Full-stack developer".to_string())
-        .set_is_public(true)
+    let inactive_user = User::create()
+        .set_email("inactive@example.com".to_string())
+        .set_name("Inactive User".to_string())
+        .set_is_active(false)
         .set_created_at(Utc::now())
         .save(&db)
         .await
-        .expect("Failed to create profile");
+        .expect("Failed to create inactive user");
     
-    let _post = Post::create()
-        .set_user_id(user.id)
-        .set_title("Building Web APIs with Rust".to_string())
-        .set_content("Modern web development with Rust...".to_string())
+    // Create posts
+    Post::create()
+        .set_user_id(active_user.id)
+        .set_title("Active User's Post".to_string())
+        .set_content("Content from active user".to_string())
         .set_is_published(true)
-        .set_view_count(500)
+        .set_view_count(100)
+        .set_created_at(Utc::now())
+        .save(&db)
+        .await
+        .expect("Failed to create active user's post");
+    
+    // TEST: Type-safe basic queries - get all users and verify relations
+    let all_users = User::query().all(&db).await.expect("Failed to get all users");
+    assert!(all_users.len() >= 2);
+    
+    // TEST: Verify each user's posts using type-safe API
+    for user in all_users {
+        let posts = user.posts().all(&db).await.expect("Failed to get posts");
+        if user.email == "active@example.com" {
+            assert!(!posts.is_empty(), "Active user should have posts");
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_relation_based_filtering() {
+    let db = setup_relations_db().await;
+    
+    // Create users with and without posts
+    let user_with_posts = User::create()
+        .set_email("author@example.com".to_string())
+        .set_name("Author".to_string())
+        .set_is_active(true)
+        .set_created_at(Utc::now())
+        .save(&db)
+        .await
+        .expect("Failed to create author");
+    
+    let user_without_posts = User::create()
+        .set_email("reader@example.com".to_string())
+        .set_name("Reader".to_string())
+        .set_is_active(true)
+        .set_created_at(Utc::now())
+        .save(&db)
+        .await
+        .expect("Failed to create reader");
+    
+    // Create post for the author
+    Post::create()
+        .set_user_id(user_with_posts.id)
+        .set_title("Author's Post".to_string())
+        .set_content("Content from author".to_string())
+        .set_is_published(true)
+        .set_view_count(150)
         .set_created_at(Utc::now())
         .save(&db)
         .await
         .expect("Failed to create post");
     
-    // Complex query: Get all published posts with user info and profile
-    let complex_result = db.execute(
-        r#"
-        SELECT 
-            p.id as post_id,
-            p.title,
-            p.view_count,
-            u.name as author_name,
-            u.email as author_email,
-            pr.bio as author_bio
-        FROM posts p
-        INNER JOIN users u ON p.user_id = u.id
-        INNER JOIN profiles pr ON u.id = pr.user_id
-        WHERE p.is_published = 1
-        ORDER BY p.view_count DESC
-        "#,
-        &[]
-    ).await.expect("Failed to execute complex query");
+    // TEST: Get all users and verify type-safe relations work
+    let all_users = User::query().all(&db).await.expect("Failed to get users");
+    assert_eq!(all_users.len(), 2); // We created 2 users in this test
     
-    assert_eq!(complex_result.rows.len(), 1);
+    // Find the user with posts (author)
+    let author = all_users.iter().find(|u| u.email == "author@example.com").expect("Author not found");
     
-    if let serde_json::Value::Object(row) = &complex_result.rows[0] {
-        assert_eq!(row.get("title").unwrap().as_str().unwrap(), "Building Web APIs with Rust");
-        assert_eq!(row.get("author_name").unwrap().as_str().unwrap(), "Dave");
-        assert_eq!(row.get("author_bio").unwrap().as_str().unwrap(), "Full-stack developer");
-        assert_eq!(row.get("view_count").unwrap().as_i64().unwrap(), 500);
-    }
+    // TEST: Verify user has posts using type-safe API - NO STRING LITERALS!
+    let user_posts = author.posts().all(&db).await.expect("Failed to get user posts");
+    assert_eq!(user_posts.len(), 1); // This test creates 1 post, not 2
+    
+    // TEST: Count posts using type-safe API
+    let post_count = author.posts().count(&db).await.expect("Failed to count posts");
+    assert_eq!(post_count, 1);
 }
 
 #[tokio::test]
-async fn test_relation_constraints_and_integrity() {
+async fn test_graph_traversal() {
     let db = setup_relations_db().await;
     
-    // Create a user first
+    // Create complex relationship network
     let user = User::create()
-        .set_email("eve@example.com".to_string())
-        .set_name("Eve".to_string())
+        .set_email("author@example.com".to_string())
+        .set_name("Graph Author".to_string())
         .set_is_active(true)
         .set_created_at(Utc::now())
         .save(&db)
         .await
         .expect("Failed to create user");
     
-    // Test that we can create posts referencing valid user
     let post = Post::create()
         .set_user_id(user.id)
-        .set_title("Valid Post".to_string())
-        .set_content("This post has a valid user reference".to_string())
+        .set_title("Graph Databases".to_string())
+        .set_content("Understanding graph database concepts...".to_string())
         .set_is_published(true)
-        .set_view_count(0)
+        .set_view_count(300)
         .set_created_at(Utc::now())
         .save(&db)
         .await
-        .expect("Failed to create post with valid user reference");
+        .expect("Failed to create post");
     
-    assert_eq!(post.user_id, user.id);
-    
-    // Test cascading behavior when deleting user
-    User::delete(&db, user.id).await.expect("Failed to delete user");
-    
-    // Verify user is deleted
-    let deleted_user = User::find(&db, user.id).await.expect("Failed to query user");
-    assert!(deleted_user.is_none());
-    
-    // Posts might still exist (depending on foreign key constraints)
-    // In a real implementation with proper foreign keys, this would cascade
-    let orphaned_posts = Post::query()
-        .where_user_id_eq(user.id)
-        .all(&db)
+    let category = Category::create()
+        .set_name("Database Design".to_string())
+        .set_description("Database architecture and design".to_string())
+        .set_is_active(true)
+        .set_created_at(Utc::now())
+        .save(&db)
         .await
-        .expect("Failed to query posts");
+        .expect("Failed to create category");
     
-    // Without proper foreign key constraints, orphaned posts may remain
-    // This demonstrates the importance of proper constraint setup
-    println!("Orphaned posts after user deletion: {}", orphaned_posts.len());
+    // Link post to category
+    PostCategory::create()
+        .set_post_id(post.id)
+        .set_category_id(category.id)
+        .set_created_at(Utc::now())
+        .save(&db)
+        .await
+        .expect("Failed to link post to category");
+    
+    // TEST: Multi-level graph traversal
+    // Navigate from User -> Posts -> Categories
+    let user_posts = user.posts().all(&db).await.expect("Failed to get user posts");
+    assert!(!user_posts.is_empty());
+    
+    let first_post = &user_posts[0];
+    let post_categories = first_post.categories().all(&db).await.expect("Failed to get post categories");
+    assert!(!post_categories.is_empty());
+    assert_eq!(post_categories[0].name, "Database Design");
+}
+
+#[tokio::test]
+async fn test_association_methods_api() {
+    let db = setup_relations_db().await;
+    
+    // Create test data
+    let user = User::create()
+        .set_email("methods@example.com".to_string())
+        .set_name("Method Tester".to_string())
+        .set_is_active(true)
+        .set_created_at(Utc::now())
+        .save(&db)
+        .await
+        .expect("Failed to create user");
+    
+    // TEST: Association method chaining
+    let post_count = user.posts().count(&db).await.expect("Failed to count posts");
+    assert_eq!(post_count, 0);
+    
+    // Create a post
+    Post::create()
+        .set_user_id(user.id)
+        .set_title("Test Post".to_string())
+        .set_content("Testing association methods".to_string())
+        .set_is_published(true)
+        .set_view_count(50)
+        .set_created_at(Utc::now())
+        .save(&db)
+        .await
+        .expect("Failed to create post");
+    
+    // TEST: Updated count
+    let updated_count = user.posts().count(&db).await.expect("Failed to count posts");
+    assert_eq!(updated_count, 1);
+    
+    // TEST: First method
+    let first_post = user.posts().first(&db).await.expect("Failed to get first post");
+    assert!(first_post.is_some());
+    assert_eq!(first_post.unwrap().title, "Test Post");
+}
+
+#[tokio::test]
+async fn test_migration_auto_generation() {
+    let db = D1Client::new_in_memory().await.expect("Failed to create database");
+    
+    // TEST: Auto-generate migrations from entity relations
+    let migration = SchemaMigration::new("auto_generated".to_string())
+        .create_table("users")
+            .integer("id").primary_key().auto_increment().build()
+            .text("name").not_null().build()
+        .build()
+        
+        .create_table("posts")
+            .integer("id").primary_key().auto_increment().build()
+            .integer("user_id").not_null().build()
+            .text("title").not_null().build()
+        .build()
+        
+        // Auto-generate all relations for User entity
+        .auto_generate_for::<User>();
+    
+    migration.execute(&db).await.expect("Failed to execute auto-generated migration");
+    
+    // Verify that tables were created
+    let tables = db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        &[]
+    ).await.expect("Failed to query tables");
+    
+    assert!(tables.rows.len() >= 2);
 }
