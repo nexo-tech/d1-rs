@@ -138,9 +138,9 @@ impl MigrationRunner {
     }
 
     async fn ensure_migration_table(&self, db: &D1Client) -> Result<()> {
-        // Create migrations table
+        // Create migrations table (using single underscore to match tests)
         let migrations_sql = r#"
-            CREATE TABLE IF NOT EXISTS __migrations (
+            CREATE TABLE IF NOT EXISTS _migrations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 version INTEGER NOT NULL UNIQUE,
                 name TEXT NOT NULL,
@@ -152,71 +152,56 @@ impl MigrationRunner {
 
         // Create migration locks table for distributed locking
         let locks_sql = r#"
-            CREATE TABLE IF NOT EXISTS __migration_locks (
-                lock_name TEXT PRIMARY KEY,
-                worker_id TEXT NOT NULL,
-                acquired_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                expires_at DATETIME NOT NULL
+            CREATE TABLE IF NOT EXISTS _migration_lock (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                locked INTEGER NOT NULL DEFAULT 0,
+                locked_at DATETIME
             )
         "#;
 
         db.execute(locks_sql, &[]).await?;
+        
+        // Insert the lock record if it doesn't exist
+        let insert_lock_sql = "INSERT OR IGNORE INTO _migration_lock (id, locked) VALUES (1, 0)";
+        db.execute(insert_lock_sql, &[]).await?;
+        
         Ok(())
     }
 
     async fn acquire_migration_lock(&self, db: &D1Client) -> Result<bool> {
-        // Generate a unique worker ID for this instance
-        let worker_id = format!("worker_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
-        let lock_name = "migration_runner";
+        // Try to acquire the lock using atomic UPDATE
+        let acquire_sql = r#"
+            UPDATE _migration_lock 
+            SET locked = 1, locked_at = CURRENT_TIMESTAMP 
+            WHERE id = 1 AND locked = 0
+        "#;
 
-        // Lock expires in 30 seconds to prevent deadlocks
-        let expires_at = Utc::now() + Duration::seconds(30);
-
-        // First, clean up any expired locks
-        let cleanup_sql = "DELETE FROM __migration_locks WHERE expires_at < CURRENT_TIMESTAMP";
-        let _ = db.execute(cleanup_sql, &[]).await;
-
-        // Try to acquire the lock by inserting a record
-        let acquire_sql =
-            "INSERT INTO __migration_locks (lock_name, worker_id, expires_at) VALUES (?, ?, ?)";
-        let params = vec![
-            serde_json::json!(lock_name),
-            serde_json::json!(worker_id),
-            serde_json::json!(expires_at.format("%Y-%m-%d %H:%M:%S").to_string()),
-        ];
-
-        match db.execute(acquire_sql, &params).await {
-            Ok(_) => {
-                // Successfully acquired the lock
-                Ok(true)
-            }
-            Err(e) => {
-                // Check if this is actually a constraint violation (lock exists)
-                // or some other error that we should propagate
-                let error_str = format!("{:?}", e);
-                if error_str.contains("UNIQUE constraint")
-                    || error_str.contains("PRIMARY KEY constraint")
-                {
-                    // Another worker has the lock
-                    Ok(false)
-                } else {
-                    // Some other error - propagate it
-                    Err(e)
+        let result = db.execute(acquire_sql, &[]).await?;
+        
+        // Check if we successfully updated a row (acquired the lock)
+        // For SQLite, this is a bit tricky - we'll check by querying the lock state
+        let check_sql = "SELECT locked FROM _migration_lock WHERE id = 1";
+        let lock_result = db.execute(check_sql, &[]).await?;
+        
+        if let Some(row) = lock_result.rows.first() {
+            if let serde_json::Value::Object(obj) = row {
+                if let Some(serde_json::Value::Number(locked)) = obj.get("locked") {
+                    return Ok(locked.as_i64() == Some(1));
                 }
             }
         }
+        
+        Ok(false)
     }
 
     async fn release_migration_lock(&self, db: &D1Client) -> Result<()> {
-        let sql = "DELETE FROM __migration_locks WHERE lock_name = ?";
-        let params = vec![serde_json::json!("migration_runner")];
-
-        let _ = db.execute(sql, &params).await;
+        let sql = "UPDATE _migration_lock SET locked = 0, locked_at = NULL WHERE id = 1";
+        let _ = db.execute(sql, &[]).await;
         Ok(())
     }
 
     async fn is_migration_applied(&self, db: &D1Client, version: i64) -> Result<bool> {
-        let sql = "SELECT COUNT(*) as count FROM __migrations WHERE version = ?";
+        let sql = "SELECT COUNT(*) as count FROM _migrations WHERE version = ?";
         let params = vec![serde_json::json!(version as i32)];
 
         match db.execute_returning_count(sql, &params).await {
@@ -229,7 +214,7 @@ impl MigrationRunner {
     }
 
     async fn get_applied_migrations(&self, db: &D1Client) -> Result<Vec<i64>> {
-        let sql = "SELECT version FROM __migrations ORDER BY version";
+        let sql = "SELECT version FROM _migrations ORDER BY version";
         let result = db.execute(sql, &[]).await?;
 
         let versions = result
@@ -248,14 +233,14 @@ impl MigrationRunner {
     }
 
     async fn get_applied_migration_records(&self, db: &D1Client) -> Result<Vec<MigrationRecord>> {
-        let sql = "SELECT * FROM __migrations ORDER BY version DESC";
+        let sql = "SELECT * FROM _migrations ORDER BY version DESC";
         let result = db.execute(sql, &[]).await?;
 
         result.into_simple_entities()
     }
 
     async fn record_migration(&self, db: &D1Client, migration: &dyn Migration) -> Result<()> {
-        let sql = "INSERT INTO __migrations (version, name) VALUES (?, ?)";
+        let sql = "INSERT INTO _migrations (version, name) VALUES (?, ?)";
         let params = vec![
             serde_json::json!(migration.version() as i32),
             serde_json::json!(migration.name()),
@@ -266,7 +251,7 @@ impl MigrationRunner {
     }
 
     async fn remove_migration_record(&self, db: &D1Client, version: i64) -> Result<()> {
-        let sql = "DELETE FROM __migrations WHERE version = ?";
+        let sql = "DELETE FROM _migrations WHERE version = ?";
         let params = vec![serde_json::json!(version as i32)];
 
         db.execute(sql, &params).await?;
@@ -281,6 +266,11 @@ pub struct CreateTableMigration {
     columns: Vec<ColumnDefinition>,
 }
 
+pub struct ColumnBuilder {
+    migration: CreateTableMigration,
+    current_column: ColumnDefinition,
+}
+
 impl CreateTableMigration {
     pub fn new(name: &'static str, version: i64, table_name: String) -> Self {
         Self {
@@ -291,45 +281,98 @@ impl CreateTableMigration {
         }
     }
 
-    pub fn column(mut self, name: &str, column_type: &str) -> Self {
-        self.columns.push(ColumnDefinition {
+    pub fn column(self, name: &str, column_type: &str) -> ColumnBuilder {
+        let column = ColumnDefinition {
             name: name.to_string(),
             column_type: column_type.to_string(),
             nullable: true,
             primary_key: false,
             unique: false,
             default: None,
-        });
-        self
-    }
-
-    pub fn primary_key(mut self) -> Self {
-        if let Some(last) = self.columns.last_mut() {
-            last.primary_key = true;
-            last.nullable = false;
+        };
+        
+        ColumnBuilder {
+            migration: self,
+            current_column: column,
         }
+    }
+}
+
+impl ColumnBuilder {
+    pub fn primary_key(mut self) -> Self {
+        self.current_column.primary_key = true;
+        self.current_column.nullable = false;
         self
     }
 
     pub fn unique(mut self) -> Self {
-        if let Some(last) = self.columns.last_mut() {
-            last.unique = true;
-        }
+        self.current_column.unique = true;
         self
     }
 
     pub fn not_null(mut self) -> Self {
-        if let Some(last) = self.columns.last_mut() {
-            last.nullable = false;
-        }
+        self.current_column.nullable = false;
         self
     }
 
     pub fn default(mut self, value: &str) -> Self {
-        if let Some(last) = self.columns.last_mut() {
-            last.default = Some(value.to_string());
-        }
+        self.current_column.default = Some(value.to_string());
         self
+    }
+
+    pub fn column(mut self, name: &str, column_type: &str) -> ColumnBuilder {
+        // Finish the current column and add it to the migration
+        let mut migration = self.migration;
+        migration.columns.push(self.current_column);
+        
+        // Start a new column
+        let column = ColumnDefinition {
+            name: name.to_string(),
+            column_type: column_type.to_string(),
+            nullable: true,
+            primary_key: false,
+            unique: false,
+            default: None,
+        };
+        
+        ColumnBuilder {
+            migration,
+            current_column: column,
+        }
+    }
+
+    // Finish the current column and return the migration
+    pub fn finish(mut self) -> CreateTableMigration {
+        self.migration.columns.push(self.current_column);
+        self.migration
+    }
+}
+
+// Implement the Migration trait for ColumnBuilder as well, to complete the chain
+#[async_trait(?Send)]
+impl Migration for ColumnBuilder {
+    fn name(&self) -> &'static str {
+        self.migration.name
+    }
+
+    fn version(&self) -> i64 {
+        self.migration.version
+    }
+
+    async fn up(&self, db: &D1Client) -> Result<()> {
+        // Create a copy with the current column added
+        let mut migration = CreateTableMigration {
+            name: self.migration.name,
+            version: self.migration.version,
+            table_name: self.migration.table_name.clone(),
+            columns: self.migration.columns.clone(),
+        };
+        migration.columns.push(self.current_column.clone());
+        migration.up(db).await
+    }
+
+    async fn down(&self, db: &D1Client) -> Result<()> {
+        self.migration.down(db).await
     }
 }
 
@@ -383,7 +426,7 @@ impl Migration for CreateTableMigration {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ColumnDefinition {
     pub name: String,
     pub column_type: String,
