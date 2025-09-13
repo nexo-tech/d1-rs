@@ -246,16 +246,58 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     
     /// Handle many-to-one relations (Child belongs to Parent)
     async fn query_many_to_one(&self, db: &D1Client, edge: &EdgeDefinition) -> Result<Vec<Child>> {
-        let sql = format!(
-            "SELECT * FROM {} WHERE {} = ?",
-            Child::TABLE_NAME,
-            edge.references
-        );
+        // 🚀 RECURSIVE RELATIONSHIP DETECTION: Handle self-referential entities
+        let parent_type = std::any::type_name::<Parent>();
+        let child_type = std::any::type_name::<Child>();
         
-        let params = vec![self.parent_id.clone()];
-        let result = db.execute(&sql, &params).await?;
-        
-        self.convert_rows_to_entities(result.rows).await
+        if parent_type == child_type {
+            // This is a recursive relationship (User -> User)
+            // For belongs_to in recursive relationships, we need to:
+            // 1. Get the foreign key value from the current entity
+            // 2. Find the entity where id = foreign_key_value
+            
+            // First, get the current entity to read its foreign key value
+            let current_entity_sql = format!(
+                "SELECT {} FROM {} WHERE id = ?",
+                edge.foreign_key,
+                Parent::TABLE_NAME
+            );
+            
+            let params = vec![self.parent_id.clone()];
+            let current_result = db.execute(&current_entity_sql, &params).await?;
+            
+            if let Some(current_row) = current_result.rows.first() {
+                if let Some(foreign_key_value) = current_row.get(&edge.foreign_key) {
+                    if !foreign_key_value.is_null() {
+                        // Now find the related entity where id = foreign_key_value
+                        let related_sql = format!(
+                            "SELECT * FROM {} WHERE id = ?",
+                            Child::TABLE_NAME
+                        );
+                        
+                        let related_params = vec![foreign_key_value.clone()];
+                        let related_result = db.execute(&related_sql, &related_params).await?;
+                        
+                        return self.convert_rows_to_entities(related_result.rows).await;
+                    }
+                }
+            }
+            
+            // Foreign key is null or entity not found, return empty
+            Ok(vec![])
+        } else {
+            // Regular many-to-one relationship
+            let sql = format!(
+                "SELECT * FROM {} WHERE {} = ?",
+                Child::TABLE_NAME,
+                edge.references
+            );
+            
+            let params = vec![self.parent_id.clone()];
+            let result = db.execute(&sql, &params).await?;
+            
+            self.convert_rows_to_entities(result.rows).await
+        }
     }
     
     /// Handle one-to-one relations
@@ -348,21 +390,47 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     
     /// Count many-to-one relations with SQL COUNT(*)
     async fn count_many_to_one(&self, db: &D1Client, edge: &EdgeDefinition) -> Result<i64> {
-        let sql = format!(
-            "SELECT COUNT(*) FROM {} WHERE {} = ?",
-            Child::TABLE_NAME,
-            edge.references
-        );
+        // 🚀 RECURSIVE RELATIONSHIP DETECTION: Handle self-referential entities
+        let parent_type = std::any::type_name::<Parent>();
+        let child_type = std::any::type_name::<Child>();
         
-        let params = vec![self.parent_id.clone()];
-        let result = db.execute(&sql, &params).await?;
-        
-        if let Some(row) = result.rows.first() {
-            if let Some(count_value) = row.get("COUNT(*)") {
-                return Ok(count_value.as_i64().unwrap_or(0));
+        if parent_type == child_type {
+            // For recursive belongs_to, check if the foreign key is not null
+            let current_entity_sql = format!(
+                "SELECT {} FROM {} WHERE id = ?",
+                edge.foreign_key,
+                Parent::TABLE_NAME
+            );
+            
+            let params = vec![self.parent_id.clone()];
+            let current_result = db.execute(&current_entity_sql, &params).await?;
+            
+            if let Some(current_row) = current_result.rows.first() {
+                if let Some(foreign_key_value) = current_row.get(&edge.foreign_key) {
+                    if !foreign_key_value.is_null() {
+                        return Ok(1); // belongs_to can only have 0 or 1 result
+                    }
+                }
             }
+            Ok(0)
+        } else {
+            // Regular many-to-one relationship
+            let sql = format!(
+                "SELECT COUNT(*) FROM {} WHERE {} = ?",
+                Child::TABLE_NAME,
+                edge.references
+            );
+            
+            let params = vec![self.parent_id.clone()];
+            let result = db.execute(&sql, &params).await?;
+            
+            if let Some(row) = result.rows.first() {
+                if let Some(count_value) = row.get("COUNT(*)") {
+                    return Ok(count_value.as_i64().unwrap_or(0));
+                }
+            }
+            Ok(0)
         }
-        Ok(0)
     }
     
     /// Count one-to-one relations with SQL COUNT(*)
@@ -431,22 +499,61 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     
     /// Get first many-to-one relation with LIMIT 1
     async fn first_many_to_one(&self, db: &D1Client, edge: &EdgeDefinition) -> Result<Option<Child>> {
-        let sql = format!(
-            "SELECT * FROM {} WHERE {} = ? LIMIT 1",
-            Child::TABLE_NAME,
-            edge.references
-        );
+        // 🚀 RECURSIVE RELATIONSHIP DETECTION: Handle self-referential entities
+        let parent_type = std::any::type_name::<Parent>();
+        let child_type = std::any::type_name::<Child>();
         
-        let params = vec![self.parent_id.clone()];
-        let result = db.execute(&sql, &params).await?;
-        
-        if let Some(row) = result.rows.first() {
-            let converted = Child::convert_from_sqlite(row.clone());
-            let entity: Child = serde_json::from_value(converted)
-                .map_err(|e| D1RsError::SerializationError(e.to_string()))?;
-            Ok(Some(entity))
-        } else {
+        if parent_type == child_type {
+            // For recursive belongs_to, get the related entity if foreign key is not null
+            let current_entity_sql = format!(
+                "SELECT {} FROM {} WHERE id = ?",
+                edge.foreign_key,
+                Parent::TABLE_NAME
+            );
+            
+            let params = vec![self.parent_id.clone()];
+            let current_result = db.execute(&current_entity_sql, &params).await?;
+            
+            if let Some(current_row) = current_result.rows.first() {
+                if let Some(foreign_key_value) = current_row.get(&edge.foreign_key) {
+                    if !foreign_key_value.is_null() {
+                        let related_sql = format!(
+                            "SELECT * FROM {} WHERE id = ? LIMIT 1",
+                            Child::TABLE_NAME
+                        );
+                        
+                        let related_params = vec![foreign_key_value.clone()];
+                        let related_result = db.execute(&related_sql, &related_params).await?;
+                        
+                        if let Some(row) = related_result.rows.first() {
+                            let converted = Child::convert_from_sqlite(row.clone());
+                            let entity: Child = serde_json::from_value(converted)
+                                .map_err(|e| D1RsError::SerializationError(e.to_string()))?;
+                            return Ok(Some(entity));
+                        }
+                    }
+                }
+            }
             Ok(None)
+        } else {
+            // Regular many-to-one relationship
+            let sql = format!(
+                "SELECT * FROM {} WHERE {} = ? LIMIT 1",
+                Child::TABLE_NAME,
+                edge.references
+            );
+            
+            let params = vec![self.parent_id.clone()];
+            let result = db.execute(&sql, &params).await?;
+            
+            if let Some(row) = result.rows.first() {
+                let converted = Child::convert_from_sqlite(row.clone());
+                let entity: Child = serde_json::from_value(converted)
+                    .map_err(|e| D1RsError::SerializationError(e.to_string()))?;
+                Ok(Some(entity))
+            } else {
+                Ok(None)
+            }
         }
     }
     
