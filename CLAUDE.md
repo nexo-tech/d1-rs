@@ -94,6 +94,39 @@ The derive macro generates methods like:
 - `where_field_name_like(pattern)` for string pattern matching
 - `order_by_field_name_asc()` for ordering
 
+## CRITICAL DESIGN PRINCIPLES
+
+### 🚨 ZERO STRING LITERALS POLICY 🚨
+**NEVER use string literals for field names, relation names, or operators in the public API.**
+
+❌ **FORBIDDEN** (Error-prone, runtime failures):
+```rust
+Predicate::field("is_published", "=", true)  // Runtime errors!
+user.posts().where_eq("title", "foo")        // Typos cause crashes!
+Predicate::has("posts")                       // No compile-time validation!
+```
+
+✅ **REQUIRED** (Compile-time safe, impossible to have errors):
+```rust
+user.posts().query().where_is_published_eq(true)  // Type-safe!
+user.posts().query().where_title_eq("foo")        // Auto-completed!
+User::query().has_posts()                         // Compile-time validated!
+```
+
+### Compile-Time Safety Requirements:
+1. **All field access must be auto-generated** - Use derive macros to generate `where_field_name_eq()` methods
+2. **All relation access must be type-safe** - Relations generate methods like `has_posts()`, `has_posts_with()`
+3. **Zero runtime field/relation name validation** - Everything validated at compile time
+4. **Impossible to typo field/relation names** - IDE auto-completion prevents errors
+5. **Superior to any string-based ORM** - Even better than hand-written SQL in terms of safety
+
+### Implementation Strategy:
+- **Leverage Rust's type system** - Use generics and traits for compile-time safety
+- **Generate specific methods** - `where_name_eq()` instead of `where_eq("name")`  
+- **Use phantom types** - Encode entity relationships in the type system
+- **Macro-generated code** - All repetitive code should be auto-generated
+- **Zero-cost abstractions** - No runtime overhead compared to hand-written SQL
+
 ### Automatic CRUD Operations
 Entities get `find()`, `delete()`, `create()`, and `update()` methods automatically generated with proper SQL handling.
 

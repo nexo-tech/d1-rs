@@ -1,6 +1,6 @@
 use crate::{D1Client, Result, D1RsError};
 use crate::schema::{ColumnType, DefaultValue, TableDefinition};
-use crate::edges::{EdgeDefinition, EdgeType, HasEdges};
+use crate::edges::{EdgeConfig, EdgeDefinition, EdgeType, HasEdges};
 use crate::Entity;
 
 /// Enhanced schema evolution with better relation support
@@ -552,6 +552,7 @@ impl<Parent: Entity + HasEdges, Child: Entity> EdgeMigrationBuilder<Parent, Chil
             foreign_key: format!("{}_id", Parent::TABLE_NAME.trim_end_matches('s')),
             references: "id".to_string(),
             through_table: None,
+            config: EdgeConfig::default(),
         };
         
         self.migration.operations.push(SchemaOperation::CreateEdge { edge });
@@ -572,6 +573,7 @@ impl<Parent: Entity + HasEdges, Child: Entity> EdgeMigrationBuilder<Parent, Chil
             foreign_key: format!("{}_id", Parent::TABLE_NAME.trim_end_matches('s')),
             references: "id".to_string(),
             through_table: Some(junction_table),
+            config: EdgeConfig::default(),
         };
         
         self.migration.operations.push(SchemaOperation::CreateEdge { edge });
@@ -587,6 +589,7 @@ impl<Parent: Entity + HasEdges, Child: Entity> EdgeMigrationBuilder<Parent, Chil
             foreign_key: format!("{}_id", Parent::TABLE_NAME.trim_end_matches('s')),
             references: "id".to_string(),
             through_table: None,
+            config: EdgeConfig::default(),
         };
         
         self.migration.operations.push(SchemaOperation::CreateEdge { edge });
