@@ -1,0 +1,32 @@
+[book]
+title = "d1-rs: Type-Safe ORM for Cloudflare D1"
+authors = ["d1-rs Contributors"]
+description = "A comprehensive guide to using d1-rs, the type-safe ORM for Cloudflare D1 with SQLite testing support"
+src = "src"
+language = "en"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/your-username/d1-rs"
+edit-url-template = "https://github.com/your-username/d1-rs/edit/main/docs/{path}"
+
+[output.html.playground]
+runnable = false
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
+
+[output.html.print]
+enable = true
+
+[preprocessor.links]
+# Process relative links
