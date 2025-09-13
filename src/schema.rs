@@ -247,6 +247,24 @@ impl TableDefinition {
         });
         self
     }
+    
+    /// Create table definition from column definitions (for migrations)
+    pub fn from_columns(name: String, columns: Vec<crate::schema_evolution::ColumnDefinition>) -> Self {
+        let mut table = Self::new(name);
+        for col in columns {
+            let column = Column {
+                name: col.name.clone(),
+                column_type: col.column_type,
+                nullable: col.nullable,
+                default: col.default,
+                unique: col.unique,
+                primary_key: col.primary_key,
+                auto_increment: col.auto_increment,
+            };
+            table.columns.push(column);
+        }
+        table
+    }
 
     /// Generate CREATE TABLE SQL
     pub fn to_sql(&self) -> String {

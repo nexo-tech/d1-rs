@@ -6,12 +6,16 @@ pub mod entity;
 pub mod migrations;
 pub mod types;
 pub mod schema;
+pub mod relations;
+pub mod schema_evolution;
 
 pub use db::*;
 pub use query::*;
 pub use migrations::*;
 pub use types::*;
 pub use schema::*;
+pub use relations::*;
+pub use schema_evolution::*;
 
 pub use async_trait::async_trait;
 use std::fmt;
