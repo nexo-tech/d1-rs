@@ -99,3 +99,12 @@ Entities get `find()`, `delete()`, `create()`, and `update()` methods automatica
 
 ### Testing Strategy
 Tests run on the native target using in-memory SQLite databases, allowing full integration testing without requiring actual D1 databases.
+
+### Relations API Development
+When working on the relations system, maintain a progress document at `RELATIONS_API_PLAN.md` to track:
+- Implementation status of each feature
+- API design decisions and rationales
+- Compatibility with Ent-Go patterns
+- Test coverage for new functionality
+
+Update this document as features are implemented to maintain project continuity.

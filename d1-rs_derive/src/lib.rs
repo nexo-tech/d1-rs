@@ -126,6 +126,11 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 let (sql, params) = self.query.to_count_sql();
                 db.execute_returning_count(&sql, &params).await
             }
+            
+            fn apply_relation_constraint(mut self, field: &str, value: serde_json::Value) -> Self {
+                self.query.where_clause(field, "=", value);
+                self
+            }
         }
 
         pub struct #create_builder_name {

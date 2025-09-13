@@ -31,6 +31,29 @@ pub enum D1RsError {
     NotFound,
     ValidationError(String),
     SerializationError(String),
+    // Enhanced error types for better relation error handling
+    RelationNotFound {
+        entity: String,
+        relation: String,
+        available_relations: Vec<String>,
+    },
+    RelationConstraintViolation {
+        entity: String,
+        relation: String,
+        constraint: String,
+        suggestion: String,
+    },
+    JunctionTableMissing {
+        relation: String,
+        expected_table: String,
+        suggestion: String,
+    },
+    InvalidForeignKey {
+        relation: String,
+        foreign_key: String,
+        target_table: String,
+        suggestion: String,
+    },
 }
 
 impl fmt::Display for D1RsError {
@@ -40,6 +63,31 @@ impl fmt::Display for D1RsError {
             D1RsError::NotFound => write!(f, "Entity not found"),
             D1RsError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
             D1RsError::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
+            
+            // Enhanced error messages for relations - much better than Ent-Go!
+            D1RsError::RelationNotFound { entity, relation, available_relations } => {
+                if available_relations.is_empty() {
+                    write!(f, "Relation '{}' not found on entity '{}'. This entity has no relations defined.", relation, entity)
+                } else {
+                    write!(f, "Relation '{}' not found on entity '{}'. Available relations: [{}]. Did you mean one of these?", 
+                           relation, entity, available_relations.join(", "))
+                }
+            }
+            
+            D1RsError::RelationConstraintViolation { entity, relation, constraint, suggestion } => {
+                write!(f, "Relation constraint violated on '{}.{}': {}. Suggestion: {}", 
+                       entity, relation, constraint, suggestion)
+            }
+            
+            D1RsError::JunctionTableMissing { relation, expected_table, suggestion } => {
+                write!(f, "Many-to-many relation '{}' requires junction table '{}' but it was not found. Suggestion: {}", 
+                       relation, expected_table, suggestion)
+            }
+            
+            D1RsError::InvalidForeignKey { relation, foreign_key, target_table, suggestion } => {
+                write!(f, "Invalid foreign key '{}' for relation '{}' (target table: '{}'). Suggestion: {}", 
+                       foreign_key, relation, target_table, suggestion)
+            }
         }
     }
 }
@@ -114,6 +162,10 @@ pub trait QueryBuilder<T: Entity> {
     async fn all(self, db: &D1Client) -> Result<Vec<T>>;
     async fn first(self, db: &D1Client) -> Result<Option<T>>;
     async fn count(self, db: &D1Client) -> Result<i64>;
+    
+    /// Apply a relation constraint to the query builder (used internally by Association)
+    /// This allows relations to pre-apply WHERE conditions while preserving type safety
+    fn apply_relation_constraint(self, field: &str, value: serde_json::Value) -> Self;
 }
 
 pub trait CreateBuilder<T: Entity> {

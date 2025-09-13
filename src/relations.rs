@@ -26,10 +26,10 @@ macro_rules! relations {
                             $crate::edges::EdgeDefinition {
                                 name: stringify!($relation_name).to_string(),
                                 target_entity: stringify!($target).to_string(),
-                                edge_type: relations!(@edge_type $relation_type $entity $target $(through $edge_schema)?),
+                                edge_type: relations!(@edge_type $relation_type $entity $target $(via $foreign_key)? $(through $edge_schema)?),
                                 foreign_key: relations!(@foreign_key $relation_type $entity $target $($foreign_key)?),
                                 references: "id".to_string(),
-                                through_table: relations!(@through_table $relation_type $entity $target $(through $edge_schema)?),
+                                through_table: relations!(@through_table $relation_type $entity $target $(via $foreign_key)? $(through $edge_schema)?),
                             }
                         ),*
                     ]
@@ -50,13 +50,15 @@ macro_rules! relations {
         )*
     };
     
-    // Helper macros for edge types - with proper backward compatibility!
-    (@edge_type has_many $entity:ident $target:ident through $edge_schema:ident) => { $crate::edges::EdgeType::ManyToMany };
-    (@edge_type has_many $entity:ident $target:ident) => { $crate::edges::EdgeType::OneToMany }; // Default to O2M for backward compatibility
-    (@edge_type belongs_to $entity:ident $target:ident $($through:ident $edge_schema:ident)?) => { $crate::edges::EdgeType::ManyToOne };
-    (@edge_type has_one $entity:ident $target:ident $($through:ident $edge_schema:ident)?) => { $crate::edges::EdgeType::OneToOne };
-    (@edge_type has_many_through $entity:ident $target:ident $($through:ident $edge_schema:ident)?) => { $crate::edges::EdgeType::ManyToMany };
-    (@edge_type one_to_many $entity:ident $target:ident $($through:ident $edge_schema:ident)?) => { $crate::edges::EdgeType::OneToMany }; // Explicit O2M
+    // Helper macros for edge types - distinguish between O2M (with via) and M2M (without via)
+    (@edge_type has_many $entity:ident $target:ident via $foreign_key:ident through $edge_schema:ident) => { $crate::edges::EdgeType::ManyToMany }; // Both via and through = M2M
+    (@edge_type has_many $entity:ident $target:ident via $foreign_key:ident) => { $crate::edges::EdgeType::OneToMany }; // With via = O2M
+    (@edge_type has_many $entity:ident $target:ident through $edge_schema:ident) => { $crate::edges::EdgeType::ManyToMany }; // With through = M2M
+    (@edge_type has_many $entity:ident $target:ident) => { $crate::edges::EdgeType::ManyToMany }; // No via clause = M2M
+    (@edge_type belongs_to $entity:ident $target:ident $(via $foreign_key:ident)? $(through $edge_schema:ident)?) => { $crate::edges::EdgeType::ManyToOne };
+    (@edge_type has_one $entity:ident $target:ident $(via $foreign_key:ident)? $(through $edge_schema:ident)?) => { $crate::edges::EdgeType::OneToOne };
+    (@edge_type has_many_through $entity:ident $target:ident $(via $foreign_key:ident)? $(through $edge_schema:ident)?) => { $crate::edges::EdgeType::ManyToMany };
+    (@edge_type one_to_many $entity:ident $target:ident $(via $foreign_key:ident)? $(through $edge_schema:ident)?) => { $crate::edges::EdgeType::OneToMany }; // Explicit O2M
     
     // Helper macros for foreign keys - handle explicit via clauses properly!
     (@foreign_key has_many $entity:ident $target:ident through $edge_schema:ident $foreign_key:ident) => { stringify!($foreign_key).to_string() };
@@ -72,12 +74,22 @@ macro_rules! relations {
     (@foreign_key has_many_through $entity:ident $target:ident $foreign_key:ident) => { stringify!($foreign_key).to_string() };
     (@foreign_key has_many_through $entity:ident $target:ident) => { "post_id".to_string() }; // Default
     
-    // Helper macros for through tables - simplified approach
+    // Helper macros for through tables - auto-generate for M2M
+    (@through_table has_many $entity:ident $target:ident via $foreign_key:ident through $edge_schema:ident) => { 
+        Some(stringify!($edge_schema).to_string()) // Both via and through = use explicit through table
+    };
+    (@through_table has_many $entity:ident $target:ident via $foreign_key:ident) => { 
+        None // No junction table for O2M 
+    };
     (@through_table has_many $entity:ident $target:ident through $edge_schema:ident) => { 
-        Some(stringify!($edge_schema).to_string())
+        Some(stringify!($edge_schema).to_string()) // Explicit through table
     };
     (@through_table has_many $entity:ident $target:ident) => { 
-        None // No junction table for O2M by default
+        Some({
+            let entity_name = stringify!($entity).to_lowercase();
+            let target_name = stringify!($target).to_lowercase(); 
+            format!("{}_{}", entity_name, target_name)
+        })
     };
     (@through_table has_many_through $entity:ident $target:ident through $edge_schema:ident) => { 
         Some(stringify!($edge_schema).to_string())

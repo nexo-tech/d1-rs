@@ -73,6 +73,7 @@ impl<Parent: Entity, Child: Entity> ManyToMany<Parent, Child> {
 }
 
 /// Association represents an instance-level relationship - FULLY TYPE-SAFE!
+/// Returns the Child's QueryBuilder with relation constraint pre-applied
 pub struct Association<Parent: Entity + HasEdges, Child: Entity + Clone> {
     parent_id: serde_json::Value,
     edge_name: String,
@@ -124,13 +125,70 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         }
     }
     
+    /// Get a QueryBuilder for the related entity with relation constraint pre-applied
+    /// This provides access to all the type-safe auto-generated query methods!
+    /// Usage: user.posts().query().where_is_published_eq(true).all(&db).await?
+    pub fn query(&self) -> Result<Child::QueryBuilder> {
+        // Get edge definition to understand the relation
+        let edges = Parent::edges();
+        let edge = edges.iter()
+            .find(|e| e.name == self.edge_name)
+            .ok_or_else(|| {
+                let available_relations: Vec<String> = edges.iter()
+                    .map(|e| e.name.clone())
+                    .collect();
+                D1RsError::RelationNotFound {
+                    entity: std::any::type_name::<Parent>().split("::").last().unwrap_or("Unknown").to_string(),
+                    relation: self.edge_name.clone(),
+                    available_relations,
+                }
+            })?;
+        
+        // Create a QueryBuilder with the relation constraint pre-applied
+        let mut query_builder = Child::query();
+        
+        // Apply the relation constraint based on edge type
+        match edge.edge_type {
+            EdgeType::OneToMany => {
+                // For O2M: WHERE child.foreign_key = parent.id
+                query_builder = query_builder.apply_relation_constraint(&edge.foreign_key, self.parent_id.clone());
+            }
+            EdgeType::ManyToOne => {
+                // For M2O: WHERE child.references = parent.id
+                query_builder = query_builder.apply_relation_constraint(&edge.references, self.parent_id.clone());
+            }
+            EdgeType::OneToOne => {
+                // For O2O: Same as O2M but limited to 1 result
+                query_builder = query_builder.apply_relation_constraint(&edge.foreign_key, self.parent_id.clone());
+            }
+            EdgeType::ManyToMany => {
+                // For M2M: Need to handle junction table - more complex
+                return Err(D1RsError::ValidationError(
+                    "Many-to-many relations require direct .all()/.first()/.count() methods. Use .query() for O2M/M2O/O2O relations only.".to_string()
+                ));
+            }
+        }
+        
+        Ok(query_builder)
+    }
+    
+    
     /// Execute the actual database query based on relation type
     async fn execute_relation_query(&self, db: &D1Client) -> Result<Vec<Child>> {
         // Get edge definition from Parent entity
         let edges = Parent::edges();
         let edge = edges.iter()
             .find(|e| e.name == self.edge_name)
-            .ok_or_else(|| D1RsError::ValidationError(format!("No relation '{}' found", self.edge_name)))?;
+            .ok_or_else(|| {
+                let available_relations: Vec<String> = edges.iter()
+                    .map(|e| e.name.clone())
+                    .collect();
+                D1RsError::RelationNotFound {
+                    entity: std::any::type_name::<Parent>().split("::").last().unwrap_or("Unknown").to_string(),
+                    relation: self.edge_name.clone(),
+                    available_relations,
+                }
+            })?;
         
         match edge.edge_type {
             EdgeType::OneToMany => self.query_one_to_many(db, edge).await,
@@ -177,7 +235,18 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     /// Handle many-to-many relations through junction table
     async fn query_many_to_many(&self, db: &D1Client, edge: &EdgeDefinition) -> Result<Vec<Child>> {
         let through_table = edge.through_table.as_ref()
-            .ok_or_else(|| D1RsError::ValidationError("Many-to-many relation requires through_table".to_string()))?;
+            .ok_or_else(|| D1RsError::JunctionTableMissing {
+                relation: edge.name.clone(),
+                expected_table: format!("{}_{}", 
+                    std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
+                    std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+                ),
+                suggestion: format!(
+                    "Add 'through TableName' to your relation definition, or create junction table with columns '{}_id' and '{}_id'",
+                    std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
+                    std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+                ),
+            })?;
         
         // Generate proper column names based on entity types
         // Parent foreign key is what's specified in the edge (usually like "post_id")
@@ -359,6 +428,35 @@ impl Predicate {
         })
     }
     
+    /// Generate EXISTS subquery for relation predicates
+    fn generate_relation_subquery(&self, table_alias: &str, rel_pred: &RelationPredicate) -> (String, Vec<serde_json::Value>) {
+        // This is a simplified implementation - in production this would need
+        // access to edge definitions to generate proper subqueries
+        let exists_or_not = if rel_pred.exists { "EXISTS" } else { "NOT EXISTS" };
+        
+        if let Some(inner_predicate) = &rel_pred.predicate {
+            // Has relation with conditions
+            let (inner_sql, inner_params) = inner_predicate.to_sql("r");
+            let sql = format!(
+                "{} (SELECT 1 FROM {} r WHERE r.user_id = {}.id AND {})",
+                exists_or_not,
+                rel_pred.relation, // This should be the target table name
+                table_alias,
+                inner_sql
+            );
+            (sql, inner_params)
+        } else {
+            // Simple has/has not relation
+            let sql = format!(
+                "{} (SELECT 1 FROM {} r WHERE r.user_id = {}.id)",
+                exists_or_not,
+                rel_pred.relation, // This should be the target table name
+                table_alias
+            );
+            (sql, vec![])
+        }
+    }
+    
     /// Generate SQL WHERE clause from predicate
     pub fn to_sql(&self, table_alias: &str) -> (String, Vec<serde_json::Value>) {
         match self {
@@ -391,9 +489,8 @@ impl Predicate {
                 (sql, vec![field_pred.value.clone()])
             }
             Predicate::Relation(rel_pred) => {
-                // This would need to generate EXISTS subqueries
-                // For now, return a placeholder
-                ("1=1".to_string(), vec![])
+                // Generate EXISTS subqueries for relation-based filtering
+                self.generate_relation_subquery(table_alias, rel_pred)
             }
         }
     }
@@ -403,6 +500,34 @@ impl Predicate {
 pub trait HasEdges: Entity {
     /// Get all edge definitions for this entity
     fn edges() -> Vec<EdgeDefinition>;
+}
+
+/// Enhanced query builder with Ent-Go style relation filtering
+/// Extends the basic Entity query builders with relation-aware methods
+pub trait RelationQueryBuilder<T: Entity + HasEdges>: Sized {
+    /// Check if entity has any related records in the specified relation
+    /// Usage: User::query().has_posts().all(&db).await?
+    fn has_relation(self, relation_name: &str) -> Self;
+    
+    /// Check if entity has related records that match additional conditions
+    /// Usage: User::query().has_posts_with(Post::query().where_published()).all(&db).await?
+    fn has_relation_with<R: Entity>(self, relation_name: &str, relation_query: R::QueryBuilder) -> Self;
+    
+    /// Opposite of has_relation - entities WITHOUT the relation
+    /// Usage: User::query().has_no_posts().all(&db).await?
+    fn has_no_relation(self, relation_name: &str) -> Self;
+    
+    /// Add the relation predicate to the current query
+    fn add_relation_predicate(self, predicate: RelationPredicate) -> Self;
+}
+
+/// Relation-based query methods for entities with edges
+/// This trait provides Ent-Go style relation filtering capabilities
+pub trait HasRelationQueries: HasEdges {
+    type RelationQueryBuilder: RelationQueryBuilder<Self>;
+    
+    /// Start a query with relation filtering capabilities
+    fn query_with_relations() -> Self::RelationQueryBuilder;
 }
 
 /// Definition of an edge/relationship
