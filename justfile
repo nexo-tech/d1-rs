@@ -28,6 +28,16 @@ db-query query:
 db-tables:
     @wrangler d1 execute cloudflare-worker-db --local --command="SELECT name FROM sqlite_master WHERE type='table';"
 
+# Run ORM tests (all tests - no filtering)
+test-orm:
+    @echo "🧪 Running ALL D1 ORM tests..."
+    @cd d1orm && cargo test --target $(rustc -vV | sed -n 's|host: ||p')
+
+# Run basic ORM tests only  
+test-orm-basic:
+    @echo "🧪 Running basic D1 ORM tests..."
+    @cd d1orm && cargo test --target $(rustc -vV | sed -n 's|host: ||p') test_basic
+
 # Clean build artifacts
 clean:
     @cargo clean

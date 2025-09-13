@@ -8,6 +8,31 @@ pub trait SqlType {
     fn sql_type_name() -> &'static str;
 }
 
+impl SqlType for i32 {
+    fn to_sql_value(&self) -> Value {
+        serde_json::json!(*self)
+    }
+
+    fn from_sql_value(value: &Value) -> Result<Self> {
+        match value {
+            Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Ok(i as i32)
+                } else if let Some(i) = n.as_u64() {
+                    Ok(i as i32)
+                } else {
+                    Err(D1OrmError::SerializationError("Expected integer".to_string()))
+                }
+            },
+            _ => Err(D1OrmError::SerializationError("Expected number for i32".to_string())),
+        }
+    }
+
+    fn sql_type_name() -> &'static str {
+        "INTEGER"
+    }
+}
+
 impl SqlType for i64 {
     fn to_sql_value(&self) -> Value {
         // D1 doesn't support bigint, so we force to i32 and use json! macro

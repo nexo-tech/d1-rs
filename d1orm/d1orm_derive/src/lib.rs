@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, DeriveInput, Fields, Attribute, Meta, Lit, Type, Field};
+use syn::{parse_macro_input, DeriveInput, Fields, Type, Field, Attribute};
 
 #[proc_macro_derive(Entity, attributes(table, primary_key, unique, not_null))]
 pub fn derive_entity(input: TokenStream) -> TokenStream {
@@ -29,6 +29,8 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let create_methods = generate_create_methods(named_fields, &primary_key_field);
     let update_methods = generate_update_methods(named_fields, &primary_key_field);
 
+    let boolean_field_metadata = generate_boolean_field_metadata(named_fields);
+
     let expanded = quote! {
         impl d1orm::Entity for #name {
             type PrimaryKey = #primary_key_type;
@@ -52,6 +54,10 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             
             fn update(key: Self::PrimaryKey) -> Self::UpdateBuilder {
                 #update_builder_name::new(key)
+            }
+            
+            fn boolean_fields() -> &'static [&'static str] {
+                #boolean_field_metadata
             }
             
             async fn find(db: &d1orm::D1Client, key: Self::PrimaryKey) -> d1orm::Result<Option<Self>> {
@@ -89,6 +95,12 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 
             pub fn offset(mut self, offset: i64) -> Self {
                 self.query.offset(offset);
+                self
+            }
+
+            pub fn order_by(mut self, column: &str, direction: &str) -> Self {
+                let asc = direction.to_uppercase() != "DESC";
+                self.query.order_by(column, asc);
                 self
             }
 
@@ -137,7 +149,9 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 
                 if let Some(row) = result {
                     let map: serde_json::Map<String, serde_json::Value> = row.into_iter().collect();
-                    let entity: #name = serde_json::from_value(serde_json::Value::Object(map))
+                    // Convert SQLite integers back to booleans in the result
+                    let converted_value = #name::convert_from_sqlite(serde_json::Value::Object(map));
+                    let entity: #name = serde_json::from_value(converted_value)
                         .map_err(|e| d1orm::D1OrmError::SerializationError(e.to_string()))?;
                     Ok(entity)
                 } else {
@@ -176,7 +190,9 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 
                 if let Some(row) = result {
                     let map: serde_json::Map<String, serde_json::Value> = row.into_iter().collect();
-                    let entity: #name = serde_json::from_value(serde_json::Value::Object(map))
+                    // Convert SQLite integers back to booleans in the result
+                    let converted_value = #name::convert_from_sqlite(serde_json::Value::Object(map));
+                    let entity: #name = serde_json::from_value(converted_value)
                         .map_err(|e| d1orm::D1OrmError::SerializationError(e.to_string()))?;
                     Ok(entity)
                 } else {
@@ -256,6 +272,8 @@ fn generate_query_methods(fields: &syn::punctuated::Punctuated<Field, syn::token
             let where_eq_method = format_ident!("where_{}_eq", field_name);
             let where_ne_method = format_ident!("where_{}_ne", field_name);
             let where_in_method = format_ident!("where_{}_in", field_name);
+            let where_is_null_method = format_ident!("where_{}_is_null", field_name);
+            let where_is_not_null_method = format_ident!("where_{}_is_not_null", field_name);
             let order_by_asc_method = format_ident!("order_by_{}_asc", field_name);
             let order_by_desc_method = format_ident!("order_by_{}_desc", field_name);
             
@@ -343,6 +361,16 @@ fn generate_query_methods(fields: &syn::punctuated::Punctuated<Field, syn::token
                             self.query.where_clause(#field_name, "=", d1orm::types::SqlType::to_sql_value(first_value));
                         }
                     }
+                    self
+                }
+                
+                pub fn #where_is_null_method(mut self) -> Self {
+                    self.query.where_clause(#field_name, "IS", serde_json::Value::Null);
+                    self
+                }
+                
+                pub fn #where_is_not_null_method(mut self) -> Self {
+                    self.query.where_clause(#field_name, "IS NOT", serde_json::Value::Null);
                     self
                 }
                 
@@ -436,4 +464,41 @@ fn is_numeric_type(ty: &Type) -> bool {
         }
     }
     false
+}
+
+fn is_boolean_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            return segment.ident == "bool";
+        }
+    }
+    false
+}
+
+fn generate_boolean_field_metadata(fields: &syn::punctuated::Punctuated<Field, syn::token::Comma>) -> TokenStream2 {
+    let boolean_fields: Vec<String> = fields
+        .iter()
+        .filter_map(|field| {
+            let field_ident = field.ident.as_ref()?;
+            let field_name = field_ident.to_string();
+            
+            if is_boolean_type(&field.ty) {
+                Some(field_name)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Generate a static array of boolean field names
+    if boolean_fields.is_empty() {
+        quote! { &[] }
+    } else {
+        let field_literals: Vec<TokenStream2> = boolean_fields
+            .iter()
+            .map(|name| quote! { #name })
+            .collect();
+        
+        quote! { &[#(#field_literals),*] }
+    }
 }

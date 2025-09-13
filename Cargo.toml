@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "d1orm"]
+default-members = ["."]
+
 [package]
 name = "cloudflare-worker"
 version = "0.1.0"
