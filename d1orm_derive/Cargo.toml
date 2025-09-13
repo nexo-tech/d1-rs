@@ -3,6 +3,7 @@ name = "d1orm_derive"
 version = "0.1.0"
 edition = "2021"
 description = "Derive macros for d1orm"
+publish = false
 
 [lib]
 proc-macro = true
