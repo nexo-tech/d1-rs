@@ -1,6 +1,5 @@
 use crate::{D1Client, Result};
 use async_trait::async_trait;
-use serde_json::Value;
 
 /// Modern, type-safe column types for D1 ORM schema definitions
 #[derive(Debug, Clone, PartialEq)]
@@ -481,7 +480,7 @@ impl crate::migrations::Migration for SchemaMigration {
                 let sql = format!("ALTER TABLE {} ADD COLUMN {}", table, column.to_sql());
                 db.execute(&sql, &[]).await?;
             }
-            MigrationOperation::DropColumn { table, column } => {
+            MigrationOperation::DropColumn { table: _, column: _ } => {
                 // SQLite doesn't support DROP COLUMN directly, need to recreate table
                 // For now, just error - this is a complex operation
                 return Err(crate::D1OrmError::Database(
@@ -516,19 +515,19 @@ impl crate::migrations::Migration for SchemaMigration {
                 let sql = format!("DROP TABLE IF EXISTS {}", table.name);
                 db.execute(&sql, &[]).await?;
             }
-            MigrationOperation::DropTable(table_name) => {
+            MigrationOperation::DropTable(_table_name) => {
                 // Can't easily reverse a DROP TABLE without knowing the schema
                 return Err(crate::D1OrmError::Database(
                     "Cannot reverse DROP TABLE - original schema unknown".to_string()
                 ));
             }
-            MigrationOperation::AddColumn { table, column: _ } => {
+            MigrationOperation::AddColumn { table: _, column: _ } => {
                 // SQLite doesn't support DROP COLUMN directly
                 return Err(crate::D1OrmError::Database(
                     "Cannot reverse ADD COLUMN - requires table recreation".to_string()
                 ));
             }
-            MigrationOperation::DropColumn { table, column } => {
+            MigrationOperation::DropColumn { table: _, column } => {
                 // Can't reverse without knowing original column definition
                 return Err(crate::D1OrmError::Database(
                     format!("Cannot reverse DROP COLUMN {} - original definition unknown", column)

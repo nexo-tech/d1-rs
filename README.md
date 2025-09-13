@@ -1,4 +1,4 @@
-# D1 ORM
+# d1-rs
 
 Type-safe ORM for Cloudflare D1 with SQLite testing support.
 
@@ -16,13 +16,13 @@ Type-safe ORM for Cloudflare D1 with SQLite testing support.
 just test-orm
 
 # Or directly with cargo
-cargo test -p d1orm --features test-utils
+cargo test -p d1-rs --features test-utils
 ```
 
 ## Usage
 
 ```rust
-use d1orm::*;
+use d1_rs::*;
 
 #[derive(Entity)]
 #[table(name = "users")]

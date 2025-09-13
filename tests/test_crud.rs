@@ -2,6 +2,7 @@ mod common;
 
 use common::*;
 use d1orm::*;
+use d1orm::Entity;
 use chrono::Utc;
 
 #[tokio::test]

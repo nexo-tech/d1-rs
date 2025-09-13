@@ -1,6 +1,6 @@
 use crate::{D1Client, Result};
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -176,7 +176,7 @@ impl MigrationRunner {
             WHERE id = 1 AND locked = 0
         "#;
 
-        let result = db.execute(acquire_sql, &[]).await?;
+        let _result = db.execute(acquire_sql, &[]).await?;
         
         // Check if we successfully updated a row (acquired the lock)
         // For SQLite, this is a bit tricky - we'll check by querying the lock state
@@ -320,7 +320,7 @@ impl ColumnBuilder {
         self
     }
 
-    pub fn column(mut self, name: &str, column_type: &str) -> ColumnBuilder {
+    pub fn column(self, name: &str, column_type: &str) -> ColumnBuilder {
         // Finish the current column and add it to the migration
         let mut migration = self.migration;
         migration.columns.push(self.current_column);

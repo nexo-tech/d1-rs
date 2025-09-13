@@ -9,7 +9,6 @@ pub mod schema;
 
 pub use db::*;
 pub use query::*;
-pub use entity::*;
 pub use migrations::*;
 pub use types::*;
 pub use schema::*;

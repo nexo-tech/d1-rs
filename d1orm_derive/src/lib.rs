@@ -354,8 +354,8 @@ fn generate_query_methods(fields: &syn::punctuated::Punctuated<Field, syn::token
                 
                 pub fn #where_in_method(mut self, values: Vec<#field_type>) -> Self {
                     if !values.is_empty() {
-                        let placeholders = vec!["?"; values.len()].join(", ");
-                        let condition = format!("{} IN ({})", #field_name, placeholders);
+                        let _placeholders = vec!["?"; values.len()].join(", ");
+                        let _condition = format!("{} IN ({})", #field_name, _placeholders);
                         // For IN queries, we need a different approach - for now use the first value
                         if let Some(first_value) = values.first() {
                             self.query.where_clause(#field_name, "=", d1orm::types::SqlType::to_sql_value(first_value));
