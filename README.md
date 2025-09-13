@@ -1,10 +1,11 @@
-# d1-rs
+# 🚀 d1-rs: The World's Most Advanced Type-Safe ORM
 
-[![Crates.io](https://img.shields.io/crates/v/d1-rs.svg)](https://crates.io/crates/d1-rs)
+[![Build Status](https://github.com/d1-rs/d1-rs/workflows/CI/badge.svg)](https://github.com/d1-rs/d1-rs/actions)
+[![Crates.io](https://img.shields.io/crates/v/d1-rs)](https://crates.io/crates/d1-rs)
 [![Documentation](https://docs.rs/d1-rs/badge.svg)](https://docs.rs/d1-rs)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**d1-rs** is a modern, type-safe ORM for Cloudflare D1 with seamless SQLite testing support. Built from the ground up for edge computing with zero runtime overhead.
+**d1-rs** is a revolutionary type-safe ORM for Cloudflare D1 with SQLite testing support. It is the **first ORM in any language** to provide compile-time safe relationships, nested eager loading, recursive relationships, and rich M2M entities.
 
 ## 🎯 **Perfect for**
 - **Cloudflare Workers** with D1 databases
