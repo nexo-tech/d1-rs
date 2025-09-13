@@ -45,11 +45,11 @@ relations! {
 
     Post {
         belongs_to user: User via user_id,
-        has_many categories: Category, // M2M relationship
+        has_many_through categories: Category via post_id, // M2M relationship
     }
     
     Category {
-        has_many posts: Post,  // M2M relationship
+        has_many_through posts: Post via category_id,  // M2M relationship
     }
 }
 

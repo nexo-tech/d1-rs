@@ -40,7 +40,7 @@ pub struct Category {
 relations! {
     User {
         has_many posts: Post via user_id,
-        has_many categories: Category,  // This will need a junction table
+        has_many_through categories: Category via user_id,  // M2M relationship
     }
 
     Post {
