@@ -137,6 +137,11 @@ User::query().has_posts()                         // Compile-time validated!
 - **Use phantom types** - Encode entity relationships in the type system
 - **Macro-generated code** - All repetitive code should be auto-generated
 - **Zero-cost abstractions** - No runtime overhead compared to hand-written SQL
+- **❌ NO HEURISTICS EVER** - Never use unreliable pattern matching or guessing for type detection
+- **❌ NO HARDCODED TYPE LISTS** - Never hardcode specific type names like "UserProfile", "Address" etc
+- **❌ NO CULTURAL/LANGUAGE BIAS** - Must work with Russian, Chinese, or any naming convention
+- **Trait-based or attribute-based detection only** - Use Rust's type system properly
+- **User-configurable type mapping** - Allow explicit override of default behavior
 
 ### Automatic CRUD Operations
 Entities get `find()`, `delete()`, `create()`, and `update()` methods automatically generated with proper SQL handling.

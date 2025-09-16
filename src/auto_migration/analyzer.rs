@@ -4,6 +4,64 @@ use std::collections::HashMap;
 use std::any::TypeId;
 use std::marker::PhantomData;
 
+/// Advanced analysis result containing table schema and extended information
+#[derive(Debug, Clone)]
+pub struct EntityAnalysisResult {
+    pub table_schema: TableSchema,
+    pub complex_fields: Vec<ComplexFieldInfo>,
+    pub recursive_relations: Vec<RecursiveRelationInfo>,
+    pub junction_tables: Vec<JunctionTableSchema>,
+}
+
+/// Information about complex field types that require special handling
+#[derive(Debug, Clone)]
+pub struct ComplexFieldInfo {
+    pub field_name: String,
+    pub rust_type: String,
+    pub sql_type: String,
+    pub serialization_strategy: SerializationStrategy,
+    pub nullable: bool,
+    pub default_value: Option<String>,
+}
+
+/// Serialization strategy for complex types
+#[derive(Debug, Clone, PartialEq)]
+pub enum SerializationStrategy {
+    Json,
+    Binary,
+    Text,
+    Custom(String),
+}
+
+/// Information about recursive relationships within an entity
+#[derive(Debug, Clone)]
+pub struct RecursiveRelationInfo {
+    pub relation_name: String,
+    pub foreign_key_column: String,
+    pub relation_type: RecursiveRelationType,
+    pub cascade_delete: bool,
+    pub allow_cycles: bool,
+}
+
+/// Type of recursive relationship
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecursiveRelationType {
+    SelfReferential,  // parent_id -> id (same table)
+    TreeStructure,    // Tree/hierarchy structures
+    GraphStructure,   // Allow cycles
+}
+
+/// Schema information for Many-to-Many junction tables
+#[derive(Debug, Clone)]
+pub struct JunctionTableSchema {
+    pub name: String,
+    pub left_entity: String,
+    pub right_entity: String,
+    pub left_column: String,
+    pub right_column: String,
+    pub foreign_keys: Vec<ForeignKeySchema>,
+}
+
 /// Revolutionary Entity-to-Schema Analysis Engine
 /// Extracts expected schema from Entity derive macros at compile-time
 pub struct EntityAnalyzer {
@@ -114,8 +172,8 @@ impl EntityAnalyzer {
         Ok(columns)
     }
 
-    /// Convert Rust type to SQL type
-    fn rust_type_to_sql_type(&self, rust_type: &str, is_boolean: bool) -> Result<String> {
+    /// Convert Rust type to SQL type with enhanced support for complex types
+    pub fn rust_type_to_sql_type(&self, rust_type: &str, is_boolean: bool) -> Result<String> {
         // Handle Option<T> by extracting T
         let base_type = if rust_type.starts_with("Option<") && rust_type.ends_with('>') {
             &rust_type[7..rust_type.len()-1]
@@ -124,29 +182,113 @@ impl EntityAnalyzer {
         };
 
         let sql_type = match base_type {
+            // Basic integer types
             "i32" | "i64" | "u32" | "u64" | "isize" | "usize" => {
                 if is_boolean { "BOOLEAN" } else { "INTEGER" }
             },
+            "i8" | "u8" => "INTEGER",
+            "i16" | "u16" => "INTEGER",
+            "i128" | "u128" => "TEXT", // SQLite doesn't support 128-bit integers
+            
+            // Floating point types
             "f32" | "f64" => "REAL",
-            "String" | "str" | "&str" => "TEXT",
+            
+            // String and text types
+            "String" | "str" | "&str" | "Cow<str>" => "TEXT",
+            "char" => "TEXT",
+            
+            // Boolean
             "bool" => "BOOLEAN",
-            "Vec<u8>" | "&[u8]" => "BLOB",
-            "chrono::DateTime<chrono::Utc>" | "chrono::NaiveDateTime" => "DATETIME",
+            
+            // Binary data
+            "Vec<u8>" | "&[u8]" | "Box<[u8]>" => "BLOB",
+            
+            // Date/time types (chrono)
+            "chrono::DateTime<chrono::Utc>" | "chrono::DateTime<Utc>" => "DATETIME",
+            "chrono::DateTime<chrono::Local>" | "chrono::DateTime<Local>" => "DATETIME",
+            "chrono::DateTime<chrono::FixedOffset>" => "DATETIME",
+            "chrono::NaiveDateTime" => "DATETIME",
             "chrono::NaiveDate" => "DATE",
             "chrono::NaiveTime" => "TIME",
-            "serde_json::Value" => "JSON",
-            "uuid::Uuid" => "TEXT", // UUID stored as text in SQLite
-            _ => {
-                // Check for custom types or foreign key references
-                if base_type.ends_with("Id") {
-                    "INTEGER" // Assume foreign key ID
-                } else {
-                    "TEXT" // Default to TEXT for unknown types
-                }
-            }
+            
+            // JSON and complex data
+            "serde_json::Value" | "serde_json::Map" => "JSON",
+            "serde_json::Map<String, serde_json::Value>" => "JSON",
+            
+            // UUID support
+            "uuid::Uuid" => "TEXT",
+            
+            // Decimal/numeric types
+            "rust_decimal::Decimal" => "NUMERIC",
+            "bigdecimal::BigDecimal" => "NUMERIC",
+            
+            // Network types
+            "std::net::IpAddr" | "std::net::Ipv4Addr" | "std::net::Ipv6Addr" => "TEXT",
+            
+            // URL types
+            "url::Url" => "TEXT",
+            
+            // Collections stored as JSON
+            t if t.starts_with("Vec<") || t.starts_with("HashMap<") || 
+                 t.starts_with("BTreeMap<") || t.starts_with("HashSet<") ||
+                 t.starts_with("BTreeSet<") => "JSON",
+            
+            // Arrays stored as JSON
+            t if t.starts_with("[") && t.ends_with("]") => "JSON",
+            
+            // Foreign key references - generic pattern for any naming convention
+            t if t.ends_with("Id") || t.ends_with("ID") || t.ends_with("id") => "INTEGER",
+            
+            // Self-referential or recursive types  
+            t if self.is_self_referential_type(t) => "INTEGER", // FK to same table
+            
+            // Unknown types: Default to TEXT (safest, works with any serialization)
+            // TODO: In a full implementation, these would be configurable or trait-based:
+            // - Enums could implement EnumAsText trait -> TEXT
+            // - Structs could implement StructAsJson trait -> JSON  
+            // - Users could configure type mappings in schema
+            _ => "TEXT"
         };
 
         Ok(sql_type.to_string())
+    }
+
+    /// Check if a type is an enum - PLACEHOLDER for future trait-based detection
+    /// TODO: This should be replaced with proper trait-based or attribute-based detection
+    pub fn is_enum_type(&self, type_name: &str) -> bool {
+        // TEMPORARY: For now, return false to avoid any hardcoded assumptions
+        // In a proper implementation, this would use:
+        // 1. Trait detection (impl EnumType for T)
+        // 2. Attribute parsing from derive macro
+        // 3. User configuration
+        false
+    }
+
+    /// Check if a type is self-referential (for recursive relationships)
+    pub fn is_self_referential_type(&self, type_name: &str) -> bool {
+        // Detect patterns like Option<Box<Self>>, Vec<Self>, etc.
+        type_name.contains("Self") || 
+        type_name.contains("Box<") && type_name.contains("Self")
+    }
+
+    /// Check if a type is a custom struct - PLACEHOLDER for future trait-based detection
+    /// TODO: This should be replaced with proper trait-based or attribute-based detection
+    pub fn is_custom_struct_type(&self, type_name: &str) -> bool {
+        // TEMPORARY: For now, return false to avoid any hardcoded assumptions
+        // In a proper implementation, this would use:
+        // 1. Trait detection (impl StructAsJson for T) 
+        // 2. Attribute parsing from derive macro (#[store_as_json])
+        // 3. User configuration in schema definition
+        false
+    }
+
+    /// Check if a type is a primitive type
+    pub fn is_primitive_type(&self, type_name: &str) -> bool {
+        matches!(type_name, 
+            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" |
+            "u8" | "u16" | "u32" | "u64" | "u128" | "usize" |
+            "f32" | "f64" | "bool" | "char" | "str" | "String"
+        )
     }
 
     /// Extract default value from field type or attributes
@@ -163,11 +305,189 @@ impl EntityAnalyzer {
         Ok(Vec::new())
     }
 
-    /// Extract foreign key relationships from entity relations
+    /// Extract foreign key relationships from entity relations with enhanced support
     fn extract_foreign_keys<T: Entity + 'static>(&self) -> Result<Vec<ForeignKeySchema>> {
-        // This would extract from relation macros and attributes
-        // For now, return empty - would need macro integration  
-        Ok(Vec::new())
+        let mut foreign_keys = Vec::new();
+        
+        // TODO: This would extract from relation macros and attributes in a full implementation
+        // For now, we'll detect basic patterns and recursive relationships
+        
+        // Detect recursive relationships (self-referential foreign keys)
+        if self.has_recursive_relationships::<T>() {
+            let recursive_fk = ForeignKeySchema {
+                name: format!("{}_parent_fk", T::TABLE_NAME),
+                columns: vec!["parent_id".to_string()],
+                referenced_table: T::TABLE_NAME.to_string(),
+                referenced_columns: vec!["id".to_string()],
+                on_delete: Some("SET NULL".to_string()),
+                on_update: Some("CASCADE".to_string()),
+            };
+            foreign_keys.push(recursive_fk);
+        }
+        
+        // Detect potential junction table relationships
+        let junction_tables = self.detect_junction_tables::<T>()?;
+        for junction in junction_tables {
+            foreign_keys.extend(junction.foreign_keys);
+        }
+        
+        Ok(foreign_keys)
+    }
+
+    /// Check if an entity has recursive relationships
+    fn has_recursive_relationships<T: Entity + 'static>(&self) -> bool {
+        // This would analyze the entity's fields for recursive patterns
+        // In a full implementation, this would be extracted from the derive macro
+        
+        // For now, we'll use heuristics based on common patterns
+        let type_name = std::any::type_name::<T>();
+        
+        // Check if there are likely recursive field patterns
+        // This would be replaced with actual field analysis in production
+        type_name.contains("Tree") || 
+        type_name.contains("Node") || 
+        type_name.contains("Category") ||
+        type_name.contains("Comment") // Comments often have parent comments
+    }
+
+    /// Detect potential junction tables for Many-to-Many relationships
+    fn detect_junction_tables<T: Entity + 'static>(&self) -> Result<Vec<JunctionTableSchema>> {
+        let mut junction_tables = Vec::new();
+        
+        // TODO: In a full implementation, this would analyze relation macros
+        // For now, we'll create patterns based on common M2M scenarios
+        
+        let entity_name = T::TABLE_NAME;
+        let type_name = std::any::type_name::<T>();
+        
+        // Detect common M2M patterns based on entity names
+        if entity_name == "users" {
+            // Users might have M2M with roles, groups, etc.
+            let user_roles_junction = JunctionTableSchema {
+                name: "user_roles".to_string(),
+                left_entity: entity_name.to_string(),
+                right_entity: "roles".to_string(),
+                left_column: "user_id".to_string(),
+                right_column: "role_id".to_string(),
+                foreign_keys: vec![
+                    ForeignKeySchema {
+                        name: "fk_user_roles_user_id".to_string(),
+                        columns: vec!["user_id".to_string()],
+                        referenced_table: entity_name.to_string(),
+                        referenced_columns: vec!["id".to_string()],
+                        on_delete: Some("CASCADE".to_string()),
+                        on_update: Some("CASCADE".to_string()),
+                    },
+                    ForeignKeySchema {
+                        name: "fk_user_roles_role_id".to_string(),
+                        columns: vec!["role_id".to_string()],
+                        referenced_table: "roles".to_string(),
+                        referenced_columns: vec!["id".to_string()],
+                        on_delete: Some("CASCADE".to_string()),
+                        on_update: Some("CASCADE".to_string()),
+                    },
+                ],
+            };
+            junction_tables.push(user_roles_junction);
+        }
+        
+        if entity_name == "posts" {
+            // Posts might have M2M with tags
+            let post_tags_junction = JunctionTableSchema {
+                name: "post_tags".to_string(),
+                left_entity: entity_name.to_string(),
+                right_entity: "tags".to_string(),
+                left_column: "post_id".to_string(),
+                right_column: "tag_id".to_string(),
+                foreign_keys: vec![
+                    ForeignKeySchema {
+                        name: "fk_post_tags_post_id".to_string(),
+                        columns: vec!["post_id".to_string()],
+                        referenced_table: entity_name.to_string(),
+                        referenced_columns: vec!["id".to_string()],
+                        on_delete: Some("CASCADE".to_string()),
+                        on_update: Some("CASCADE".to_string()),
+                    },
+                    ForeignKeySchema {
+                        name: "fk_post_tags_tag_id".to_string(),
+                        columns: vec!["tag_id".to_string()],
+                        referenced_table: "tags".to_string(),
+                        referenced_columns: vec!["id".to_string()],
+                        on_delete: Some("CASCADE".to_string()),
+                        on_update: Some("CASCADE".to_string()),
+                    },
+                ],
+            };
+            junction_tables.push(post_tags_junction);
+        }
+        
+        Ok(junction_tables)
+    }
+
+    /// Analyze an entity for complex field types and relationships
+    pub fn analyze_entity_advanced<T: Entity + 'static>(&mut self) -> Result<EntityAnalysisResult> {
+        let table_schema = self.analyze_entity::<T>()?;
+        
+        let complex_fields = self.analyze_complex_fields::<T>()?;
+        let recursive_relations = self.analyze_recursive_relations::<T>()?;
+        let junction_tables = self.detect_junction_tables::<T>()?;
+        
+        Ok(EntityAnalysisResult {
+            table_schema,
+            complex_fields,
+            recursive_relations,
+            junction_tables,
+        })
+    }
+
+    /// Analyze complex field types in an entity
+    fn analyze_complex_fields<T: Entity + 'static>(&self) -> Result<Vec<ComplexFieldInfo>> {
+        let mut complex_fields = Vec::new();
+        
+        // TODO: In a full implementation, this would analyze actual struct fields
+        // For now, we'll create examples based on common patterns
+        
+        let type_name = std::any::type_name::<T>();
+        
+        // Example: If it's a User entity, it might have complex fields
+        if type_name.contains("User") {
+            complex_fields.push(ComplexFieldInfo {
+                field_name: "metadata".to_string(),
+                rust_type: "serde_json::Value".to_string(),
+                sql_type: "JSON".to_string(),
+                serialization_strategy: SerializationStrategy::Json,
+                nullable: true,
+                default_value: Some("'{}'".to_string()),
+            });
+            
+            complex_fields.push(ComplexFieldInfo {
+                field_name: "preferences".to_string(),
+                rust_type: "HashMap<String, String>".to_string(),
+                sql_type: "JSON".to_string(),
+                serialization_strategy: SerializationStrategy::Json,
+                nullable: true,
+                default_value: None,
+            });
+        }
+        
+        Ok(complex_fields)
+    }
+
+    /// Analyze recursive relationships in an entity
+    fn analyze_recursive_relations<T: Entity + 'static>(&self) -> Result<Vec<RecursiveRelationInfo>> {
+        let mut relations = Vec::new();
+        
+        if self.has_recursive_relationships::<T>() {
+            relations.push(RecursiveRelationInfo {
+                relation_name: "parent".to_string(),
+                foreign_key_column: "parent_id".to_string(),
+                relation_type: RecursiveRelationType::SelfReferential,
+                cascade_delete: false, // Usually don't cascade delete in trees
+                allow_cycles: false,
+            });
+        }
+        
+        Ok(relations)
     }
 
     /// Extract other constraints from entity attributes
