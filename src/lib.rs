@@ -16,7 +16,7 @@ pub use query::*;
 pub use migrations::*;
 pub use types::*;
 pub use schema::*;
-pub use relations::*;
+// pub use relations::*; // Unused module
 pub use edges::*;
 pub use schema_evolution::*;
 pub use auto_migration::*;

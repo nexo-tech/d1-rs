@@ -237,7 +237,7 @@ pub struct SafetyWarning {
 }
 
 /// Types of safety warnings
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SafetyWarningType {
     DataLoss,
     PerformanceImpact,
