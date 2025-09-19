@@ -1,4 +1,5 @@
 pub mod analyzer;
+pub mod complex_schema_changes;
 pub mod data_migration;
 pub mod data_seeding;
 pub mod differ;
@@ -16,6 +17,7 @@ pub mod validator;
 pub mod zero_downtime;
 
 pub use analyzer::*;
+pub use complex_schema_changes::*;
 pub use data_migration::*;
 pub use data_seeding::*;
 pub use differ::*;

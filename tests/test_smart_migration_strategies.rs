@@ -608,7 +608,7 @@ async fn test_data_migration_type_conversion() {
     assert_eq!(data_migration.target_columns, vec!["age"]);
     
     match data_migration.transformation {
-        DataTransformation::TypeConversion { conversion_type, .. } => {
+        TransformationStrategy::TypeConversion { conversion_type, .. } => {
             assert_eq!(conversion_type, ConversionType::TextToInteger);
         }
         _ => panic!("Expected TypeConversion transformation"),
@@ -622,7 +622,7 @@ async fn test_type_conversion_strategies() {
     // Integer to Text
     let transformation = strategies.determine_type_conversion("INTEGER", "TEXT").unwrap();
     match transformation {
-        DataTransformation::TypeConversion { conversion_type, .. } => {
+        TransformationStrategy::TypeConversion { conversion_type, .. } => {
             assert_eq!(conversion_type, ConversionType::IntegerToText);
         }
         _ => panic!("Expected TypeConversion"),
@@ -631,7 +631,7 @@ async fn test_type_conversion_strategies() {
     // Text to Integer
     let transformation = strategies.determine_type_conversion("TEXT", "INTEGER").unwrap();
     match transformation {
-        DataTransformation::TypeConversion { conversion_type, validation_rules } => {
+        TransformationStrategy::TypeConversion { conversion_type, validation_rules } => {
             assert_eq!(conversion_type, ConversionType::TextToInteger);
             assert!(!validation_rules.is_empty());
         }
@@ -641,7 +641,7 @@ async fn test_type_conversion_strategies() {
     // Generic conversion
     let transformation = strategies.determine_type_conversion("BLOB", "REAL").unwrap();
     match transformation {
-        DataTransformation::TypeConversion { conversion_type, .. } => {
+        TransformationStrategy::TypeConversion { conversion_type, .. } => {
             assert_eq!(conversion_type, ConversionType::Generic);
         }
         _ => panic!("Expected TypeConversion"),

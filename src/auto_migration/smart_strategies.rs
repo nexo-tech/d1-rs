@@ -463,7 +463,7 @@ impl SmartMigrationStrategies {
                                 table_name: table_change.table_name.clone(),
                                 source_columns: Vec::new(),
                                 target_columns: vec![new_def.name.clone()],
-                                transformation: DataTransformation::SetDefault {
+                                transformation: TransformationStrategy::SetDefault {
                                     value: new_def.default_value.clone().unwrap_or_default(),
                                 },
                                 conditions: Vec::new(),
@@ -534,7 +534,7 @@ impl SmartMigrationStrategies {
     ) -> Result<DataMigration> {
         let mut source_columns = Vec::new();
         let mut target_columns = Vec::new();
-        let _transformations: Vec<DataTransformation> = Vec::new();
+        let _transformations: Vec<TransformationStrategy> = Vec::new();
 
         // Map columns between old and new schema
         for new_col in &new_schema.columns {
@@ -563,7 +563,7 @@ impl SmartMigrationStrategies {
             table_name: new_table.to_string(),
             source_columns,
             target_columns,
-            transformation: DataTransformation::CopyWithConversion {
+            transformation: TransformationStrategy::CopyWithConversion {
                 source_table: old_table.to_string(),
                 target_table: new_table.to_string(),
                 column_mappings: HashMap::new(), // TODO: Build proper mappings
@@ -592,25 +592,25 @@ impl SmartMigrationStrategies {
     }
 
     /// Determine appropriate data conversion for type changes
-    pub fn determine_type_conversion(&self, old_type: &str, new_type: &str) -> Result<DataTransformation> {
+    pub fn determine_type_conversion(&self, old_type: &str, new_type: &str) -> Result<TransformationStrategy> {
         let old_family = self.get_type_family(&self.normalize_column_type(old_type));
         let new_family = self.get_type_family(&self.normalize_column_type(new_type));
 
         match (old_family, new_family) {
             (TypeFamily::Integer, TypeFamily::Text) => {
-                Ok(DataTransformation::TypeConversion {
+                Ok(TransformationStrategy::TypeConversion {
                     conversion_type: ConversionType::IntegerToText,
                     validation_rules: vec!["CAST(column AS TEXT)".to_string()],
                 })
             }
             (TypeFamily::Text, TypeFamily::Integer) => {
-                Ok(DataTransformation::TypeConversion {
+                Ok(TransformationStrategy::TypeConversion {
                     conversion_type: ConversionType::TextToInteger,
                     validation_rules: vec!["column IS NOT NULL AND column REGEXP '^[0-9]+$'".to_string()],
                 })
             }
             _ => {
-                Ok(DataTransformation::TypeConversion {
+                Ok(TransformationStrategy::TypeConversion {
                     conversion_type: ConversionType::Generic,
                     validation_rules: Vec::new(),
                 })
@@ -701,7 +701,7 @@ pub struct DataMigration {
     pub table_name: String,
     pub source_columns: Vec<String>,
     pub target_columns: Vec<String>,
-    pub transformation: DataTransformation,
+    pub transformation: TransformationStrategy,
     pub conditions: Vec<String>,
 }
 
@@ -714,9 +714,9 @@ pub enum DataMigrationType {
     JunctionTableMigration,
 }
 
-/// Data transformation strategies
+/// Data transformation strategies for smart migration planning
 #[derive(Debug, Clone, PartialEq)]
-pub enum DataTransformation {
+pub enum TransformationStrategy {
     SetDefault { value: String },
     TypeConversion { conversion_type: ConversionType, validation_rules: Vec<String> },
     CopyWithConversion { source_table: String, target_table: String, column_mappings: HashMap<String, String> },
