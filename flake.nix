@@ -70,6 +70,7 @@ rustflags = [
   "-L", "framework=${pkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks",
   "-L", "framework=${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks", 
   "-L", "framework=${pkgs.darwin.apple_sdk.frameworks.SystemConfiguration}/Library/Frameworks",
+  "-L", "${pkgs.libiconv}/lib",
 ]
 
 [target.x86_64-apple-darwin]  
@@ -77,6 +78,7 @@ rustflags = [
   "-L", "framework=${pkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks",
   "-L", "framework=${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks",
   "-L", "framework=${pkgs.darwin.apple_sdk.frameworks.SystemConfiguration}/Library/Frameworks",
+  "-L", "${pkgs.libiconv}/lib",
 ]
 EOF
             ''}

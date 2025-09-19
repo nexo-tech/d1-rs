@@ -16,16 +16,25 @@ use std::time::Duration;
 /// - Comprehensive safety analysis  
 /// - Automatic rollback generation
 /// - Performance-aware duration estimation
+#[derive(Clone)]
 pub struct MigrationPlanner {
     /// Safety analysis configuration
     strict_mode: bool,
+    /// Allow aggressive changes in development
+    aggressive_mode: bool,
 }
 
 impl MigrationPlanner {
     pub fn new() -> Self {
         Self { 
             strict_mode: false,
+            aggressive_mode: false,
         }
+    }
+    
+    /// Enable aggressive changes for development environment
+    pub fn enable_aggressive_changes(&mut self, enabled: bool) {
+        self.aggressive_mode = enabled;
     }
 
     pub fn with_strict_mode(mut self, strict: bool) -> Self {

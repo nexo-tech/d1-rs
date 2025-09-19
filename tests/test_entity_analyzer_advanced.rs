@@ -179,8 +179,30 @@ impl Entity for TestTreeNode {
     fn update(_key: Self::PrimaryKey) -> Self::UpdateBuilder { TestTreeNodeUpdateBuilder }
     fn boolean_fields() -> &'static [&'static str] { &["is_active"] }
 
+    /// REVOLUTIONARY: Override to provide recursive foreign key information
+    /// This demonstrates the trait-based approach eliminating hardcoded strings
+    fn recursive_foreign_key() -> Option<crate::auto_migration::introspector::ForeignKeySchema> {
+        use crate::auto_migration::introspector::ForeignKeySchema;
+        Some(ForeignKeySchema {
+            name: format!("{}_parent_fk", Self::TABLE_NAME),
+            columns: vec!["parent_id".to_string()],
+            referenced_table: Self::TABLE_NAME.to_string(),
+            referenced_columns: vec!["id".to_string()],
+            on_delete: Some("SET NULL".to_string()),
+            on_update: Some("CASCADE".to_string()),
+        })
+    }
+
     async fn find(_db: &D1Client, _key: Self::PrimaryKey) -> Result<Option<Self>> { unimplemented!() }
     async fn delete(_db: &D1Client, _key: Self::PrimaryKey) -> Result<()> { unimplemented!() }
+}
+
+/// REVOLUTIONARY: Implement RecursiveEntity trait for compile-time detection
+/// Eliminates hardcoded string matching in favor of type-safe trait detection
+impl RecursiveEntity for TestTreeNode {
+    const PARENT_COLUMN: &'static str = "parent_id";
+    const DELETE_STRATEGY: RecursiveDeletionStrategy = RecursiveDeletionStrategy::SetNull;
+    const ALLOWS_CYCLES: bool = false;
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
