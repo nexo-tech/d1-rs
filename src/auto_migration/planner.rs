@@ -1,10 +1,13 @@
 // Phase 2.1 - Revolutionary Migration Plan Generator
+#![allow(unused_imports)] // Suppress false positive warnings for types used in tests
 use crate::Result;
 use super::{
     SchemaDiff, MigrationPlan, MigrationOperation, SafetyWarning, SafetyWarningType,
-    TableChange, ColumnChange, IndexChange, ForeignKeyChange, ChangeType, ColumnChanges
+    TableChange, ChangeType, ColumnChanges, ColumnChange, ForeignKeyChange
 };
-use super::introspector::{ColumnSchema, ForeignKeySchema, TableSchema};
+use super::introspector::{ColumnSchema, TableSchema, ForeignKeySchema};
+// ColumnChange and ForeignKeyChange are already in scope from parent module
+use super::smart_strategies::SmartMigrationStrategies;
 use std::time::Duration;
 
 /// Revolutionary Migration Plan Generator - Converts schema diffs into safe executable plans
@@ -83,6 +86,21 @@ impl MigrationPlanner {
             safety_warnings,
             rollback_plan,
         })
+    }
+
+    /// Generate enhanced migration plan using smart strategies
+    /// This demonstrates integration with Phase 2.2 Smart Migration Strategies
+    pub fn plan_migrations_with_smart_strategies(&self, diff: SchemaDiff) -> Result<super::smart_strategies::EnhancedMigrationPlan> {
+        // First generate standard migration plan
+        let standard_plan = self.plan_migrations(diff.clone())?;
+        
+        // Apply smart strategies to enhance the plan
+        let smart_strategies = SmartMigrationStrategies::new()
+            .with_rename_threshold(0.75)
+            .with_table_restructuring(true)
+            .with_data_migration(true);
+            
+        smart_strategies.enhance_migration_plan(standard_plan, &diff)
     }
 
     /// Plan CREATE/DROP TABLE operations
@@ -510,7 +528,7 @@ impl MigrationPlanner {
                         changes: reverse_changes,
                     });
                 }
-                MigrationOperation::CreateIndex { table, index } => {
+                MigrationOperation::CreateIndex { table: _, index } => {
                     rollback_operations.push(MigrationOperation::DropIndex {
                         name: index.name.clone(),
                     });

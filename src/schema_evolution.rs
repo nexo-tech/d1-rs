@@ -265,14 +265,14 @@ impl SchemaOperation {
 /// Enhanced schema migration builder with relation support
 pub struct SchemaMigration {
     operations: Vec<SchemaOperation>,
-    name: String,
+    _name: String,
 }
 
 impl SchemaMigration {
     pub fn new(name: String) -> Self {
         Self {
             operations: Vec::new(),
-            name,
+            _name: name,
         }
     }
     
@@ -455,7 +455,7 @@ impl ColumnMigrationBuilder {
     }
     
     /// Add foreign key reference (simpler than manual foreign key)
-    pub fn references(mut self, table: &str, column: &str) -> Self {
+    pub fn references(self, _table: &str, _column: &str) -> Self {
         // This would be stored and used to generate foreign key constraint
         self
     }

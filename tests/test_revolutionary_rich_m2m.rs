@@ -183,7 +183,7 @@ async fn test_rich_m2m_crud_operations() {
         .await
         .expect("Failed to create user-admin relationship");
         
-    let user_editor_role = UserRole::create()
+    let _user_editor_role = UserRole::create()
         .set_user_id(regular_user.id)
         .set_role_id(editor_role.id)
         .set_granted_by("admin@example.com".to_string())

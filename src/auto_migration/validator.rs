@@ -14,7 +14,7 @@ impl MigrationValidator {
 
     /// Validate migration plan for safety and consistency
     /// TODO: Implement in Phase 3.1
-    pub fn validate_migrations(&self, plan: &MigrationPlan) -> Result<()> {
+    pub fn validate_migrations(&self, _plan: &MigrationPlan) -> Result<()> {
         // Placeholder - will implement comprehensive validation
         Ok(())
     }

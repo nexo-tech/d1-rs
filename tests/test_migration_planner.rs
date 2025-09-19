@@ -1,5 +1,4 @@
 use d1_rs::auto_migration::*;
-use d1_rs::*;
 
 /// Comprehensive test suite for Phase 2.1 - Migration Plan Generator
 /// Tests the conversion of SchemaDiff objects into executable MigrationPlan objects
@@ -927,7 +926,7 @@ async fn test_plan_preserves_operation_order() {
             MigrationOperation::AddColumn { table, column } if table == "posts" && column.name == "category_id" => {
                 add_column_pos = Some(i);
             }
-            MigrationOperation::CreateIndex { table, index } if table == "posts" => {
+            MigrationOperation::CreateIndex { table, index: _ } if table == "posts" => {
                 create_index_pos = Some(i);
             }
             MigrationOperation::AddForeignKey { constraint } if constraint.referenced_table == "categories" => {

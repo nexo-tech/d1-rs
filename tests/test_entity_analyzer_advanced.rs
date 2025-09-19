@@ -1,6 +1,5 @@
-use d1_rs::auto_migration::{EntityAnalyzer, ComplexFieldInfo, RecursiveRelationInfo, SerializationStrategy, RecursiveRelationType};
+use d1_rs::auto_migration::{EntityAnalyzer, SerializationStrategy, RecursiveRelationType};
 use d1_rs::*;
-use std::marker::PhantomData;
 
 /// Comprehensive test suite for Phase 1.2 EntityAnalyzer enhancements
 /// Tests complex field types, recursive relationships, and M2M junction tables

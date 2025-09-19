@@ -1,5 +1,5 @@
-use crate::{Result, D1RsError, Entity};
-use crate::auto_migration::introspector::{TableSchema, ColumnSchema, IndexSchema, ForeignKeySchema, ColumnConstraint, DatabaseSchema};
+use crate::{Result, Entity};
+use crate::auto_migration::introspector::{TableSchema, ColumnSchema, IndexSchema, ForeignKeySchema, DatabaseSchema};
 use std::collections::HashMap;
 use std::any::TypeId;
 use std::marker::PhantomData;
@@ -255,7 +255,7 @@ impl EntityAnalyzer {
 
     /// Check if a type is an enum - PLACEHOLDER for future trait-based detection
     /// TODO: This should be replaced with proper trait-based or attribute-based detection
-    pub fn is_enum_type(&self, type_name: &str) -> bool {
+    pub fn is_enum_type(&self, _type_name: &str) -> bool {
         // TEMPORARY: For now, return false to avoid any hardcoded assumptions
         // In a proper implementation, this would use:
         // 1. Trait detection (impl EnumType for T)
@@ -273,7 +273,7 @@ impl EntityAnalyzer {
 
     /// Check if a type is a custom struct - PLACEHOLDER for future trait-based detection
     /// TODO: This should be replaced with proper trait-based or attribute-based detection
-    pub fn is_custom_struct_type(&self, type_name: &str) -> bool {
+    pub fn is_custom_struct_type(&self, _type_name: &str) -> bool {
         // TEMPORARY: For now, return false to avoid any hardcoded assumptions
         // In a proper implementation, this would use:
         // 1. Trait detection (impl StructAsJson for T) 
@@ -292,7 +292,7 @@ impl EntityAnalyzer {
     }
 
     /// Extract default value from field type or attributes
-    fn extract_default_value(&self, _field_type: &str) -> Result<Option<String>> {
+    fn _extract_default_value(&self, _field_type: &str) -> Result<Option<String>> {
         // This would normally be extracted from field attributes like #[default = "value"]
         // For now, return None - would need macro integration
         Ok(None)
@@ -358,7 +358,7 @@ impl EntityAnalyzer {
         // For now, we'll create patterns based on common M2M scenarios
         
         let entity_name = T::TABLE_NAME;
-        let type_name = std::any::type_name::<T>();
+        let _type_name = std::any::type_name::<T>();
         
         // Detect common M2M patterns based on entity names
         if entity_name == "users" {

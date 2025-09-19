@@ -656,7 +656,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
 
 /// Query builder for edges
 pub struct EdgeQueryBuilder<Parent: Entity, Child: Entity> {
-    parent_id: serde_json::Value,
+    _parent_id: serde_json::Value,
     child_query: Child::QueryBuilder,
     _phantom: PhantomData<Parent>,
 }
@@ -664,7 +664,7 @@ pub struct EdgeQueryBuilder<Parent: Entity, Child: Entity> {
 impl<Parent: Entity, Child: Entity> EdgeQueryBuilder<Parent, Child> {
     pub fn new(parent_id: serde_json::Value, child_query: Child::QueryBuilder) -> Self {
         Self {
-            parent_id,
+            _parent_id: parent_id,
             child_query,
             _phantom: PhantomData,
         }

@@ -1,6 +1,5 @@
 use d1_rs::auto_migration::{SchemaIntrospector, EntityAnalyzer, SchemaDiffer, DatabaseSchema, TableSchema, ColumnSchema};
 use d1_rs::*;
-use std::marker::PhantomData;
 
 /// Production-quality integration test for Phase 1: Core Infrastructure
 /// Tests the complete pipeline: Introspection → Entity Analysis → Schema Comparison

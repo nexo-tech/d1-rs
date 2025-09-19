@@ -301,7 +301,7 @@ async fn test_edge_case_complex_junction_scenarios() {
         .await
         .expect("Failed to create junction 1");
     
-    let junction2 = PostCategory::create()
+    let _junction2 = PostCategory::create()
         .set_post_id(post.id)
         .set_category_id(category2.id)
         .set_assigned_by("editor".to_string())

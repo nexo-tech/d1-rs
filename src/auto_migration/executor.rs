@@ -14,7 +14,7 @@ impl MigrationExecutor {
 
     /// Execute migration plan on the database
     /// TODO: Implement in Phase 2+
-    pub async fn execute_migrations(&self, db: &D1Client, plan: MigrationPlan) -> Result<MigrationResult> {
+    pub async fn execute_migrations(&self, _db: &D1Client, _plan: MigrationPlan) -> Result<MigrationResult> {
         // Placeholder - will implement safe migration execution
         Ok(MigrationResult {
             migrations_applied: vec![],

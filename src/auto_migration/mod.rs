@@ -8,6 +8,7 @@ pub mod rollback;
 pub mod data_migration;
 pub mod safety;
 pub mod reporting;
+pub mod smart_strategies;
 
 pub use introspector::*;
 pub use analyzer::*;
@@ -19,6 +20,7 @@ pub use rollback::*;
 pub use data_migration::*;
 pub use safety::*;
 pub use reporting::*;
+pub use smart_strategies::*;
 
 use crate::{D1Client, Result};
 

@@ -272,7 +272,7 @@ async fn test_new_associations_api() {
         .await
         .expect("Failed to create post1");
 
-    let post2 = Post::create()
+    let _post2 = Post::create()
         .set_user_id(user.id)
         .set_title("Advanced Rust Patterns".to_string())
         .set_content("Let's explore advanced concepts...".to_string())
@@ -464,7 +464,7 @@ async fn test_complex_predicates() {
         .await
         .expect("Failed to create active user");
 
-    let inactive_user = User::create()
+    let _inactive_user = User::create()
         .set_email("inactive@example.com".to_string())
         .set_name("Inactive User".to_string())
         .set_is_active(false)
@@ -515,7 +515,7 @@ async fn test_relation_based_filtering() {
         .await
         .expect("Failed to create author");
 
-    let user_without_posts = User::create()
+    let _user_without_posts = User::create()
         .set_email("reader@example.com".to_string())
         .set_name("Reader".to_string())
         .set_is_active(true)

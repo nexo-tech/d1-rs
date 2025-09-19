@@ -13,13 +13,14 @@ pub mod auto_migration;
 
 pub use db::*;
 pub use query::*;
-pub use migrations::*;
+// Specific exports from migrations to avoid conflicts
+pub use migrations::{MigrationRunner, CreateTableMigration, Migration};
 pub use types::*;
 pub use schema::*;
 // pub use relations::*; // Unused module
 pub use edges::*;
-pub use schema_evolution::*;
-pub use auto_migration::*;
+// pub use schema_evolution::*; // Use specific exports to avoid conflicts
+// pub use auto_migration::*; // Selective exports to avoid conflicts
 
 pub use async_trait::async_trait;
 use std::fmt;
@@ -98,6 +99,7 @@ impl std::error::Error for D1RsError {}
 
 pub type Result<T> = std::result::Result<T, D1RsError>;
 
+#[allow(async_fn_in_trait)]
 pub trait Entity: Sized + serde::Serialize + serde::de::DeserializeOwned {
     type PrimaryKey: Clone + fmt::Debug + serde::Serialize + serde::de::DeserializeOwned;
     type QueryBuilder: QueryBuilder<Self>;
@@ -160,6 +162,7 @@ pub trait Entity: Sized + serde::Serialize + serde::de::DeserializeOwned {
     async fn delete(db: &D1Client, key: Self::PrimaryKey) -> Result<()>;
 }
 
+#[allow(async_fn_in_trait)]
 pub trait QueryBuilder<T: Entity> {
     async fn all(self, db: &D1Client) -> Result<Vec<T>>;
     async fn first(self, db: &D1Client) -> Result<Option<T>>;
@@ -170,10 +173,12 @@ pub trait QueryBuilder<T: Entity> {
     fn apply_relation_constraint(self, field: &str, value: serde_json::Value) -> Self;
 }
 
+#[allow(async_fn_in_trait)]
 pub trait CreateBuilder<T: Entity> {
     async fn save(self, db: &D1Client) -> Result<T>;
 }
 
+#[allow(async_fn_in_trait)]
 pub trait UpdateBuilder<T: Entity> {
     async fn save(self, db: &D1Client) -> Result<T>;
 }

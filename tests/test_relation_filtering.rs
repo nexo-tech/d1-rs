@@ -2,7 +2,6 @@
 use chrono::{DateTime, Utc};
 use d1_rs::*;
 use d1_rs::schema_evolution::SchemaMigration;
-use d1_rs::edges::Predicate;
 use serde::{Deserialize, Serialize};
 
 // Test entities
@@ -79,14 +78,14 @@ async fn test_relation_predicate_construction() {
     
     // TYPE-SAFE relation existence check - NO STRING LITERALS!
     // Test that we can use the generated has_posts() method on QueryBuilder
-    let query_with_posts = User::query().has_posts();
+    let _query_with_posts = User::query().has_posts();
     
     // For testing purposes, let's verify the basic structure works
     // In a real scenario, this would generate proper SQL with EXISTS subqueries
     println!("Generated type-safe has_posts query builder");
     
     // TYPE-SAFE relation with conditions - NO STRING LITERALS!  
-    let query_with_published_posts = User::query().has_posts_with(|posts_query| {
+    let _query_with_published_posts = User::query().has_posts_with(|posts_query| {
         // This would use type-safe methods on Post::QueryBuilder
         posts_query.where_is_published_eq(true)
     });
@@ -106,7 +105,7 @@ async fn test_relation_predicate_sql_generation() {
     // The new system generates methods like has_posts() directly on QueryBuilder
     
     // Create a query builder with type-safe relation predicate
-    let query_builder = User::query().has_posts();
+    let _query_builder = User::query().has_posts();
     
     // This demonstrates that the relation predicate method exists and is callable
     // The actual SQL generation happens when .all(), .first(), or .count() is called
@@ -131,7 +130,7 @@ async fn test_relation_filtering_integration() {
         .await
         .expect("Failed to create author");
 
-    let user_without_posts = User::create()
+    let _user_without_posts = User::create()
         .set_email("reader@example.com".to_string())
         .set_name("Reader".to_string())
         .set_is_active(true)
@@ -167,11 +166,11 @@ async fn test_relation_filtering_integration() {
     // This demonstrates the new compile-time safe API
     
     // ✅ Type-safe: users who have posts (compile-time validated)
-    let users_with_posts_query = User::query().has_posts();
+    let _users_with_posts_query = User::query().has_posts();
     println!("Created type-safe query for users with posts");
     
     // ✅ Type-safe: users who have published posts (compile-time validated)
-    let users_with_published_posts_query = User::query().has_posts_with(|posts_query| {
+    let _users_with_published_posts_query = User::query().has_posts_with(|posts_query| {
         posts_query.where_is_published_eq(true)
     });
     println!("Created type-safe query for users with published posts");

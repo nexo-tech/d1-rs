@@ -1,5 +1,4 @@
 use d1_rs::auto_migration::{SchemaDiffer, DatabaseSchema, TableSchema, ColumnSchema, IndexSchema, ForeignKeySchema, ChangeType};
-use d1_rs::*;
 
 #[tokio::test]
 async fn test_empty_schemas_no_diff() {

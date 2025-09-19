@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 /// Intelligently compares current database state vs desired entity schemas
 pub struct SchemaDiffer {
     /// Settings for comparison behavior
-    strict_mode: bool,
+    _strict_mode: bool,
     /// Whether to detect column renames vs drop+add
     detect_renames: bool,
     /// Threshold for considering a rename (0.0-1.0)
@@ -16,7 +16,7 @@ pub struct SchemaDiffer {
 impl SchemaDiffer {
     pub fn new() -> Self {
         Self {
-            strict_mode: false,
+            _strict_mode: false,
             detect_renames: true,
             rename_similarity_threshold: 0.7,
         }
@@ -25,7 +25,7 @@ impl SchemaDiffer {
     /// Create a new differ with strict mode (zero tolerance for unsafe changes)
     pub fn strict() -> Self {
         Self {
-            strict_mode: true,
+            _strict_mode: true,
             detect_renames: true,
             rename_similarity_threshold: 0.8,
         }
@@ -372,7 +372,7 @@ impl SchemaDiffer {
     }
 
     /// Detect potential column renames using similarity analysis
-    fn detect_column_renames(&self, mut changes: Vec<ColumnChange>) -> Vec<ColumnChange> {
+    fn detect_column_renames(&self, changes: Vec<ColumnChange>) -> Vec<ColumnChange> {
         let mut final_changes = Vec::new();
         let mut removals = Vec::new();
         let mut additions = Vec::new();
@@ -464,7 +464,7 @@ impl SchemaDiffer {
 
         let len1 = s1.len();
         let len2 = s2.len();
-        let max_len = len1.max(len2) as f32;
+        let _max_len = len1.max(len2) as f32;
 
         // Simple character overlap calculation
         let chars1: HashSet<char> = s1.chars().collect();

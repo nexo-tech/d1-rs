@@ -135,13 +135,13 @@ async fn demonstrate_new_api() -> Result<()> {
         .save(&db)
         .await?;
 
-    let tech_category = Category::create()
+    let _tech_category = Category::create()
         .set_name("Technology".to_string())
         .set_description(Some("Tech articles".to_string()))
         .save(&db)
         .await?;
 
-    let tutorial_category = Category::create()
+    let _tutorial_category = Category::create()
         .set_name("Tutorials".to_string())
         .set_description(Some("How-to articles".to_string()))
         .save(&db)

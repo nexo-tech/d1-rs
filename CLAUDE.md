@@ -17,6 +17,23 @@ d1-rs is a type-safe ORM for Cloudflare D1 with SQLite testing support. It uses 
 - **Zero-copy optimizations where possible**
 - **Proper SQL generation** - Use database features, not Rust loops for aggregations
 
+## 🚨 CRITICAL: Zero Warnings Policy
+
+**The codebase MUST have ZERO compilation warnings at all times:**
+
+- **Before committing any code** - Run `cargo check` and ensure no warnings
+- **All warnings must be fixed** - No warnings of any type are acceptable
+- **Tests must pass cleanly** - Run `just test` and ensure clean output without warnings
+- **Lint-clean code only** - Use `cargo clippy` if available and fix all issues
+- **Quality gates** - All code must compile and test without warnings before merge
+
+**Common warning types to avoid:**
+- Unused imports, variables, or functions
+- Unnecessary mutable variables
+- Ambiguous glob re-exports
+- Dead code or unreachable patterns
+- Type inference failures
+
 ## Development Commands
 
 ### Testing

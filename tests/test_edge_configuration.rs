@@ -2,7 +2,7 @@
 /// This demonstrates d1-rs's superior type-safe edge configuration vs Ent-Go
 use chrono::{DateTime, Utc};
 use d1_rs::*;
-use d1_rs::edges::{EdgeConfig, HasEdges};
+use d1_rs::edges::HasEdges;
 use serde::{Deserialize, Serialize};
 
 // Test entities for edge configuration
