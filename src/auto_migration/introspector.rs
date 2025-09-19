@@ -270,7 +270,7 @@ impl<'a> SchemaIntrospector<'a> {
 }
 
 /// Complete database schema representation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct DatabaseSchema {
     pub tables: Vec<TableSchema>,
 }
@@ -286,7 +286,7 @@ impl DatabaseSchema {
 }
 
 /// Table schema representation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct TableSchema {
     pub name: String,
     pub columns: Vec<ColumnSchema>,
@@ -310,7 +310,7 @@ impl TableSchema {
 }
 
 /// Column schema representation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ColumnSchema {
     pub name: String,
     pub column_type: String,
@@ -323,14 +323,14 @@ pub struct ColumnSchema {
 }
 
 /// Column-level constraints
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum ColumnConstraint {
     Check { expression: String },
     References { table: String, column: String },
 }
 
 /// Index schema representation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct IndexSchema {
     pub name: String,
     pub columns: Vec<String>,
@@ -339,7 +339,7 @@ pub struct IndexSchema {
 }
 
 /// Foreign key constraint representation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ForeignKeySchema {
     pub name: String,
     pub columns: Vec<String>,
@@ -350,7 +350,7 @@ pub struct ForeignKeySchema {
 }
 
 /// General constraint representation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ConstraintSchema {
     pub name: String,
     pub constraint_type: ConstraintType,
@@ -358,7 +358,7 @@ pub struct ConstraintSchema {
 }
 
 /// Types of database constraints
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum ConstraintType {
     PrimaryKey,
     Unique,

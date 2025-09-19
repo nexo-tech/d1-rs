@@ -151,6 +151,8 @@ pub enum D1RsError {
         target_table: String,
         suggestion: String,
     },
+    // Automatic migration system errors
+    AutoMigration(String),
 }
 
 impl fmt::Display for D1RsError {
@@ -184,6 +186,10 @@ impl fmt::Display for D1RsError {
             D1RsError::InvalidForeignKey { relation, foreign_key, target_table, suggestion } => {
                 write!(f, "Invalid foreign key '{}' for relation '{}' (target table: '{}'). Suggestion: {}", 
                        foreign_key, relation, target_table, suggestion)
+            }
+            
+            D1RsError::AutoMigration(msg) => {
+                write!(f, "Automatic migration error: {}", msg)
             }
         }
     }
