@@ -295,13 +295,16 @@ impl TypeSafeColumnSchema {
             crate::FieldType::Blob => TypeCategory::Binary,
         };
         
+        // Check nullability before moving constraints
+        let is_nullable = constraints.iter().all(|c| !matches!(c, ColumnConstraint::NotNull));
+        
         Self {
             name: Box::leak(name.to_string().into_boxed_str()), // Convert to &'static str
             rust_type_id: TypeId::of::<String>(), // Default TypeId for now
             sql_type,
             type_category,
             constraints,
-            is_nullable: constraints.iter().all(|c| !matches!(c, ColumnConstraint::NotNull)),
+            is_nullable,
             is_special: is_boolean,
         }
     }
