@@ -473,8 +473,8 @@ mod tests {
         let binary_field = field_defs.iter().find(|f| f.name == "binary_data").unwrap();
         assert_eq!(binary_field.field_type.to_sql_type(), "BLOB");
         
-        // Test SQL type name
-        assert_eq!(Vec::<u8>::sql_type_name(), "BLOB");
+        // Test SQL type name (using SqlType trait explicitly)
+        assert_eq!(<Vec<u8> as d1_rs::SqlType>::sql_type_name(), "BLOB");
         
         // Test null handling
         let null_value = serde_json::Value::Null;
