@@ -127,14 +127,22 @@ User::query()
 
 ### Generic Ordering
 
-Use the generic `order_by` method for dynamic ordering:
+Use type-safe ordering methods (compile-time validated, no string literals!):
 
 ```rust
-let order_column = "name";
-let ascending = true;
+// Type-safe ordering - impossible to have typos!
+User::query()
+    .order_by_name_asc()    // Ascending by name
+    .all(&db).await?;
 
 User::query()
-    .order_by(order_column, if ascending { "ASC" } else { "DESC" })
+    .order_by_created_at_desc()  // Descending by created_at
+    .all(&db).await?;
+
+// Chaining multiple ordering methods
+User::query()
+    .order_by_is_active_desc()   // Active users first
+    .order_by_name_asc()         // Then by name alphabetically
     .all(&db).await?;
 ```
 

@@ -125,9 +125,9 @@ async fn test_query_ordering_and_limit() {
     let db = setup_test_db().await;
     seed_test_data(&db).await;
     
-    // Query posts ordered by views
+    // Query posts ordered by views (using type-safe method - no string literals!)
     let posts = TestPost::query()
-        .order_by("views", "DESC")
+        .order_by_views_desc()
         .limit(2)
         .all(&db)
         .await

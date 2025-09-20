@@ -103,11 +103,9 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 self
             }
 
-            pub fn order_by(mut self, column: &str, direction: &str) -> Self {
-                let asc = direction.to_uppercase() != "DESC";
-                self.query.order_by(column, asc);
-                self
-            }
+            // REMOVED: Generic order_by method - VIOLATES zero-string-literals policy!
+            // Use type-safe methods instead: order_by_field_name_asc(), order_by_field_name_desc()
+            // This ensures compile-time validation and prevents typos
 
             #query_methods
         }
@@ -132,6 +130,8 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 db.execute_returning_count(&sql, &params).await
             }
             
+            /// INTERNAL: Used by edges system - field names are compile-time safe from edge definitions
+            #[doc(hidden)]
             fn apply_relation_constraint(mut self, field: &str, value: serde_json::Value) -> Self {
                 self.query.where_clause(field, "=", value);
                 self

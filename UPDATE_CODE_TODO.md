@@ -57,10 +57,10 @@ After comprehensive analysis of the d1-rs ORM codebase, I've identified **severe
   - [x] Add derive macro support for `field_definitions()` generation
 
 #### **Phase 1.2: Fix Derive Macro String Literals**  
-- [ ] **File:** `d1-rs_derive/src/lib.rs:101,131`
-  - [ ] Remove string literals from `order_by()` method generation
-  - [ ] Use compile-time field names via `stringify!` macro
-  - [ ] Ensure all generated methods are fully type-safe
+- [x] **File:** `d1-rs_derive/src/lib.rs:101,131`
+  - [x] Remove string literals from `order_by()` method generation
+  - [x] Use compile-time field names via `stringify!` macro
+  - [x] Ensure all generated methods are fully type-safe
 
 #### **Phase 1.3: Fix Relations Module**
 - [ ] **File:** `src/relations.rs:72-99` 
