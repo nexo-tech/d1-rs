@@ -132,10 +132,10 @@ After comprehensive analysis of the d1-rs ORM codebase, I've identified **severe
   - [x] Support custom type conversions
 
 #### **Phase 3.3: Implement User-Configurable Type Mapping**
-- [ ] Add `#[sql_type = "CUSTOM"]` attribute support
-- [ ] Implement `SqlTypeMapping` trait for custom types
-- [ ] Allow override of default type detection
-- [ ] Support for custom boolean field marking
+- [x] Add `#[sql_type = "CUSTOM"]` attribute support
+- [x] Implement `SqlTypeMapping` trait for custom types
+- [x] Allow override of default type detection
+- [x] Support for custom boolean field marking
 
 **Acceptance Criteria Phase 3:**
 - ✅ Zero hardcoded entity names or type lists

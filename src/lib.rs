@@ -41,7 +41,7 @@ pub struct FieldDefinition {
 }
 
 /// Comprehensive field type mapping for schema generation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FieldType {
     Integer,
     BigInteger,
@@ -136,6 +136,68 @@ pub trait TypeMappingRegistry {
     
     /// Get the field type for a custom mapped type
     fn get_field_type(type_name: &str) -> Option<FieldType>;
+}
+
+/// REVOLUTIONARY: SqlTypeMapping trait for Phase 3.3 - Complete user control!
+/// This allows users to override ANY aspect of type detection and conversion
+pub trait SqlTypeMapping {
+    /// The Rust type this mapping applies to
+    type RustType: serde::Serialize + serde::de::DeserializeOwned;
+    
+    /// SQL type string for DDL generation
+    const SQL_TYPE: &'static str;
+    
+    /// Field type for schema introspection
+    const FIELD_TYPE: FieldType;
+    
+    /// Whether this type should be treated as nullable by default
+    const NULLABLE_BY_DEFAULT: bool = false;
+    
+    /// Whether this type should be treated as a boolean field
+    const IS_BOOLEAN_TYPE: bool = false;
+    
+    /// Custom conversion to SQL value
+    fn to_sql_value(value: &Self::RustType) -> serde_json::Value {
+        // Default implementation using serde
+        serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
+    }
+    
+    /// Custom conversion from SQL value
+    fn from_sql_value(value: serde_json::Value) -> Result<Self::RustType> {
+        // Default implementation using serde
+        serde_json::from_value(value)
+            .map_err(|e| D1RsError::SerializationError(e.to_string()))
+    }
+    
+    /// Override default type detection completely
+    fn override_type_detection() -> bool {
+        false // Default: use standard detection
+    }
+}
+
+/// REVOLUTIONARY: Custom boolean field marking - NO MORE HEURISTICS!
+/// Users can mark ANY field as boolean regardless of Rust type
+pub trait CustomBooleanFields {
+    /// List of field names that should be treated as boolean in SQL
+    const BOOLEAN_FIELD_NAMES: &'static [&'static str];
+    
+    /// Check if a field should be treated as boolean
+    fn is_boolean_field(field_name: &str) -> bool {
+        Self::BOOLEAN_FIELD_NAMES.contains(&field_name)
+    }
+}
+
+/// REVOLUTIONARY: Default type detection override system
+/// Allows users to completely replace the built-in type detection
+pub trait DefaultTypeDetectionOverride {
+    /// Override the default field type for any Rust type
+    fn override_field_type(rust_type_name: &str) -> Option<FieldType>;
+    
+    /// Override the default SQL type for any Rust type
+    fn override_sql_type(rust_type_name: &str) -> Option<&'static str>;
+    
+    /// Override the default nullability for any Rust type
+    fn override_nullable(rust_type_name: &str) -> Option<bool>;
 }
 
 /// NEW: Trait for entities that provide compile-time schema information
