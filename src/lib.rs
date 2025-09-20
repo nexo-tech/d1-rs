@@ -10,6 +10,7 @@ pub mod relations;
 pub mod edges;
 pub mod schema_evolution;
 pub mod auto_migration;
+pub mod type_safe_migrations;
 
 pub use db::*;
 pub use query::*;
@@ -21,6 +22,8 @@ pub use schema::*;
 pub use edges::*;
 // pub use schema_evolution::*; // Use specific exports to avoid conflicts
 // pub use auto_migration::*; // Selective exports to avoid conflicts
+// Phase 4.3B: Type-safe migrations exports
+pub use type_safe_migrations::*;
 
 pub use async_trait::async_trait;
 use std::fmt;

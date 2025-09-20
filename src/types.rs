@@ -96,6 +96,56 @@ impl SqlType for bool {
     }
 }
 
+impl SqlType for f32 {
+    fn to_sql_value(&self) -> Value {
+        serde_json::json!(*self)
+    }
+
+    fn from_sql_value(value: &Value) -> Result<Self> {
+        match value {
+            Value::Number(n) => {
+                if let Some(f) = n.as_f64() {
+                    Ok(f as f32)
+                } else if let Some(i) = n.as_i64() {
+                    Ok(i as f32)
+                } else {
+                    Err(D1RsError::SerializationError("Expected number".to_string()))
+                }
+            },
+            _ => Err(D1RsError::SerializationError("Expected number for f32".to_string())),
+        }
+    }
+
+    fn sql_type_name() -> &'static str {
+        "REAL"
+    }
+}
+
+impl SqlType for f64 {
+    fn to_sql_value(&self) -> Value {
+        serde_json::json!(*self)
+    }
+
+    fn from_sql_value(value: &Value) -> Result<Self> {
+        match value {
+            Value::Number(n) => {
+                if let Some(f) = n.as_f64() {
+                    Ok(f)
+                } else if let Some(i) = n.as_i64() {
+                    Ok(i as f64)
+                } else {
+                    Err(D1RsError::SerializationError("Expected number".to_string()))
+                }
+            },
+            _ => Err(D1RsError::SerializationError("Expected number for f64".to_string())),
+        }
+    }
+
+    fn sql_type_name() -> &'static str {
+        "REAL"
+    }
+}
+
 impl SqlType for DateTime<Utc> {
     fn to_sql_value(&self) -> Value {
         Value::String(self.format("%Y-%m-%d %H:%M:%S").to_string())
