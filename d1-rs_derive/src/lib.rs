@@ -3,7 +3,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, DeriveInput, Fields, Type, Field, Attribute};
 
-#[proc_macro_derive(Entity, attributes(table, primary_key, unique, not_null, edge))]
+#[proc_macro_derive(Entity, attributes(table, primary_key, unique, not_null, edge, sql_type, foreign_key, field_config))]
 pub fn derive_entity(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
@@ -564,28 +564,11 @@ fn generate_field_definitions(fields: &syn::punctuated::Punctuated<Field, syn::t
             // Determine if this is the primary key
             let is_primary_key = field_ident == primary_key_field;
             
-            // Analyze field type using syn - NO STRING MATCHING!
-            let (field_type, nullable, auto_increment) = analyze_field_type(&field.ty, is_primary_key);
+            // REVOLUTIONARY: User-configurable field type analysis
+            let (field_type, nullable, auto_increment) = analyze_field_type_with_attributes(&field.ty, &field.attrs, is_primary_key);
             
-            // Check for foreign key based on field name pattern (but no hardcoded entity types!)
-            let foreign_key = if field_name.ends_with("_id") && !is_primary_key {
-                // Extract the referenced table name from the field name
-                let referenced_table = field_name.trim_end_matches("_id");
-                let table_name = format!("{}s", referenced_table); // Simple pluralization
-                
-                quote! {
-                    Some(d1_rs::ForeignKeyDefinition {
-                        name: format!("fk_{}_{}", #field_name_lit, #table_name),
-                        local_column: #field_name_lit.to_string(),
-                        referenced_table: #table_name.to_string(),
-                        referenced_column: "id".to_string(),
-                        on_delete: Some("CASCADE".to_string()),
-                        on_update: Some("CASCADE".to_string()),
-                    })
-                }
-            } else {
-                quote! { None }
-            };
+            // REVOLUTIONARY: User-configurable foreign key detection - NO HARDCODED PATTERNS!
+            let foreign_key = extract_foreign_key_from_attributes(&field.attrs, &field_name, is_primary_key);
             
             Some(quote! {
                 d1_rs::FieldDefinition {
@@ -606,9 +589,20 @@ fn generate_field_definitions(fields: &syn::punctuated::Punctuated<Field, syn::t
     }
 }
 
-/// REVOLUTIONARY: Analyze field type using syn AST - NO STRING MATCHING EVER!
-/// Uses proper Rust type system integration with syn::Type analysis
-fn analyze_field_type(ty: &Type, is_primary_key: bool) -> (TokenStream2, bool, bool) {
+/// REVOLUTIONARY: User-configurable field type analysis with attribute support
+/// Users can override any field type with #[sql_type = "CUSTOM"] attributes
+fn analyze_field_type_with_attributes(ty: &Type, attrs: &[Attribute], is_primary_key: bool) -> (TokenStream2, bool, bool) {
+    // Check for user-specified sql_type attribute first
+    if let Some(custom_sql_type) = extract_sql_type_from_attributes(attrs) {
+        return (custom_sql_type, false, false);
+    }
+    
+    // Fall back to AST-based analysis
+    analyze_field_type_ast(ty, is_primary_key)
+}
+
+/// AST-based field type analysis - used as fallback when no custom attributes
+fn analyze_field_type_ast(ty: &Type, is_primary_key: bool) -> (TokenStream2, bool, bool) {
     match ty {
         Type::Path(type_path) => {
             if let Some(segment) = type_path.path.segments.last() {
@@ -634,7 +628,7 @@ fn analyze_field_type(ty: &Type, is_primary_key: bool) -> (TokenStream2, bool, b
                     // Handle Option<T> - extract inner type using syn AST
                     if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                         if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
-                            let (inner_field_type, _, _) = analyze_field_type(inner_ty, false);
+                            let (inner_field_type, _, _) = analyze_field_type_ast(inner_ty, false);
                             return (inner_field_type, true, false); // nullable = true
                         }
                     }
@@ -649,4 +643,91 @@ fn analyze_field_type(ty: &Type, is_primary_key: bool) -> (TokenStream2, bool, b
         }
         _ => (quote! { d1_rs::FieldType::Text }, false, false),
     }
+}
+
+/// REVOLUTIONARY: Extract custom SQL type from user attributes
+/// Supports #[sql_type = "CUSTOM"] for complete user control over field types
+fn extract_sql_type_from_attributes(attrs: &[Attribute]) -> Option<TokenStream2> {
+    for attr in attrs {
+        if attr.path().is_ident("sql_type") {
+            if let syn::Meta::NameValue(name_value) = &attr.meta {
+                if let syn::Expr::Lit(expr_lit) = &name_value.value {
+                    if let syn::Lit::Str(lit_str) = &expr_lit.lit {
+                        let sql_type_str = lit_str.value();
+                        return Some(match sql_type_str.as_str() {
+                            "TEXT" => quote! { d1_rs::FieldType::Text },
+                            "INTEGER" => quote! { d1_rs::FieldType::Integer },
+                            "BIGINT" => quote! { d1_rs::FieldType::BigInteger },
+                            "REAL" => quote! { d1_rs::FieldType::Real },
+                            "BOOLEAN" => quote! { d1_rs::FieldType::Boolean },
+                            "DATETIME" => quote! { d1_rs::FieldType::DateTime },
+                            "DATE" => quote! { d1_rs::FieldType::Date },
+                            "TIME" => quote! { d1_rs::FieldType::Time },
+                            "JSON" => quote! { d1_rs::FieldType::Json },
+                            "BLOB" => quote! { d1_rs::FieldType::Blob },
+                            _ => quote! { d1_rs::FieldType::Text }, // Default for unknown types
+                        });
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// REVOLUTIONARY: User-configurable foreign key detection
+/// Supports #[foreign_key(table = "users", column = "id")] for explicit configuration
+/// NO MORE HARDCODED "_id" PATTERNS OR ENGLISH-ONLY PLURALIZATION!
+fn extract_foreign_key_from_attributes(attrs: &[Attribute], field_name: &str, is_primary_key: bool) -> TokenStream2 {
+    // Skip primary key fields
+    if is_primary_key {
+        return quote! { None };
+    }
+    
+    // Check for explicit foreign_key attribute  
+    for attr in attrs {
+        if attr.path().is_ident("foreign_key") {
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                // Parse foreign_key(table = "target_table", column = "target_column")
+                // This supports ANY naming convention, not just English!
+                let mut table_name = None;
+                let mut column_name = "id".to_string(); // Default
+                
+                // Parse the tokens manually since nested parsing is complex
+                let tokens_str = meta_list.tokens.to_string();
+                
+                // Simple parsing for table = "value" patterns
+                if let Some(table_start) = tokens_str.find("table = \"") {
+                    let table_value_start = table_start + 9; // "table = \"".len()
+                    if let Some(table_end) = tokens_str[table_value_start..].find('\"') {
+                        table_name = Some(tokens_str[table_value_start..table_value_start + table_end].to_string());
+                    }
+                }
+                
+                if let Some(column_start) = tokens_str.find("column = \"") {
+                    let column_value_start = column_start + 10; // "column = \"".len()
+                    if let Some(column_end) = tokens_str[column_value_start..].find('\"') {
+                        column_name = tokens_str[column_value_start..column_value_start + column_end].to_string();
+                    }
+                }
+                
+                if let Some(table) = table_name {
+                    return quote! {
+                        Some(d1_rs::ForeignKeyDefinition {
+                            name: format!("fk_{}_{}", #field_name, #table),
+                            local_column: #field_name.to_string(),
+                            referenced_table: #table.to_string(),
+                            referenced_column: #column_name.to_string(),
+                            on_delete: Some("CASCADE".to_string()),
+                            on_update: Some("CASCADE".to_string()),
+                        })
+                    };
+                }
+            }
+        }
+    }
+    
+    // REVOLUTIONARY: NO AUTOMATIC DETECTION - users must be explicit!
+    // This eliminates ALL cultural/language bias and hardcoded patterns
+    quote! { None }
 }

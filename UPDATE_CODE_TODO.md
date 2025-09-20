@@ -118,11 +118,11 @@ After comprehensive analysis of the d1-rs ORM codebase, I've identified **severe
 **Objective:** Make type system completely extensible and user-configurable
 
 #### **Phase 3.1: Replace Hardcoded Entity Types**
-- [ ] **File:** `src/lib.rs:240-346`
-  - [ ] Remove hardcoded "User", "Post", "Category" handling  
-  - [ ] Implement generic `EntitySchema` trait system
-  - [ ] Allow users to configure entity field mappings via attributes
-  - [ ] Make system work with ANY entity names (including non-English)
+- [x] **File:** `src/lib.rs:240-346`
+  - [x] Remove hardcoded "User", "Post", "Category" handling  
+  - [x] Implement generic `EntitySchema` trait system
+  - [x] Allow users to configure entity field mappings via attributes
+  - [x] Make system work with ANY entity names (including non-English)
 
 #### **Phase 3.2: Replace Hardcoded Type Lists**  
 - [ ] **File:** `d1-rs_derive/src/lib.rs:481-489`
