@@ -597,7 +597,7 @@ impl TypeSafeSchemaDiffer for SchemaDiffer {
 }
 
 #[cfg(test)]
-#[cfg(feature = "full_integration_tests")]  // Temporarily disable until builder traits are properly implemented
+#[allow(dead_code)]  // Tests temporarily disabled - will be re-enabled in future iterations
 mod tests {
     use super::*;
     // Removed unused import: use crate::types::SqlTypeMappable;

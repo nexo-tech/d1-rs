@@ -459,16 +459,14 @@ pub struct SchemaMigration {
 
 /// Builder for creating multiple table migrations in a single batch
 pub struct MigrationBuilder {
-    name: String,
     base_version: i64,
     current_table: Option<TableDefinition>,
     migrations: Vec<SchemaMigration>,
 }
 
 impl MigrationBuilder {
-    pub fn new(name: String) -> Self {
+    pub fn new(_name: String) -> Self {
         Self {
-            name,
             base_version: 1,
             current_table: None,
             migrations: Vec::new(),
