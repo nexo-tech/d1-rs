@@ -1,6 +1,6 @@
 use crate::{D1Client, Result, D1RsError};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Revolutionary schema introspection engine - reads current database schema
 /// Supports both SQLite and D1 backends with SQLite PRAGMA expertise
@@ -62,6 +62,7 @@ impl<'a> SchemaIntrospector<'a> {
     }
 
     /// Get column details with constraints using pragma_table_info function
+    /// NOTE: This method does NOT detect boolean fields - use introspect_columns_with_entity() for accurate boolean detection
     pub async fn introspect_columns(&self, table_name: &str) -> Result<Vec<ColumnSchema>> {
         let sql = format!("SELECT * FROM pragma_table_info('{}')", table_name);
         let result = self.db.execute(&sql, &[]).await?;
@@ -69,7 +70,30 @@ impl<'a> SchemaIntrospector<'a> {
         let mut columns = Vec::new();
         for row in result.rows {
             if let Value::Object(obj) = row {
-                let column = self.parse_column_info(obj)?;
+                let column = self.parse_column_info(obj, None)?;
+                columns.push(column);
+            }
+        }
+
+        Ok(columns)
+    }
+
+    /// REVOLUTIONARY: Entity-aware column introspection - NO HEURISTICS!
+    /// Uses Entity::boolean_fields() for accurate boolean detection instead of name patterns
+    pub async fn introspect_columns_with_entity<T: crate::Entity>(&self, table_name: &str) -> Result<Vec<ColumnSchema>> {
+        let sql = format!("SELECT * FROM pragma_table_info('{}')", table_name);
+        let result = self.db.execute(&sql, &[]).await?;
+
+        // Get boolean field names from the entity trait - COMPILE-TIME SAFE!
+        let boolean_fields: HashSet<String> = T::boolean_fields()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        let mut columns = Vec::new();
+        for row in result.rows {
+            if let Value::Object(obj) = row {
+                let column = self.parse_column_info(obj, Some(&boolean_fields))?;
                 columns.push(column);
             }
         }
@@ -174,7 +198,8 @@ impl<'a> SchemaIntrospector<'a> {
     }
 
     /// Parse column information from PRAGMA table_info result
-    fn parse_column_info(&self, obj: serde_json::Map<String, Value>) -> Result<ColumnSchema> {
+    /// If boolean_fields is provided, uses trait-based detection instead of heuristics
+    fn parse_column_info(&self, obj: serde_json::Map<String, Value>, boolean_fields: Option<&HashSet<String>>) -> Result<ColumnSchema> {
         let name = obj.get("name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| D1RsError::Database("Missing column name".to_string()))?
@@ -201,9 +226,12 @@ impl<'a> SchemaIntrospector<'a> {
             .map(|v| v != 0)
             .unwrap_or(false);
 
-        // Determine if this is a boolean column (stored as INTEGER in SQLite)
+        // REVOLUTIONARY: Determine if this is a boolean column - NO HEURISTICS EVER!
         let is_boolean = column_type.to_uppercase() == "INTEGER" && 
-            (name.starts_with("is_") || name.starts_with("has_") || name.ends_with("_flag"));
+            match boolean_fields {
+                Some(boolean_set) => boolean_set.contains(&name), // Trait-based detection ONLY!
+                None => false, // NO FALLBACK HEURISTICS! Use entity-aware introspection instead.
+            };
 
         let final_column_type = if is_boolean { "BOOLEAN".to_string() } else { column_type.clone() };
 
@@ -491,7 +519,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_boolean_column_detection() {
+    async fn test_no_heuristic_boolean_detection() {
         let db = D1Client::new_in_memory().await.unwrap();
         
         // Create table with various boolean-like columns
@@ -509,17 +537,160 @@ mod tests {
         let introspector = SchemaIntrospector::new(&db);
         let columns = introspector.introspect_columns("test_booleans").await.unwrap();
 
-        // Check boolean detection
+        // REVOLUTIONARY: Generic introspection NO LONGER uses heuristics!
+        // All INTEGER columns are reported as INTEGER - no guessing!
         let is_active = columns.iter().find(|c| c.name == "is_active").unwrap();
-        assert_eq!(is_active.column_type, "BOOLEAN");
+        assert_eq!(is_active.column_type, "INTEGER", "No heuristics: is_active stays INTEGER");
 
         let has_permission = columns.iter().find(|c| c.name == "has_permission").unwrap();
-        assert_eq!(has_permission.column_type, "BOOLEAN");
+        assert_eq!(has_permission.column_type, "INTEGER", "No heuristics: has_permission stays INTEGER");
 
         let status_flag = columns.iter().find(|c| c.name == "status_flag").unwrap();
-        assert_eq!(status_flag.column_type, "BOOLEAN");
+        assert_eq!(status_flag.column_type, "INTEGER", "No heuristics: status_flag stays INTEGER");
 
         let regular_int = columns.iter().find(|c| c.name == "regular_int").unwrap();
-        assert_eq!(regular_int.column_type, "INTEGER"); // Should not be detected as boolean
+        assert_eq!(regular_int.column_type, "INTEGER", "No heuristics: regular_int stays INTEGER");
+
+        println!("🚀 REVOLUTIONARY: No more boolean heuristics! Use entity-aware introspection for boolean detection.");
+    }
+
+    // Simple test entity for revolutionary entity-aware boolean detection testing
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    struct TestUserForIntrospection {
+        id: i64,
+        is_active: bool,
+    }
+
+    #[derive(Debug, Clone)]
+    struct TestUserQueryBuilder;
+    
+    impl crate::QueryBuilder<TestUserForIntrospection> for TestUserQueryBuilder {
+        async fn all(self, _db: &D1Client) -> Result<Vec<TestUserForIntrospection>> { unimplemented!() }
+        async fn first(self, _db: &D1Client) -> Result<Option<TestUserForIntrospection>> { unimplemented!() }
+        async fn count(self, _db: &D1Client) -> Result<i64> { unimplemented!() }
+        fn apply_relation_constraint(self, _field: &str, _value: serde_json::Value) -> Self { self }
+    }
+    
+    #[derive(Debug, Clone)]
+    struct TestUserCreateBuilder;
+    
+    impl crate::CreateBuilder<TestUserForIntrospection> for TestUserCreateBuilder {
+        async fn save(self, _db: &D1Client) -> Result<TestUserForIntrospection> { unimplemented!() }
+    }
+    
+    #[derive(Debug, Clone)]
+    struct TestUserUpdateBuilder;
+    
+    impl crate::UpdateBuilder<TestUserForIntrospection> for TestUserUpdateBuilder {
+        async fn save(self, _db: &D1Client) -> Result<TestUserForIntrospection> { unimplemented!() }
+    }
+
+    impl crate::Entity for TestUserForIntrospection {
+        type PrimaryKey = i64;
+        type QueryBuilder = TestUserQueryBuilder;
+        type CreateBuilder = TestUserCreateBuilder;
+        type UpdateBuilder = TestUserUpdateBuilder;
+
+        const TABLE_NAME: &'static str = "test_users";
+        
+        fn primary_key(&self) -> &Self::PrimaryKey {
+            &self.id
+        }
+
+        fn boolean_fields() -> &'static [&'static str] {
+            // REVOLUTIONARY: Explicitly specify boolean fields - NO GUESSING!
+            &["is_active"]
+        }
+
+        fn field_definitions() -> Vec<crate::FieldDefinition> {
+            vec![
+                crate::FieldDefinition {
+                    name: "id".to_string(),
+                    field_type: crate::FieldType::Integer,
+                    nullable: false,
+                    primary_key: true,
+                    auto_increment: true,
+                    default_value: None,
+                    foreign_key: None,
+                },
+                crate::FieldDefinition {
+                    name: "is_active".to_string(),
+                    field_type: crate::FieldType::Boolean,
+                    nullable: false,
+                    primary_key: false,
+                    auto_increment: false,
+                    default_value: None,
+                    foreign_key: None,
+                },
+            ]
+        }
+
+        async fn find(_db: &D1Client, _key: Self::PrimaryKey) -> Result<Option<Self>> {
+            unimplemented!()
+        }
+
+        async fn delete(_db: &D1Client, _key: Self::PrimaryKey) -> Result<()> {
+            unimplemented!()
+        }
+
+        fn query() -> Self::QueryBuilder {
+            TestUserQueryBuilder
+        }
+        
+        fn create() -> Self::CreateBuilder {
+            TestUserCreateBuilder
+        }
+        
+        fn update(_key: Self::PrimaryKey) -> Self::UpdateBuilder {
+            TestUserUpdateBuilder
+        }
+    }
+
+    #[tokio::test]
+    async fn test_revolutionary_entity_aware_boolean_detection() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create table that matches TestUser structure but also tests edge cases
+        let sql = r#"
+            CREATE TABLE test_users (
+                id INTEGER PRIMARY KEY,
+                is_active INTEGER DEFAULT 0,           -- Boolean field defined in TestUser::boolean_fields()
+                normal_count INTEGER DEFAULT 0         -- INTEGER that would be detected as boolean by heuristics
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        
+        // Test REVOLUTIONARY entity-aware introspection - NO HEURISTICS!
+        let entity_aware_columns = introspector
+            .introspect_columns_with_entity::<TestUserForIntrospection>("test_users")
+            .await
+            .unwrap();
+
+        // REVOLUTIONARY: Accurate detection based on Entity::boolean_fields() trait!
+        let is_active = entity_aware_columns.iter().find(|c| c.name == "is_active").unwrap();
+        assert_eq!(is_active.column_type, "BOOLEAN", "Entity-aware: 'is_active' should be BOOLEAN (from Entity::boolean_fields())");
+
+        let normal_count = entity_aware_columns.iter().find(|c| c.name == "normal_count").unwrap();
+        assert_eq!(normal_count.column_type, "INTEGER", "Entity-aware: 'normal_count' should be INTEGER (not in boolean_fields)");
+
+        // Compare with legacy generic introspection (NO HEURISTICS)
+        let generic_columns = introspector
+            .introspect_columns("test_users")
+            .await
+            .unwrap();
+
+        // REVOLUTIONARY: Generic introspection no longer uses heuristics - no boolean detection
+        let is_active_generic = generic_columns.iter().find(|c| c.name == "is_active").unwrap();
+        assert_eq!(is_active_generic.column_type, "INTEGER", "Generic: 'is_active' stays INTEGER (no heuristics)");
+
+        let normal_count_generic = generic_columns.iter().find(|c| c.name == "normal_count").unwrap();
+        assert_eq!(normal_count_generic.column_type, "INTEGER", "Generic: 'normal_count' stays INTEGER");
+
+        // This demonstrates the REVOLUTIONARY superiority of trait-based detection!
+        println!("🚀 REVOLUTIONARY SUCCESS: Entity-aware detection uses trait information!");
+        println!("🚀 Generic introspection eliminated heuristics completely!");
+        println!("✅ Boolean detection now requires explicit entity context!");
     }
 }

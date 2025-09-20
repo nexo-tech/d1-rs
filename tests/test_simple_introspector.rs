@@ -49,8 +49,9 @@ async fn test_introspector_columns() {
             let name_col = columns.iter().find(|c| c.name == "name").unwrap();
             assert!(!name_col.nullable);
             
+            // REVOLUTIONARY: Generic introspection NO LONGER detects booleans via heuristics!
             let active_col = columns.iter().find(|c| c.name == "is_active").unwrap();
-            assert_eq!(active_col.column_type, "BOOLEAN");
+            assert_eq!(active_col.column_type, "INTEGER", "Generic introspection: no heuristics, INTEGER stays INTEGER");
         },
         Err(e) => {
             panic!("Failed to introspect columns: {:?}", e);

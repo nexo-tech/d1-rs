@@ -86,11 +86,11 @@ After comprehensive analysis of the d1-rs ORM codebase, I've identified **severe
 **Objective:** Replace all runtime detection with compile-time trait-based systems
 
 #### **Phase 2.1: Replace Boolean Field Detection**
-- [ ] **File:** `src/auto_migration/introspector.rs:205-206`
-  - [ ] Remove naming pattern heuristics (`starts_with("is_")`, etc.)
-  - [ ] Implement `BooleanFields` trait for explicit boolean field marking
-  - [ ] Update derive macro to generate boolean field metadata
-  - [ ] Use trait-based detection in introspection
+- [x] **File:** `src/auto_migration/introspector.rs:205-206`
+  - [x] Remove naming pattern heuristics (`starts_with("is_")`, etc.)
+  - [x] Implement `BooleanFields` trait for explicit boolean field marking
+  - [x] Update derive macro to generate boolean field metadata
+  - [x] Use trait-based detection in introspection
 
 #### **Phase 2.2: Replace Entity Type Detection**
 - [ ] **File:** `src/lib.rs:240-346`

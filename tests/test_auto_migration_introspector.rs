@@ -48,7 +48,8 @@ async fn test_schema_introspector_columns() {
     let name_col = columns.iter().find(|c| c.name == "name").unwrap();
     assert!(!name_col.nullable);
     
-    // Check is_active column (should be detected as boolean)
+    // Check is_active column (REVOLUTIONARY: NO LONGER detected as boolean by generic introspection!)
+    // Generic introspection NO LONGER uses heuristics - use entity-aware introspection for boolean detection
     let active_col = columns.iter().find(|c| c.name == "is_active").unwrap();
-    assert_eq!(active_col.column_type, "BOOLEAN");
+    assert_eq!(active_col.column_type, "INTEGER", "Generic introspection: no heuristics, INTEGER columns stay INTEGER");
 }
