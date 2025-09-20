@@ -630,6 +630,29 @@ mod tests {
         fn boolean_fields() -> &'static [&'static str] {
             &["is_active"]
         }
+        
+        fn field_definitions() -> Vec<crate::FieldDefinition> {
+            vec![
+                crate::FieldDefinition {
+                    name: "id".to_string(),
+                    field_type: crate::FieldType::Integer,
+                    nullable: false,
+                    primary_key: true,
+                    auto_increment: true,
+                    default_value: None,
+                    foreign_key: None,
+                },
+                crate::FieldDefinition {
+                    name: "is_active".to_string(),
+                    field_type: crate::FieldType::Boolean,
+                    nullable: false,
+                    primary_key: false,
+                    auto_increment: false,
+                    default_value: None,
+                    foreign_key: None,
+                },
+            ]
+        }
 
         async fn find(_db: &D1Client, _key: Self::PrimaryKey) -> Result<Option<Self>> {
             unimplemented!()
@@ -696,6 +719,29 @@ mod tests {
 
         fn boolean_fields() -> &'static [&'static str] {
             &["published"]
+        }
+        
+        fn field_definitions() -> Vec<crate::FieldDefinition> {
+            vec![
+                crate::FieldDefinition {
+                    name: "id".to_string(),
+                    field_type: crate::FieldType::Integer,
+                    nullable: false,
+                    primary_key: true,
+                    auto_increment: true,
+                    default_value: None,
+                    foreign_key: None,
+                },
+                crate::FieldDefinition {
+                    name: "published".to_string(),
+                    field_type: crate::FieldType::Boolean,
+                    nullable: false,
+                    primary_key: false,
+                    auto_increment: false,
+                    default_value: None,
+                    foreign_key: None,
+                },
+            ]
         }
 
         async fn find(_db: &D1Client, _key: Self::PrimaryKey) -> Result<Option<Self>> {

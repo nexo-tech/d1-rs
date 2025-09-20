@@ -174,3 +174,34 @@ Every migration feature MUST have:
 - **Rollback testing** for all operations
 - **Performance testing** for large dataset migrations
 
+## 🚨 MANDATORY: Implementation Fix Plan
+
+**CRITICAL:** This codebase currently has major violations of the design principles above. Follow the implementation plan in `UPDATE_CODE_TODO.md` EXACTLY as specified.
+
+### Implementation Execution Rules:
+
+1. **FOLLOW THE PLAN**: Implement phases 1-5 in `UPDATE_CODE_TODO.md` in exact order
+2. **TRACK PROGRESS**: Update checklists in `UPDATE_CODE_TODO.md` as items are completed
+3. **COMPLETION CRITERIA**: An item is only complete when:
+   - ✅ Fully tested for ALL edge cases
+   - ✅ Fully satisfies the task requirements
+   - ✅ Generates ZERO compilation warnings
+   - ✅ All existing tests still pass
+   - ✅ Performance requirements are met
+
+### Quality Gates Before Any Work:
+- [ ] Run `cargo check` - must show ZERO warnings
+- [ ] Run `just test` - all tests must pass cleanly
+- [ ] Review current violations in `UPDATE_CODE_TODO.md`
+
+### Quality Gates After Each Item:
+- [ ] Run `cargo check` - must still show ZERO warnings  
+- [ ] Run `just test` - all tests must still pass
+- [ ] Update the specific checklist item in `UPDATE_CODE_TODO.md` as complete
+- [ ] Verify the implementation fully addresses the violation
+
+### Phase Completion Requirements:
+Each phase in `UPDATE_CODE_TODO.md` must meet ALL acceptance criteria before proceeding to the next phase.
+
+**NEVER skip items or phases. The codebase must be systematically fixed to achieve true type safety and eliminate all violations.**
+

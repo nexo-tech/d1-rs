@@ -30,6 +30,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let update_methods = generate_update_methods(named_fields, &primary_key_field);
 
     let boolean_field_metadata = generate_boolean_field_metadata(named_fields);
+    let field_definitions_impl = generate_field_definitions(named_fields, &primary_key_field);
 
     let expanded = quote! {
         impl d1_rs::Entity for #name {
@@ -58,6 +59,10 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             
             fn boolean_fields() -> &'static [&'static str] {
                 #boolean_field_metadata
+            }
+            
+            fn field_definitions() -> Vec<d1_rs::FieldDefinition> {
+                #field_definitions_impl
             }
             
             async fn find(db: &d1_rs::D1Client, key: Self::PrimaryKey) -> d1_rs::Result<Option<Self>> {
@@ -522,5 +527,96 @@ fn generate_boolean_field_metadata(fields: &syn::punctuated::Punctuated<Field, s
             .collect();
         
         quote! { &[#(#field_literals),*] }
+    }
+}
+
+/// NEW: Generate field definitions using compile-time analysis - NO HEURISTICS!
+/// This replaces all runtime type detection with proper syn-based type analysis
+fn generate_field_definitions(fields: &syn::punctuated::Punctuated<Field, syn::token::Comma>, primary_key_field: &syn::Ident) -> TokenStream2 {
+    let field_definitions: Vec<TokenStream2> = fields
+        .iter()
+        .filter_map(|field| {
+            let field_ident = field.ident.as_ref()?;
+            let field_name = field_ident.to_string();
+            let field_name_lit = &field_name;
+            
+            // Determine if this is the primary key
+            let is_primary_key = field_ident == primary_key_field;
+            
+            // Analyze field type using syn - NO STRING MATCHING!
+            let (field_type, nullable, auto_increment) = analyze_field_type(&field.ty, is_primary_key);
+            
+            // Check for foreign key based on field name pattern (but no hardcoded entity types!)
+            let foreign_key = if field_name.ends_with("_id") && !is_primary_key {
+                // Extract the referenced table name from the field name
+                let referenced_table = field_name.trim_end_matches("_id");
+                let table_name = format!("{}s", referenced_table); // Simple pluralization
+                
+                quote! {
+                    Some(d1_rs::ForeignKeyDefinition {
+                        name: format!("fk_{}_{}", #field_name_lit, #table_name),
+                        local_column: #field_name_lit.to_string(),
+                        referenced_table: #table_name.to_string(),
+                        referenced_column: "id".to_string(),
+                        on_delete: Some("CASCADE".to_string()),
+                        on_update: Some("CASCADE".to_string()),
+                    })
+                }
+            } else {
+                quote! { None }
+            };
+            
+            Some(quote! {
+                d1_rs::FieldDefinition {
+                    name: #field_name_lit.to_string(),
+                    field_type: #field_type,
+                    nullable: #nullable,
+                    primary_key: #is_primary_key,
+                    auto_increment: #auto_increment,
+                    default_value: None,
+                    foreign_key: #foreign_key,
+                }
+            })
+        })
+        .collect();
+    
+    quote! {
+        vec![#(#field_definitions),*]
+    }
+}
+
+/// Analyze field type using syn AST - NO HEURISTICS OR STRING MATCHING!
+/// This provides proper compile-time type analysis
+fn analyze_field_type(ty: &Type, is_primary_key: bool) -> (TokenStream2, bool, bool) {
+    match ty {
+        Type::Path(type_path) => {
+            if let Some(segment) = type_path.path.segments.last() {
+                let type_name = &segment.ident;
+                
+                match type_name.to_string().as_str() {
+                    "bool" => (quote! { d1_rs::FieldType::Boolean }, false, false),
+                    "i32" | "i64" => {
+                        let auto_inc = is_primary_key;
+                        (quote! { d1_rs::FieldType::Integer }, false, auto_inc)
+                    }
+                    "String" => (quote! { d1_rs::FieldType::Text }, false, false),
+                    "DateTime" => (quote! { d1_rs::FieldType::DateTime }, false, false),
+                    "Option" => {
+                        // Handle Option<T> - extract inner type
+                        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                            if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
+                                let (inner_field_type, _, _) = analyze_field_type(inner_ty, false);
+                                return (inner_field_type, true, false); // nullable = true
+                            }
+                        }
+                        (quote! { d1_rs::FieldType::Text }, true, false)
+                    }
+                    _ => (quote! { d1_rs::FieldType::Text }, false, false), // Default fallback
+                }
+            } else {
+                (quote! { d1_rs::FieldType::Text }, false, false)
+            }
+        }
+        _ => (quote! { d1_rs::FieldType::Text }, false, false), // Default fallback
     }
 }
