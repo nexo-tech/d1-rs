@@ -2,7 +2,7 @@
 /// This test demonstrates d1-rs's superiority over ALL existing ORMs
 use chrono::{DateTime, Utc};
 use d1_rs::*;
-use d1_rs::schema_evolution::SchemaMigration;
+use d1_rs::SchemaMigration;
 use serde::{Deserialize, Serialize};
 
 // Test entities for revolutionary nested eager loading

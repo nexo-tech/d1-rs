@@ -20,7 +20,12 @@ pub use types::*;
 pub use schema::*;
 // pub use relations::*; // Unused module
 pub use edges::*;
-// pub use schema_evolution::*; // Use specific exports to avoid conflicts
+// Phase 4.3C: Revolutionary schema evolution exports
+pub use schema_evolution::{
+    TypeSafeSchema, TypeSafeColumnSchema, AutoMigrationPlanner, 
+    TypeSafeSchemaDiff, TypeSafeColumnModification, TypeSafeTableChange,
+    ColumnChangeType, IndexOperation, TypeSafeSchemaDiffer
+};
 // pub use auto_migration::*; // Selective exports to avoid conflicts
 // Phase 4.3B: Type-safe migrations exports
 pub use type_safe_migrations::*;

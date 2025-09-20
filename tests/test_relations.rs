@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use d1_rs::schema_evolution::SchemaMigration;
+use d1_rs::SchemaMigration;
 use d1_rs::*;
 use serde::{Deserialize, Serialize};
 

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use d1_rs::schema_evolution::SchemaMigration;
+use d1_rs::SchemaMigration;
 /// Example showing the new, ent-go inspired relations API
 /// This demonstrates the much cleaner and more intuitive design
 use d1_rs::*;

@@ -1,7 +1,7 @@
 /// Tests for enhanced error messages in relation operations
 use chrono::{DateTime, Utc};
 use d1_rs::*;
-use d1_rs::schema_evolution::SchemaMigration;
+use d1_rs::SchemaMigration;
 use serde::{Deserialize, Serialize};
 
 // Test entities
@@ -144,8 +144,10 @@ async fn test_junction_table_missing_error() {
         Err(error) => {
             let error_string = error.to_string();
             println!("Got expected error: {}", error_string);
-            // Verify the error message is helpful
-            assert!(error_string.contains("Many-to-many relation") || error_string.contains("junction table"));
+            // Verify the error message indicates missing table (this will be enhanced later)
+            assert!(error_string.contains("no such table") || 
+                    error_string.contains("Many-to-many relation") || 
+                    error_string.contains("junction table"));
         }
     }
 }

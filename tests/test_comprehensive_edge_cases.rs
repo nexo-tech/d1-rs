@@ -3,7 +3,7 @@
 /// Ensures robustness and reliability of the world's most advanced ORM
 use chrono::{DateTime, Utc};
 use d1_rs::*;
-use d1_rs::schema_evolution::SchemaMigration;
+use d1_rs::SchemaMigration;
 use serde::{Deserialize, Serialize};
 
 // Test entities for comprehensive edge case testing

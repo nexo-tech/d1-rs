@@ -3,7 +3,7 @@
 /// Unlike ALL other ORMs, d1-rs treats junction tables as first-class entities!
 use chrono::{DateTime, Utc};
 use d1_rs::*;
-use d1_rs::schema_evolution::SchemaMigration;
+use d1_rs::SchemaMigration;
 use serde::{Deserialize, Serialize};
 
 // Standard entities

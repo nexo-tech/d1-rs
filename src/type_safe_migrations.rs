@@ -214,6 +214,11 @@ pub trait TypeSafeMigratable: Entity {
     /// Generate a type-safe create table migration for this entity
     fn create_table_migration(migration_name: &'static str, version: i64) -> TypeSafeMigration<Self>;
     
+    /// Generate schema from Entity definition
+    fn generate_schema() -> crate::schema_evolution::TypeSafeSchema<Self> {
+        crate::schema_evolution::TypeSafeSchema::from_entity()
+    }
+    
     /// Validate that a migration matches the current entity definition
     fn validate_migration(migration: &TypeSafeMigration<Self>) -> Result<()>;
 }
