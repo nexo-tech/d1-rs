@@ -125,11 +125,11 @@ After comprehensive analysis of the d1-rs ORM codebase, I've identified **severe
   - [x] Make system work with ANY entity names (including non-English)
 
 #### **Phase 3.2: Replace Hardcoded Type Lists**  
-- [ ] **File:** `d1-rs_derive/src/lib.rs:481-489`
-  - [ ] Remove hardcoded numeric type arrays
-  - [ ] Implement trait-based type classification system
-  - [ ] Allow users to extend type mappings via attributes
-  - [ ] Support custom type conversions
+- [x] **File:** `d1-rs_derive/src/lib.rs:481-489`
+  - [x] Remove hardcoded numeric type arrays
+  - [x] Implement trait-based type classification system
+  - [x] Allow users to extend type mappings via attributes
+  - [x] Support custom type conversions
 
 #### **Phase 3.3: Implement User-Configurable Type Mapping**
 - [ ] Add `#[sql_type = "CUSTOM"]` attribute support

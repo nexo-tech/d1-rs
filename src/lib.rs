@@ -102,6 +102,42 @@ pub trait FieldMetadata {
     fn foreign_key_definitions() -> Vec<ForeignKeyDefinition>;
 }
 
+/// REVOLUTIONARY: Trait for user-defined custom type conversions
+/// Allows users to extend the ORM with ANY custom type mappings
+pub trait CustomTypeMapping {
+    /// The Rust type this mapping handles
+    type RustType;
+    
+    /// The SQL type string for schema generation
+    const SQL_TYPE: &'static str;
+    
+    /// Convert from Rust type to SQLite value
+    fn to_sql_value(value: &Self::RustType) -> serde_json::Value;
+    
+    /// Convert from SQLite value to Rust type
+    fn from_sql_value(value: serde_json::Value) -> Result<Self::RustType>;
+    
+    /// Optional: Custom field type for schema introspection
+    fn field_type() -> FieldType {
+        FieldType::Text // Default fallback
+    }
+}
+
+/// REVOLUTIONARY: Registry for user-defined type mappings
+/// This enables complete extensibility without hardcoded limits
+pub trait TypeMappingRegistry {
+    /// Register a custom type mapping at compile time
+    fn register_mapping<T: CustomTypeMapping>() -> FieldType {
+        T::field_type()
+    }
+    
+    /// Check if a type has custom mapping defined
+    fn has_custom_mapping(type_name: &str) -> bool;
+    
+    /// Get the field type for a custom mapped type
+    fn get_field_type(type_name: &str) -> Option<FieldType>;
+}
+
 /// NEW: Trait for entities that provide compile-time schema information
 /// This enables the EntityAnalyzer to extract complete schema without heuristics
 pub trait EntitySchema: Entity {

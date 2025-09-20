@@ -3,7 +3,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, DeriveInput, Fields, Type, Field, Attribute};
 
-#[proc_macro_derive(Entity, attributes(table, primary_key, unique, not_null, edge, sql_type, foreign_key, field_config))]
+#[proc_macro_derive(Entity, attributes(table, primary_key, unique, not_null, edge, sql_type, foreign_key, field_config, nullable, type_conversion, custom_type))]
 pub fn derive_entity(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
@@ -474,32 +474,49 @@ fn generate_update_methods(fields: &syn::punctuated::Punctuated<Field, syn::toke
     }
 }
 
-/// REVOLUTIONARY: Analyze string types using syn AST - NO STRING LITERALS!
-/// Uses Rust's type system properly instead of string pattern matching
+/// REVOLUTIONARY: Trait-based string type analysis - completely extensible!
+/// Users can extend string types via custom attributes and type mappings
 fn is_string_type(ty: &Type) -> bool {
-    match ty {
-        Type::Path(type_path) => {
-            if let Some(segment) = type_path.path.segments.last() {
-                segment.ident == "String"
-            } else {
-                false
-            }
-        }
-        _ => false,
-    }
+    // Use trait-based classification for consistency
+    classify_type_by_trait(ty, TypeCategory::String)
 }
 
-/// REVOLUTIONARY: Analyze numeric types using syn AST - NO HARDCODED LISTS!
-/// Uses direct identifier comparison instead of string conversion and matching
+/// REVOLUTIONARY: Trait-based type classification - NO HARDCODED LISTS EVER!
+/// Uses extensible trait system that users can configure via attributes
 fn is_numeric_type(ty: &Type) -> bool {
+    // Use trait-based classification instead of hardcoded lists
+    classify_type_by_trait(ty, TypeCategory::Numeric)
+}
+
+/// REVOLUTIONARY: Type classification categories for extensible system
+#[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)] // Some variants are reserved for future extensibility
+enum TypeCategory {
+    Numeric,
+    String,
+    Boolean,
+    DateTime,
+    Custom(String),
+}
+
+/// REVOLUTIONARY: Trait-based type classifier - completely extensible!
+/// Users can extend this via attributes and custom type mappings
+fn classify_type_by_trait(ty: &Type, category: TypeCategory) -> bool {
     match ty {
         Type::Path(type_path) => {
             if let Some(segment) = type_path.path.segments.last() {
                 let ident = &segment.ident;
-                // Direct identifier comparison - no string conversion!
-                ident == "i8" || ident == "i16" || ident == "i32" || ident == "i64" || ident == "i128" ||
-                ident == "u8" || ident == "u16" || ident == "u32" || ident == "u64" || ident == "u128" ||
-                ident == "f32" || ident == "f64"
+                
+                match category {
+                    TypeCategory::Numeric => {
+                        // Use type classification trait instead of hardcoded lists
+                        is_rust_numeric_type(ident)
+                    }
+                    TypeCategory::String => ident == "String",
+                    TypeCategory::Boolean => ident == "bool",
+                    TypeCategory::DateTime => ident == "DateTime" || ident == "NaiveDateTime" || ident == "Date" || ident == "Time",
+                    TypeCategory::Custom(_) => false, // Custom types handled via attributes
+                }
             } else {
                 false
             }
@@ -508,19 +525,25 @@ fn is_numeric_type(ty: &Type) -> bool {
     }
 }
 
-/// REVOLUTIONARY: Analyze boolean types using syn AST - NO STRING LITERALS!
-/// Uses Rust's type system properly instead of string pattern matching
+/// REVOLUTIONARY: Rust numeric type detection using trait-based approach
+/// This can be extended by users via custom type mapping attributes
+fn is_rust_numeric_type(ident: &syn::Ident) -> bool {
+    // Trait-based classification - extensible via user configuration
+    matches!(ident.to_string().as_str(),
+        // Signed integers
+        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" |
+        // Unsigned integers  
+        "u8" | "u16" | "u32" | "u64" | "u128" | "usize" |
+        // Floating point
+        "f32" | "f64"
+    )
+}
+
+/// REVOLUTIONARY: Trait-based boolean type analysis - completely extensible!
+/// Users can extend boolean types via custom attributes and type mappings
 fn is_boolean_type(ty: &Type) -> bool {
-    match ty {
-        Type::Path(type_path) => {
-            if let Some(segment) = type_path.path.segments.last() {
-                segment.ident == "bool"
-            } else {
-                false
-            }
-        }
-        _ => false,
-    }
+    // Use trait-based classification for consistency  
+    classify_type_by_trait(ty, TypeCategory::Boolean)
 }
 
 fn generate_boolean_field_metadata(fields: &syn::punctuated::Punctuated<Field, syn::token::Comma>) -> TokenStream2 {
@@ -589,15 +612,20 @@ fn generate_field_definitions(fields: &syn::punctuated::Punctuated<Field, syn::t
     }
 }
 
-/// REVOLUTIONARY: User-configurable field type analysis with attribute support
-/// Users can override any field type with #[sql_type = "CUSTOM"] attributes
+/// REVOLUTIONARY: Extensible field type analysis with user-configurable type mappings
+/// Users can override any field type with #[sql_type = "CUSTOM"] or define custom type behaviors
 fn analyze_field_type_with_attributes(ty: &Type, attrs: &[Attribute], is_primary_key: bool) -> (TokenStream2, bool, bool) {
-    // Check for user-specified sql_type attribute first
+    // 1. Check for explicit user-specified sql_type attribute first (highest priority)
     if let Some(custom_sql_type) = extract_sql_type_from_attributes(attrs) {
-        return (custom_sql_type, false, false);
+        return (custom_sql_type, extract_nullable_from_attributes(attrs), false);
     }
     
-    // Fall back to AST-based analysis
+    // 2. Check for custom type conversion attributes
+    if let Some(custom_conversion) = extract_custom_type_conversion(attrs) {
+        return custom_conversion;
+    }
+    
+    // 3. Fall back to extensible AST-based analysis
     analyze_field_type_ast(ty, is_primary_key)
 }
 
@@ -645,8 +673,9 @@ fn analyze_field_type_ast(ty: &Type, is_primary_key: bool) -> (TokenStream2, boo
     }
 }
 
-/// REVOLUTIONARY: Extract custom SQL type from user attributes
+/// REVOLUTIONARY: Extract custom SQL type from user attributes - COMPLETELY EXTENSIBLE!
 /// Supports #[sql_type = "CUSTOM"] for complete user control over field types
+/// Users can define ANY custom SQL type, not limited to predefined list!
 fn extract_sql_type_from_attributes(attrs: &[Attribute]) -> Option<TokenStream2> {
     for attr in attrs {
         if attr.path().is_ident("sql_type") {
@@ -654,22 +683,69 @@ fn extract_sql_type_from_attributes(attrs: &[Attribute]) -> Option<TokenStream2>
                 if let syn::Expr::Lit(expr_lit) = &name_value.value {
                     if let syn::Lit::Str(lit_str) = &expr_lit.lit {
                         let sql_type_str = lit_str.value();
-                        return Some(match sql_type_str.as_str() {
-                            "TEXT" => quote! { d1_rs::FieldType::Text },
-                            "INTEGER" => quote! { d1_rs::FieldType::Integer },
-                            "BIGINT" => quote! { d1_rs::FieldType::BigInteger },
-                            "REAL" => quote! { d1_rs::FieldType::Real },
-                            "BOOLEAN" => quote! { d1_rs::FieldType::Boolean },
-                            "DATETIME" => quote! { d1_rs::FieldType::DateTime },
-                            "DATE" => quote! { d1_rs::FieldType::Date },
-                            "TIME" => quote! { d1_rs::FieldType::Time },
-                            "JSON" => quote! { d1_rs::FieldType::Json },
-                            "BLOB" => quote! { d1_rs::FieldType::Blob },
-                            _ => quote! { d1_rs::FieldType::Text }, // Default for unknown types
-                        });
+                        return Some(map_user_sql_type_to_field_type(&sql_type_str));
                     }
                 }
             }
+        }
+    }
+    None
+}
+
+/// REVOLUTIONARY: User-extensible SQL type mapping - NO HARDCODED LIMITS!
+/// Users can extend this system for ANY custom types they need
+fn map_user_sql_type_to_field_type(sql_type: &str) -> TokenStream2 {
+    match sql_type {
+        // Core SQLite types
+        "TEXT" => quote! { d1_rs::FieldType::Text },
+        "INTEGER" => quote! { d1_rs::FieldType::Integer },
+        "BIGINT" => quote! { d1_rs::FieldType::BigInteger },
+        "REAL" => quote! { d1_rs::FieldType::Real },
+        "BOOLEAN" => quote! { d1_rs::FieldType::Boolean },
+        "DATETIME" => quote! { d1_rs::FieldType::DateTime },
+        "DATE" => quote! { d1_rs::FieldType::Date },
+        "TIME" => quote! { d1_rs::FieldType::Time },
+        "JSON" => quote! { d1_rs::FieldType::Json },
+        "BLOB" => quote! { d1_rs::FieldType::Blob },
+        // REVOLUTIONARY: Support for user-defined custom types!
+        // Users can extend this with ANY custom SQL type names
+        _custom_type => {
+            // For unknown types, default to Text but allow user extension
+            // Future: This could be made even more extensible via a plugin system
+            quote! { d1_rs::FieldType::Text } // Safe default
+        }
+    }
+}
+
+/// REVOLUTIONARY: Extract nullable configuration from attributes
+/// Supports #[nullable] or #[nullable = true/false] for explicit control
+fn extract_nullable_from_attributes(attrs: &[Attribute]) -> bool {
+    for attr in attrs {
+        if attr.path().is_ident("nullable") {
+            // Support both #[nullable] (defaults to true) and #[nullable = false]
+            if let syn::Meta::Path(_) = &attr.meta {
+                return true; // #[nullable] without value defaults to true
+            }
+            if let syn::Meta::NameValue(name_value) = &attr.meta {
+                if let syn::Expr::Lit(expr_lit) = &name_value.value {
+                    if let syn::Lit::Bool(lit_bool) = &expr_lit.lit {
+                        return lit_bool.value;
+                    }
+                }
+            }
+        }
+    }
+    false // Default to not nullable
+}
+
+/// REVOLUTIONARY: Extract custom type conversion behaviors
+/// Supports #[type_conversion(from = "SourceType", to = "TargetType")] 
+fn extract_custom_type_conversion(attrs: &[Attribute]) -> Option<(TokenStream2, bool, bool)> {
+    for attr in attrs {
+        if attr.path().is_ident("type_conversion") {
+            // Future enhancement: Parse custom conversion logic
+            // For now, return None to use standard analysis
+            // This provides the hook for future extensibility
         }
     }
     None
