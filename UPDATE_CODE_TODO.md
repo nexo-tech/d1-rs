@@ -69,10 +69,10 @@ After comprehensive analysis of the d1-rs ORM codebase, I've identified **severe
   - [x] Use entity trait methods for table/field names
 
 #### **Phase 1.4: Fix Edges Module Predicates**
-- [ ] **File:** `src/edges.rs:725-730`
-  - [ ] Remove `Predicate::field()` string-based constructor
-  - [ ] Replace with compile-time safe predicate builders
-  - [ ] Ensure all relation predicates are type-safe
+- [x] **File:** `src/edges.rs:725-730`
+  - [x] Remove `Predicate::field()` string-based constructor
+  - [x] Replace with compile-time safe predicate builders
+  - [x] Ensure all relation predicates are type-safe
 
 **Acceptance Criteria Phase 1:**
 - ✅ Zero string literals in ANY public API
