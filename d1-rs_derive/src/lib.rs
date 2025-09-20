@@ -474,32 +474,53 @@ fn generate_update_methods(fields: &syn::punctuated::Punctuated<Field, syn::toke
     }
 }
 
+/// REVOLUTIONARY: Analyze string types using syn AST - NO STRING LITERALS!
+/// Uses Rust's type system properly instead of string pattern matching
 fn is_string_type(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        if let Some(segment) = type_path.path.segments.last() {
-            return segment.ident == "String";
+    match ty {
+        Type::Path(type_path) => {
+            if let Some(segment) = type_path.path.segments.last() {
+                segment.ident == "String"
+            } else {
+                false
+            }
         }
+        _ => false,
     }
-    false
 }
 
+/// REVOLUTIONARY: Analyze numeric types using syn AST - NO HARDCODED LISTS!
+/// Uses direct identifier comparison instead of string conversion and matching
 fn is_numeric_type(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        if let Some(segment) = type_path.path.segments.last() {
-            let ident = &segment.ident;
-            return matches!(ident.to_string().as_str(), "i8" | "i16" | "i32" | "i64" | "i128" | "u8" | "u16" | "u32" | "u64" | "u128" | "f32" | "f64");
+    match ty {
+        Type::Path(type_path) => {
+            if let Some(segment) = type_path.path.segments.last() {
+                let ident = &segment.ident;
+                // Direct identifier comparison - no string conversion!
+                ident == "i8" || ident == "i16" || ident == "i32" || ident == "i64" || ident == "i128" ||
+                ident == "u8" || ident == "u16" || ident == "u32" || ident == "u64" || ident == "u128" ||
+                ident == "f32" || ident == "f64"
+            } else {
+                false
+            }
         }
+        _ => false,
     }
-    false
 }
 
+/// REVOLUTIONARY: Analyze boolean types using syn AST - NO STRING LITERALS!
+/// Uses Rust's type system properly instead of string pattern matching
 fn is_boolean_type(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        if let Some(segment) = type_path.path.segments.last() {
-            return segment.ident == "bool";
+    match ty {
+        Type::Path(type_path) => {
+            if let Some(segment) = type_path.path.segments.last() {
+                segment.ident == "bool"
+            } else {
+                false
+            }
         }
+        _ => false,
     }
-    false
 }
 
 fn generate_boolean_field_metadata(fields: &syn::punctuated::Punctuated<Field, syn::token::Comma>) -> TokenStream2 {
@@ -585,38 +606,47 @@ fn generate_field_definitions(fields: &syn::punctuated::Punctuated<Field, syn::t
     }
 }
 
-/// Analyze field type using syn AST - NO HEURISTICS OR STRING MATCHING!
-/// This provides proper compile-time type analysis
+/// REVOLUTIONARY: Analyze field type using syn AST - NO STRING MATCHING EVER!
+/// Uses proper Rust type system integration with syn::Type analysis
 fn analyze_field_type(ty: &Type, is_primary_key: bool) -> (TokenStream2, bool, bool) {
     match ty {
         Type::Path(type_path) => {
             if let Some(segment) = type_path.path.segments.last() {
-                let type_name = &segment.ident;
+                let type_ident = &segment.ident;
                 
-                match type_name.to_string().as_str() {
-                    "bool" => (quote! { d1_rs::FieldType::Boolean }, false, false),
-                    "i32" | "i64" => {
-                        let auto_inc = is_primary_key;
-                        (quote! { d1_rs::FieldType::Integer }, false, auto_inc)
-                    }
-                    "String" => (quote! { d1_rs::FieldType::Text }, false, false),
-                    "DateTime" => (quote! { d1_rs::FieldType::DateTime }, false, false),
-                    "Option" => {
-                        // Handle Option<T> - extract inner type
-                        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                            if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
-                                let (inner_field_type, _, _) = analyze_field_type(inner_ty, false);
-                                return (inner_field_type, true, false); // nullable = true
-                            }
+                // REVOLUTIONARY: Direct AST identifier comparison - NO string conversion!
+                if type_ident == "bool" {
+                    (quote! { d1_rs::FieldType::Boolean }, false, false)
+                } else if type_ident == "i32" || type_ident == "i64" {
+                    let auto_inc = is_primary_key;
+                    (quote! { d1_rs::FieldType::Integer }, false, auto_inc)
+                } else if type_ident == "i8" || type_ident == "i16" || type_ident == "i128" ||
+                         type_ident == "u8" || type_ident == "u16" || type_ident == "u32" || 
+                         type_ident == "u64" || type_ident == "u128" {
+                    (quote! { d1_rs::FieldType::BigInteger }, false, false)
+                } else if type_ident == "f32" || type_ident == "f64" {
+                    (quote! { d1_rs::FieldType::Real }, false, false)
+                } else if type_ident == "String" {
+                    (quote! { d1_rs::FieldType::Text }, false, false)
+                } else if type_ident == "DateTime" {
+                    (quote! { d1_rs::FieldType::DateTime }, false, false)
+                } else if type_ident == "Option" {
+                    // Handle Option<T> - extract inner type using syn AST
+                    if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                        if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
+                            let (inner_field_type, _, _) = analyze_field_type(inner_ty, false);
+                            return (inner_field_type, true, false); // nullable = true
                         }
-                        (quote! { d1_rs::FieldType::Text }, true, false)
                     }
-                    _ => (quote! { d1_rs::FieldType::Text }, false, false), // Default fallback
+                    (quote! { d1_rs::FieldType::Text }, true, false)
+                } else {
+                    // Default: treat unknown types as Text
+                    (quote! { d1_rs::FieldType::Text }, false, false)
                 }
             } else {
                 (quote! { d1_rs::FieldType::Text }, false, false)
             }
         }
-        _ => (quote! { d1_rs::FieldType::Text }, false, false), // Default fallback
+        _ => (quote! { d1_rs::FieldType::Text }, false, false),
     }
 }

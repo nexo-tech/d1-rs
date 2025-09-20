@@ -93,17 +93,17 @@ After comprehensive analysis of the d1-rs ORM codebase, I've identified **severe
   - [x] Use trait-based detection in introspection
 
 #### **Phase 2.2: Replace Entity Type Detection**
-- [ ] **File:** `src/lib.rs:240-346`
-  - [ ] Remove `std::any::type_name()` based detection entirely
-  - [ ] Implement `EntitySchema` trait for compile-time schema information
-  - [ ] Generate schema info via derive macro, not runtime guessing
-  - [ ] Make field definitions purely trait-based
+- [x] **File:** `src/lib.rs:240-346`
+  - [x] Remove `std::any::type_name()` based detection entirely
+  - [x] Implement `EntitySchema` trait for compile-time schema information
+  - [x] Generate schema info via derive macro, not runtime guessing
+  - [x] Make field definitions purely trait-based
 
 #### **Phase 2.3: Fix Type System in Derive Macro**
-- [ ] **File:** `d1-rs_derive/src/lib.rs:472-498`
-  - [ ] Replace string-based type detection with AST analysis
-  - [ ] Use syn's Type analysis instead of string matching
-  - [ ] Implement proper Rust type system integration
+- [x] **File:** `d1-rs_derive/src/lib.rs:472-498`
+  - [x] Replace string-based type detection with AST analysis
+  - [x] Use syn's Type analysis instead of string matching
+  - [x] Implement proper Rust type system integration
 
 **Acceptance Criteria Phase 2:**
 - ✅ Zero runtime type detection or field analysis

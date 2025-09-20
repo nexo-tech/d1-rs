@@ -68,15 +68,15 @@ pub struct JunctionTableSchema {
 pub struct EntityAnalyzer {
     /// Registry of analyzed entities and their schemas
     entity_schemas: HashMap<TypeId, TableSchema>,
-    /// Registry of entity type names for better error messages
-    type_names: HashMap<TypeId, String>,
+    // REVOLUTIONARY: Removed type_names field - no more runtime type name storage!
+    // Entity names come from Entity::TABLE_NAME constants instead.
 }
 
 impl EntityAnalyzer {
     pub fn new() -> Self {
         Self {
             entity_schemas: HashMap::new(),
-            type_names: HashMap::new(),
+            // REVOLUTIONARY: No more type_names HashMap - eliminated runtime type detection!
         }
     }
 
@@ -89,10 +89,9 @@ impl EntityAnalyzer {
             return Ok(schema.clone());
         }
 
-        // Get entity metadata
+        // Get entity metadata - REVOLUTIONARY: Using Entity::TABLE_NAME constant only!
         let table_name = T::TABLE_NAME.to_string();
-        let type_name = std::any::type_name::<T>().to_string();
-        self.type_names.insert(type_id, type_name);
+        // REMOVED: No more std::any::type_name() usage - purely trait-based!
 
         // Extract column information from entity fields
         let columns = self.extract_columns::<T>()?;
@@ -337,7 +336,7 @@ impl EntityAnalyzer {
         // For now, we'll create patterns based on common M2M scenarios
         
         let entity_name = T::TABLE_NAME;
-        let _type_name = std::any::type_name::<T>();
+        // REVOLUTIONARY: Removed std::any::type_name() usage - purely trait-based analysis!
         
         // Detect common M2M patterns based on entity names
         if entity_name == "users" {
@@ -426,10 +425,11 @@ impl EntityAnalyzer {
         // TODO: In a full implementation, this would analyze actual struct fields
         // For now, we'll create examples based on common patterns
         
-        let type_name = std::any::type_name::<T>();
+        let table_name = T::TABLE_NAME;
         
+        // REVOLUTIONARY: Use Entity::TABLE_NAME instead of runtime type analysis!
         // Example: If it's a User entity, it might have complex fields
-        if type_name.contains("User") {
+        if table_name == "users" {
             complex_fields.push(ComplexFieldInfo {
                 field_name: "metadata".to_string(),
                 rust_type: "serde_json::Value".to_string(),

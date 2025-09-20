@@ -122,7 +122,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
                     .map(|e| e.name.clone())
                     .collect();
                 D1RsError::RelationNotFound {
-                    entity: std::any::type_name::<Parent>().split("::").last().unwrap_or("Unknown").to_string(),
+                    entity: Parent::TABLE_NAME.to_string(), // REVOLUTIONARY: Use Entity::TABLE_NAME instead of runtime type name!
                     relation: self.edge_name.clone(),
                     available_relations,
                 }
@@ -168,7 +168,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
                     .map(|e| e.name.clone())
                     .collect();
                 D1RsError::RelationNotFound {
-                    entity: std::any::type_name::<Parent>().split("::").last().unwrap_or("Unknown").to_string(),
+                    entity: Parent::TABLE_NAME.to_string(), // REVOLUTIONARY: Use Entity::TABLE_NAME instead of runtime type name!
                     relation: self.edge_name.clone(),
                     available_relations,
                 }
@@ -192,7 +192,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
                     .map(|e| e.name.clone())
                     .collect();
                 D1RsError::RelationNotFound {
-                    entity: std::any::type_name::<Parent>().split("::").last().unwrap_or("Unknown").to_string(),
+                    entity: Parent::TABLE_NAME.to_string(), // REVOLUTIONARY: Use Entity::TABLE_NAME instead of runtime type name!
                     relation: self.edge_name.clone(),
                     available_relations,
                 }
@@ -216,7 +216,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
                     .map(|e| e.name.clone())
                     .collect();
                 D1RsError::RelationNotFound {
-                    entity: std::any::type_name::<Parent>().split("::").last().unwrap_or("Unknown").to_string(),
+                    entity: Parent::TABLE_NAME.to_string(), // REVOLUTIONARY: Use Entity::TABLE_NAME instead of runtime type name!
                     relation: self.edge_name.clone(),
                     available_relations,
                 }
@@ -246,11 +246,9 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     
     /// Handle many-to-one relations (Child belongs to Parent)
     async fn query_many_to_one(&self, db: &D1Client, edge: &EdgeDefinition) -> Result<Vec<Child>> {
-        // 🚀 RECURSIVE RELATIONSHIP DETECTION: Handle self-referential entities
-        let parent_type = std::any::type_name::<Parent>();
-        let child_type = std::any::type_name::<Child>();
-        
-        if parent_type == child_type {
+        // 🚀 REVOLUTIONARY RECURSIVE RELATIONSHIP DETECTION: Use Entity::TABLE_NAME constants!
+        // No more runtime type name comparison - purely compile-time safe!
+        if Parent::TABLE_NAME == Child::TABLE_NAME {
             // This is a recursive relationship (User -> User)
             // For belongs_to in recursive relationships, we need to:
             // 1. Get the foreign key value from the current entity
@@ -312,13 +310,13 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             .ok_or_else(|| D1RsError::JunctionTableMissing {
                 relation: edge.name.clone(),
                 expected_table: format!("{}_{}", 
-                    std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
-                    std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+                    Parent::TABLE_NAME,  // REVOLUTIONARY: Use Entity::TABLE_NAME constants!
+                    Child::TABLE_NAME    // No more runtime type name manipulation!
                 ),
                 suggestion: format!(
                     "Add 'through TableName' to your relation definition, or create junction table with columns '{}_id' and '{}_id'",
-                    std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
-                    std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+                    Parent::TABLE_NAME,  // REVOLUTIONARY: Entity constants instead of runtime type names!
+                    Child::TABLE_NAME
                 ),
             })?;
         
@@ -390,11 +388,9 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     
     /// Count many-to-one relations with SQL COUNT(*)
     async fn count_many_to_one(&self, db: &D1Client, edge: &EdgeDefinition) -> Result<i64> {
-        // 🚀 RECURSIVE RELATIONSHIP DETECTION: Handle self-referential entities
-        let parent_type = std::any::type_name::<Parent>();
-        let child_type = std::any::type_name::<Child>();
-        
-        if parent_type == child_type {
+        // 🚀 REVOLUTIONARY RECURSIVE RELATIONSHIP DETECTION: Use Entity::TABLE_NAME constants!
+        // No more runtime type name comparison - purely compile-time safe!
+        if Parent::TABLE_NAME == Child::TABLE_NAME {
             // For recursive belongs_to, check if the foreign key is not null
             let current_entity_sql = format!(
                 "SELECT {} FROM {} WHERE id = ?",
@@ -445,13 +441,13 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             .ok_or_else(|| D1RsError::JunctionTableMissing {
                 relation: edge.name.clone(),
                 expected_table: format!("{}_{}", 
-                    std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
-                    std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+                    Parent::TABLE_NAME,  // REVOLUTIONARY: Use Entity::TABLE_NAME constants!
+                    Child::TABLE_NAME    // No more runtime type name manipulation!
                 ),
                 suggestion: format!(
                     "Add 'through TableName' to your relation definition, or create junction table with columns '{}_id' and '{}_id'",
-                    std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
-                    std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+                    Parent::TABLE_NAME,  // REVOLUTIONARY: Entity constants instead of runtime type names!
+                    Child::TABLE_NAME
                 ),
             })?;
         
@@ -499,11 +495,9 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     
     /// Get first many-to-one relation with LIMIT 1
     async fn first_many_to_one(&self, db: &D1Client, edge: &EdgeDefinition) -> Result<Option<Child>> {
-        // 🚀 RECURSIVE RELATIONSHIP DETECTION: Handle self-referential entities
-        let parent_type = std::any::type_name::<Parent>();
-        let child_type = std::any::type_name::<Child>();
-        
-        if parent_type == child_type {
+        // 🚀 REVOLUTIONARY RECURSIVE RELATIONSHIP DETECTION: Use Entity::TABLE_NAME constants!
+        // No more runtime type name comparison - purely compile-time safe!
+        if Parent::TABLE_NAME == Child::TABLE_NAME {
             // For recursive belongs_to, get the related entity if foreign key is not null
             let current_entity_sql = format!(
                 "SELECT {} FROM {} WHERE id = ?",
@@ -568,13 +562,13 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             .ok_or_else(|| D1RsError::JunctionTableMissing {
                 relation: edge.name.clone(),
                 expected_table: format!("{}_{}", 
-                    std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
-                    std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+                    Parent::TABLE_NAME,  // REVOLUTIONARY: Use Entity::TABLE_NAME constants!
+                    Child::TABLE_NAME    // No more runtime type name manipulation!
                 ),
                 suggestion: format!(
                     "Add 'through TableName' to your relation definition, or create junction table with columns '{}_id' and '{}_id'",
-                    std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
-                    std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+                    Parent::TABLE_NAME,  // REVOLUTIONARY: Entity constants instead of runtime type names!
+                    Child::TABLE_NAME
                 ),
             })?;
         
@@ -616,12 +610,12 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         // This is a simplified implementation - in a real system this would use the edge metadata
         // to determine the junction table and column names
         let junction_table = format!("{}_{}", 
-            std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
-            std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+            Parent::TABLE_NAME,  // REVOLUTIONARY: Use Entity::TABLE_NAME constants!
+            Child::TABLE_NAME    // Compile-time safe, works with any naming convention!
         );
         
-        let parent_col = format!("{}_id", std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase());
-        let child_col = format!("{}_id", std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase());
+        let parent_col = format!("{}_id", Parent::TABLE_NAME);  // REVOLUTIONARY: Entity constant-based column naming!
+        let child_col = format!("{}_id", Child::TABLE_NAME);   // REVOLUTIONARY: Entity constant-based column naming!
         
         let sql = format!(
             "INSERT INTO {} ({}, {}) VALUES (?, ?) ON CONFLICT DO NOTHING",
@@ -636,12 +630,12 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     /// Detach a related entity (for many-to-many relationships)
     pub async fn detach(&self, db: &D1Client, target_id: i64) -> Result<()> {
         let junction_table = format!("{}_{}", 
-            std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase(),
-            std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase()
+            Parent::TABLE_NAME,  // REVOLUTIONARY: Use Entity::TABLE_NAME constants!
+            Child::TABLE_NAME    // Compile-time safe, works with any naming convention!
         );
         
-        let parent_col = format!("{}_id", std::any::type_name::<Parent>().split("::").last().unwrap_or("parent").to_lowercase());
-        let child_col = format!("{}_id", std::any::type_name::<Child>().split("::").last().unwrap_or("child").to_lowercase());
+        let parent_col = format!("{}_id", Parent::TABLE_NAME);  // REVOLUTIONARY: Entity constant-based column naming!
+        let child_col = format!("{}_id", Child::TABLE_NAME);   // REVOLUTIONARY: Entity constant-based column naming!
         
         let sql = format!(
             "DELETE FROM {} WHERE {} = ? AND {} = ?",
