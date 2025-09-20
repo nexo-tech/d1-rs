@@ -560,11 +560,11 @@ impl AutoMigrationPlanner {
     
     /// Generate unique migration version
     fn generate_migration_version(&self) -> i64 {
-        // Use timestamp for uniqueness
+        // Use timestamp with microsecond precision for uniqueness
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_secs() as i64
+            .as_micros() as i64
     }
 }
 
@@ -597,11 +597,106 @@ impl TypeSafeSchemaDiffer for SchemaDiffer {
 }
 
 #[cfg(test)]
-#[allow(dead_code)]  // Tests temporarily disabled - will be re-enabled in future iterations
 mod tests {
     use super::*;
-    // Removed unused import: use crate::types::SqlTypeMappable;
     use serde::{Serialize, Deserialize};
+    
+    // Test query builders that implement the required traits
+    #[derive(Debug)]
+    struct TestQueryBuilder;
+    
+    #[derive(Debug)]
+    struct TestCreateBuilder;
+    
+    #[derive(Debug)]
+    struct TestUpdateBuilder;
+    
+    impl crate::QueryBuilder<TestUser> for TestQueryBuilder {
+        async fn all(self, _db: &crate::D1Client) -> crate::Result<Vec<TestUser>> {
+            Ok(vec![])
+        }
+        
+        async fn first(self, _db: &crate::D1Client) -> crate::Result<Option<TestUser>> {
+            Ok(None)
+        }
+        
+        async fn count(self, _db: &crate::D1Client) -> crate::Result<i64> {
+            Ok(0)
+        }
+        
+        fn apply_relation_constraint(self, _field: &str, _value: serde_json::Value) -> Self {
+            self
+        }
+    }
+    
+    impl crate::CreateBuilder<TestUser> for TestCreateBuilder {
+        async fn save(self, _db: &crate::D1Client) -> crate::Result<TestUser> {
+            Ok(TestUser {
+                id: 1,
+                name: "test".to_string(),
+                email: "test@example.com".to_string(),
+                is_active: true,
+                age: None,
+                score: 0.0,
+            })
+        }
+    }
+    
+    impl crate::UpdateBuilder<TestUser> for TestUpdateBuilder {
+        async fn save(self, _db: &crate::D1Client) -> crate::Result<TestUser> {
+            Ok(TestUser {
+                id: 1,
+                name: "test".to_string(),
+                email: "test@example.com".to_string(),
+                is_active: true,
+                age: None,
+                score: 0.0,
+            })
+        }
+    }
+    
+    // Same for TestPost
+    impl crate::QueryBuilder<TestPost> for TestQueryBuilder {
+        async fn all(self, _db: &crate::D1Client) -> crate::Result<Vec<TestPost>> {
+            Ok(vec![])
+        }
+        
+        async fn first(self, _db: &crate::D1Client) -> crate::Result<Option<TestPost>> {
+            Ok(None)
+        }
+        
+        async fn count(self, _db: &crate::D1Client) -> crate::Result<i64> {
+            Ok(0)
+        }
+        
+        fn apply_relation_constraint(self, _field: &str, _value: serde_json::Value) -> Self {
+            self
+        }
+    }
+    
+    impl crate::CreateBuilder<TestPost> for TestCreateBuilder {
+        async fn save(self, _db: &crate::D1Client) -> crate::Result<TestPost> {
+            Ok(TestPost {
+                id: 1,
+                user_id: 1,
+                title: "test".to_string(),
+                content: "test".to_string(),
+                published: false,
+            })
+        }
+    }
+    
+    impl crate::UpdateBuilder<TestPost> for TestUpdateBuilder {
+        async fn save(self, _db: &crate::D1Client) -> crate::Result<TestPost> {
+            Ok(TestPost {
+                id: 1,
+                user_id: 1,
+                title: "test".to_string(),
+                content: "test".to_string(),
+                published: false,
+            })
+        }
+    }
     
     // Test entity for comprehensive schema evolution testing
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -617,9 +712,9 @@ mod tests {
     // Implement Entity trait manually for testing
     impl Entity for TestUser {
         type PrimaryKey = i64;
-        type QueryBuilder = crate::query::Query;
-        type CreateBuilder = crate::query::InsertQuery;
-        type UpdateBuilder = crate::query::UpdateQuery;
+        type QueryBuilder = TestQueryBuilder;
+        type CreateBuilder = TestCreateBuilder;
+        type UpdateBuilder = TestUpdateBuilder;
         
         const TABLE_NAME: &'static str = "test_users";
         
@@ -628,15 +723,15 @@ mod tests {
         }
         
         fn query() -> Self::QueryBuilder {
-            crate::query::Query::new(Self::TABLE_NAME.to_string())
+            TestQueryBuilder
         }
         
         fn create() -> Self::CreateBuilder {
-            crate::query::InsertQuery::new(Self::TABLE_NAME.to_string())
+            TestCreateBuilder
         }
         
-        fn update(key: Self::PrimaryKey) -> Self::UpdateBuilder {
-            crate::query::UpdateQuery::new(Self::TABLE_NAME.to_string(), key)
+        fn update(_key: Self::PrimaryKey) -> Self::UpdateBuilder {
+            TestUpdateBuilder
         }
         
         async fn find(_db: &crate::D1Client, _key: Self::PrimaryKey) -> crate::Result<Option<Self>> {
@@ -729,14 +824,15 @@ mod tests {
         pub id: i64,
         pub user_id: i64,
         pub title: String,
+        pub content: String,
         pub published: bool,
     }
     
     impl Entity for TestPost {
         type PrimaryKey = i64;
-        type QueryBuilder = crate::query::Query;
-        type CreateBuilder = crate::query::InsertQuery;
-        type UpdateBuilder = crate::query::UpdateQuery;
+        type QueryBuilder = TestQueryBuilder;
+        type CreateBuilder = TestCreateBuilder;
+        type UpdateBuilder = TestUpdateBuilder;
         
         const TABLE_NAME: &'static str = "test_posts";
         
@@ -745,15 +841,15 @@ mod tests {
         }
         
         fn query() -> Self::QueryBuilder {
-            crate::query::Query::new(Self::TABLE_NAME.to_string())
+            TestQueryBuilder
         }
         
         fn create() -> Self::CreateBuilder {
-            crate::query::InsertQuery::new(Self::TABLE_NAME.to_string())
+            TestCreateBuilder
         }
         
-        fn update(key: Self::PrimaryKey) -> Self::UpdateBuilder {
-            crate::query::UpdateQuery::new(Self::TABLE_NAME.to_string(), key)
+        fn update(_key: Self::PrimaryKey) -> Self::UpdateBuilder {
+            TestUpdateBuilder
         }
         
         async fn find(_db: &crate::D1Client, _key: Self::PrimaryKey) -> crate::Result<Option<Self>> {
@@ -789,8 +885,10 @@ mod tests {
                     auto_increment: false,
                     default_value: None,
                     foreign_key: Some(crate::ForeignKeyDefinition {
-                        table: "test_users".to_string(),
-                        column: "id".to_string(),
+                        name: "fk_user_id".to_string(),
+                        local_column: "user_id".to_string(),
+                        referenced_table: "test_users".to_string(),
+                        referenced_column: "id".to_string(),
                         on_delete: None,
                         on_update: None,
                     }),
