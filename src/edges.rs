@@ -924,7 +924,7 @@ pub struct EdgeConfig {
     pub immutable: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum EdgeType {
     OneToMany,
     ManyToOne,

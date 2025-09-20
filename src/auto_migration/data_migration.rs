@@ -266,8 +266,8 @@ pub struct DataMigrationResult {
     /// Migration statistics
     pub statistics: MigrationStatistics,
     
-    /// Any errors that occurred
-    pub errors: Vec<DataMigrationError>,
+    /// Any errors that occurred (now using unified D1RsError with full serialization support)
+    pub errors: Vec<crate::D1RsError>,
     
     /// Warnings about potential data issues
     pub warnings: Vec<String>,
@@ -276,49 +276,9 @@ pub struct DataMigrationResult {
     pub rollback_info: Option<RollbackInfo>,
 }
 
-/// Detailed error information for data migration failures
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DataMigrationError {
-    /// Type of error
-    pub error_type: DataMigrationErrorType,
-    
-    /// Human-readable error message
-    pub message: String,
-    
-    /// Table where the error occurred
-    pub table: Option<String>,
-    
-    /// Column where the error occurred
-    pub column: Option<String>,
-    
-    /// Record ID that caused the error
-    pub record_id: Option<String>,
-    
-    /// Suggested resolution
-    pub suggested_resolution: Option<String>,
-}
-
-/// Types of data migration errors
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DataMigrationErrorType {
-    /// Type conversion failed
-    TypeConversionError,
-    
-    /// Foreign key constraint violation
-    ForeignKeyViolation,
-    
-    /// Data integrity violation
-    IntegrityViolation,
-    
-    /// Transformation logic error
-    TransformationError,
-    
-    /// Database connectivity error
-    DatabaseError,
-    
-    /// Configuration error
-    ConfigurationError,
-}
+// REVOLUTIONARY: Phase 4.2 - Removed custom error types
+// Now using unified D1RsError with MigrationErrorType for all migration errors
+// This provides consistent error handling and better user experience
 
 /// Information needed for rollback operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -977,7 +937,7 @@ pub struct TransformationResult {
     pub success: bool,
     pub records_processed: u64,
     pub records_failed: u64,
-    pub errors: Vec<DataMigrationError>,
+    pub errors: Vec<crate::D1RsError>,
     pub warnings: Vec<String>,
 }
 

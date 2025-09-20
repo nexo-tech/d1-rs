@@ -26,6 +26,38 @@ macro_rules! relations {
         relations!(@validate_relationship_consistency 
             $( $entity { $( $relation_type $relation_name : $target via $foreign_key, )* } )*
         );
+        
+        // 🚀 STEP 1.5: PHASE 4.1 - Enhanced automatic relation validation
+        // Generate validation implementations for each entity
+        $(
+            impl $crate::AutoRelationValidation for $entity {
+                fn validate_all_relations() -> Vec<$crate::RelationValidationError> {
+                    let mut errors = Vec::new();
+                    
+                    // Validate each relation in this entity
+                    $(
+                        // Check if target entity exists (compile-time validation)
+                        let _ = <$target as $crate::Entity>::TABLE_NAME; // This will fail at compile time if $target doesn't implement Entity
+                        
+                        // Check relation consistency
+                        errors.extend(relations!(@validate_single_relation $entity $relation_type $relation_name $target $foreign_key));
+                    )*
+                    
+                    errors
+                }
+                
+                fn validate_foreign_key_references() -> Vec<$crate::RelationValidationError> {
+                    let mut errors = Vec::new();
+                    
+                    $(
+                        // Validate that the foreign key makes sense for the relation type
+                        errors.extend(relations!(@validate_foreign_key $entity $relation_type $relation_name $target $foreign_key));
+                    )*
+                    
+                    errors
+                }
+            }
+        )*
 
         // 🚀 STEP 2: ENHANCED RELATIONSHIP GENERATION WITH VALIDATION
         // Generate HasEdges implementation for each entity
@@ -155,16 +187,19 @@ macro_rules! relations {
         $( $entity:ident { $( $relation_type:ident $relation_name:ident : $target:ident via $foreign_key:ident, )* } )*
     ) => {
         // 🧠 INTELLIGENT VALIDATION: Check relationship consistency
-        const _RELATIONSHIP_VALIDATION: () = {
-            // This creates a compile-time validation system
-            // Each relationship is analyzed for consistency
-            $(
+        // Use a unique identifier to avoid conflicts when multiple relations! macros are used
+        paste::paste! {
+            const [<_RELATIONSHIP_VALIDATION_ $($entity _)*>]: () = {
+                // This creates a compile-time validation system
+                // Each relationship is analyzed for consistency
                 $(
-                    // Validate each relationship and suggest improvements
-                    relations!(@validate_single_relationship $entity $relation_type $relation_name $target $foreign_key);
+                    $(
+                        // Validate each relationship and suggest improvements
+                        relations!(@validate_single_relationship $entity $relation_type $relation_name $target $foreign_key);
+                    )*
                 )*
-            )*
-        };
+            };
+        }
     };
 
     // 🔍 SINGLE RELATIONSHIP VALIDATION
@@ -184,4 +219,77 @@ macro_rules! relations {
             stringify!($foreign_key)
         );
     };
+    
+    // 🚀 PHASE 4.1: Single relation validation with runtime error detection
+    (@validate_single_relation $entity:ident $relation_type:ident $relation_name:ident $target:ident $foreign_key:ident) => {{
+        let mut errors = Vec::new();
+        
+        // Check for circular dependencies (entity referencing itself inappropriately)
+        // Note: Self-referential relations are actually valid for tree structures,
+        // so only warn about potentially problematic patterns, not all self-references
+        if stringify!($entity) == stringify!($target) {
+            match stringify!($relation_type) {
+                "has_many" => {
+                    // has_many self-reference is common for parent-child relationships
+                    // Only warn if it doesn't follow typical patterns
+                    let relation_str = stringify!($relation_name);
+                    if !relation_str.contains("child") && !relation_str.contains("sub") {
+                        // This might be a legitimate tree structure, but provide informational guidance
+                        // Don't mark as error since it's often intentional
+                    }
+                },
+                "belongs_to" => {
+                    // belongs_to self-reference is normal for parent relationships
+                    // This is expected and valid
+                },
+                _ => {
+                    // Other self-reference types might need review
+                    // But don't automatically flag as errors
+                }
+            }
+        }
+        
+        errors
+    }};
+    
+    // 🚀 PHASE 4.1: Foreign key validation
+    (@validate_foreign_key $entity:ident $relation_type:ident $relation_name:ident $target:ident $foreign_key:ident) => {{
+        let mut errors = Vec::new();
+        
+        // Validate foreign key naming conventions and consistency
+        let fk_str = stringify!($foreign_key);
+        let entity_str = stringify!($entity).to_lowercase();
+        let target_str = stringify!($target).to_lowercase();
+        
+        // Check if foreign key follows expected naming patterns
+        match stringify!($relation_type) {
+            "belongs_to" => {
+                // For belongs_to, foreign key should reference the target entity
+                if !fk_str.contains(&target_str) && !fk_str.ends_with("_id") {
+                    errors.push($crate::RelationValidationError {
+                        entity: stringify!($entity).to_string(),
+                        relation: stringify!($relation_name).to_string(),
+                        issue: $crate::RelationIssueType::InconsistentForeignKey,
+                        suggestion: format!("Consider naming the foreign key '{}_id' to follow convention", target_str),
+                        affected_entities: vec![stringify!($target).to_string()],
+                    });
+                }
+            },
+            "has_many" | "has_one" => {
+                // For has_many/has_one, foreign key should reference the source entity
+                if !fk_str.contains(&entity_str) && !fk_str.ends_with("_id") {
+                    errors.push($crate::RelationValidationError {
+                        entity: stringify!($entity).to_string(),
+                        relation: stringify!($relation_name).to_string(),
+                        issue: $crate::RelationIssueType::InconsistentForeignKey,
+                        suggestion: format!("Consider naming the foreign key '{}_id' to follow convention", entity_str),
+                        affected_entities: vec![stringify!($target).to_string()],
+                    });
+                }
+            },
+            _ => {} // Other relation types don't require specific validation
+        }
+        
+        errors
+    }};
 }

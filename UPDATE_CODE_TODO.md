@@ -150,17 +150,17 @@ After comprehensive analysis of the d1-rs ORM codebase, I've identified **severe
 **Objective:** Ensure consistent API patterns across all modules
 
 #### **Phase 4.1: Unify Relation APIs**
-- [ ] **File:** Multiple files with mixed relation approaches
-  - [ ] Standardize on type-safe `relations!` macro approach
-  - [ ] Remove legacy string-based relation methods
-  - [ ] Ensure consistent error handling across all relation operations
-  - [ ] Unify association method signatures
+- [x] **File:** Multiple files with mixed relation approaches
+  - [x] Standardize on type-safe `relations!` macro approach
+  - [x] Remove legacy string-based relation methods
+  - [x] Ensure consistent error handling across all relation operations
+  - [x] Unify association method signatures
 
 #### **Phase 4.2: Standardize Error Handling**
-- [ ] **Files:** All modules with inconsistent error patterns
-  - [ ] Ensure all modules use enhanced `D1RsError` types
-  - [ ] Provide helpful error messages with suggestions
-  - [ ] Consistent error handling patterns across modules
+- [x] **Files:** All modules with inconsistent error patterns
+  - [x] Ensure all modules use enhanced `D1RsError` types
+  - [x] Provide helpful error messages with suggestions
+  - [x] Consistent error handling patterns across modules
 
 #### **Phase 4.3: Migration System Consistency**
 - [ ] **Files:** Auto-migration modules

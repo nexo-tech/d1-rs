@@ -184,56 +184,9 @@ pub enum ColumnOperation {
     ConstraintChanged,
 }
 
-/// Error types for complex schema change operations
-#[derive(Debug, Clone)]
-pub enum ComplexSchemaError {
-    /// Table restructuring failed
-    RestructuringFailed {
-        table: String,
-        reason: String,
-        recovery_actions: Vec<String>,
-    },
-    
-    /// Foreign key constraint violation
-    ForeignKeyViolation {
-        source_table: String,
-        target_table: String,
-        violating_records: u64,
-    },
-    
-    /// Data migration failed during restructuring
-    DataMigrationFailed {
-        table: String,
-        failed_records: u64,
-        error_details: String,
-    },
-    
-    /// Relationship evolution failed
-    RelationshipEvolutionFailed {
-        relationship: RelationshipChange,
-        reason: String,
-    },
-    
-    /// Junction table modification failed
-    JunctionTableError {
-        junction_table: String,
-        operation: String,
-        reason: String,
-    },
-    
-    /// Operation timeout
-    OperationTimeout {
-        operation: String,
-        timeout: Duration,
-    },
-    
-    /// Rollback failed
-    RollbackFailed {
-        operation: String,
-        reason: String,
-        manual_recovery_needed: bool,
-    },
-}
+// REVOLUTIONARY: Phase 4.2 - Removed custom ComplexSchemaError
+// Now using unified D1RsError with SchemaChange and DataMigration variants
+// This provides consistent error handling with helpful suggestions and recovery actions
 
 impl ComplexSchemaChanger {
     /// Create a new complex schema changer
