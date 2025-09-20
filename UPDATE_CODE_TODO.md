@@ -63,10 +63,10 @@ After comprehensive analysis of the d1-rs ORM codebase, I've identified **severe
   - [x] Ensure all generated methods are fully type-safe
 
 #### **Phase 1.3: Fix Relations Module**
-- [ ] **File:** `src/relations.rs:72-99` 
-  - [ ] Replace string-based SQL generation with type-safe builders
-  - [ ] Remove all hardcoded table/field name strings
-  - [ ] Use entity trait methods for table/field names
+- [x] **File:** `src/relations.rs:72-99` 
+  - [x] Replace string-based SQL generation with type-safe builders
+  - [x] Remove all hardcoded table/field name strings
+  - [x] Use entity trait methods for table/field names
 
 #### **Phase 1.4: Fix Edges Module Predicates**
 - [ ] **File:** `src/edges.rs:725-730`

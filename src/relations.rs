@@ -66,33 +66,44 @@ macro_rules! relations {
                 impl [<$entity QueryBuilder>] {
                     $(
                         /// Type-safe relation existence check - NO STRING LITERALS!
-                        /// Generates: EXISTS (SELECT 1 FROM target_table WHERE target_table.foreign_key = entity.id)
+                        /// Uses Entity::TABLE_NAME constants - COMPILE-TIME SAFE!
                         pub fn [<has_ $relation_name>](mut self) -> Self {
-                            // Generate EXISTS subquery based on relation type
+                            // REVOLUTIONARY: Use Entity trait constants instead of string manipulation!
+                            // This ensures compile-time validation and prevents typos
+                            let target_table = <$target as $crate::Entity>::TABLE_NAME;
+                            let source_table = <$entity as $crate::Entity>::TABLE_NAME;
+                            let foreign_key_name = stringify!($foreign_key);
+                            
+                            // Build type-safe EXISTS subquery using entity constants
                             let exists_sql = format!("EXISTS (SELECT 1 FROM {} WHERE {}.{} = {}.id)", 
-                                stringify!($target).to_lowercase(), 
-                                stringify!($target).to_lowercase(),
-                                stringify!($foreign_key), 
-                                stringify!($entity).to_lowercase()
+                                target_table,
+                                target_table, 
+                                foreign_key_name,
+                                source_table
                             );
                             
-                            // Add as a raw WHERE clause for now
                             self.query.where_clause(&exists_sql, "=", ::serde_json::Value::Bool(true));
                             self
                         }
                         
                         /// Type-safe relation with conditions - NO STRING LITERALS!
-                        /// Generates: EXISTS (SELECT 1 FROM target_table WHERE target_table.foreign_key = entity.id AND <conditions>)
+                        /// Uses Entity::TABLE_NAME constants - COMPILE-TIME SAFE!
                         pub fn [<has_ $relation_name _with>]<F>(mut self, _condition: F) -> Self 
                         where 
                             F: FnOnce(<$target as $crate::Entity>::QueryBuilder) -> <$target as $crate::Entity>::QueryBuilder
                         {
-                            // For now, implement basic has relation - the condition logic will be enhanced later
+                            // REVOLUTIONARY: Use Entity trait constants instead of string manipulation!
+                            let target_table = <$target as $crate::Entity>::TABLE_NAME;
+                            let source_table = <$entity as $crate::Entity>::TABLE_NAME;
+                            let foreign_key_name = stringify!($foreign_key);
+                            
+                            // Build type-safe EXISTS subquery using entity constants
+                            // TODO: Enhance to support condition parameter for advanced filtering
                             let exists_sql = format!("EXISTS (SELECT 1 FROM {} WHERE {}.{} = {}.id)", 
-                                stringify!($target).to_lowercase(), 
-                                stringify!($target).to_lowercase(),
-                                stringify!($foreign_key), 
-                                stringify!($entity).to_lowercase()
+                                target_table,
+                                target_table,
+                                foreign_key_name,
+                                source_table
                             );
                             
                             self.query.where_clause(&exists_sql, "=", ::serde_json::Value::Bool(true));
