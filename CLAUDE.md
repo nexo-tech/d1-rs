@@ -160,6 +160,19 @@ User::query().has_posts()                         // Compile-time validated!
 - **Trait-based or attribute-based detection only** - Use Rust's type system properly
 - **User-configurable type mapping** - Allow explicit override of default behavior
 
+## 🚨 DEVELOPMENT PHILOSOPHY: LEAN & CLEAN CODE
+
+### **NO BACKWARD COMPATIBILITY CONCERNS**
+**This library is in heavy development with no external users. Prioritize clean, lean code over compatibility:**
+
+- **❌ NO COMPATIBILITY LAYERS** - Don't create deprecated API wrappers or migration paths
+- **❌ NO LEGACY CODE MAINTENANCE** - If an API is deprecated, DELETE it completely
+- **✅ CLEAN BREAKS** - Make breaking changes freely to achieve better design
+- **✅ LEAN CODEBASE** - Remove any code that's no longer needed immediately
+- **✅ FOCUS ON QUALITY** - Prioritize revolutionary design over maintaining old patterns
+
+**Principle: If something becomes obsolete, remove it entirely. Don't accumulate technical debt.**
+
 ### Automatic CRUD Operations
 Entities get `find()`, `delete()`, `create()`, and `update()` methods automatically generated with proper SQL handling.
 
