@@ -229,6 +229,67 @@ fn get_users(&self) -> Result<Vec<User>> {
 
 **Principle: If you can't implement it completely right now, don't add it to the codebase. Wait until you can deliver a complete, production-ready implementation.**
 
+## 🚨 MANDATORY: File Modularity Policy
+
+**CRITICAL:** Large implementations must be split into focused, maintainable modules.
+
+### File Size and Complexity Limits:
+- **Maximum file size**: 800 lines of actual code (excluding tests)
+- **Maximum function size**: 100 lines of actual code
+- **Complexity threshold**: If a module handles >3 distinct concerns, split it
+
+### When to Split Files:
+❌ **FORBIDDEN** (Monolithic, unmaintainable):
+```rust
+// data_migration.rs - 2000+ lines mixing concerns
+impl DataMigrator {
+    async fn execute_type_conversion() { /* 200 lines */ }
+    async fn execute_normalization() { /* 300 lines */ } 
+    async fn execute_aggregation() { /* 250 lines */ }
+    async fn execute_value_mapping() { /* 200 lines */ }
+    async fn execute_format_transformation() { /* 200 lines */ }
+    // + 1000 more lines of helper functions
+}
+```
+
+✅ **REQUIRED** (Modular, focused, maintainable):
+```rust
+// src/auto_migration/
+//   mod.rs                    # Public exports and coordination
+//   data_migration.rs         # Core orchestration (< 400 lines)
+//   transformations/
+//     mod.rs                  # Transformation exports
+//     type_conversion.rs      # Type conversion logic only
+//     normalization.rs        # Data normalization logic only  
+//     aggregation.rs          # Data aggregation logic only
+//     value_mapping.rs        # Value mapping logic only
+//     format_transformation.rs # Format transformation logic only
+//   validators/
+//     mod.rs                  # Validation exports
+//     integrity_checker.rs    # Data integrity validation
+//     schema_validator.rs     # Schema validation logic
+//   utils/
+//     mod.rs                  # Utility exports
+//     batch_processor.rs      # Batch processing utilities
+//     backup_manager.rs       # Backup and rollback utilities
+```
+
+### Modular Design Requirements:
+1. **Single Responsibility** - Each file handles exactly one concern
+2. **Clear Interfaces** - Well-defined public APIs between modules
+3. **Minimal Dependencies** - Modules only depend on what they actually need
+4. **Testable Units** - Each module can be tested independently
+5. **Logical Organization** - Related functionality grouped together
+
+### Implementation Strategy:
+1. **Plan the module structure FIRST** - Design the file organization before implementing
+2. **Create focused trait abstractions** - Define clear interfaces between modules
+3. **Implement one module at a time** - Complete each module fully before moving to next
+4. **Keep coordination logic minimal** - Main orchestration file should mostly delegate
+5. **Comprehensive module tests** - Each module needs its own test suite
+
+**Principle: If implementing a feature would make any single file >800 lines or add >3 concerns to a module, create a proper modular structure instead.**
+
 ### Automatic CRUD Operations
 Entities get `find()`, `delete()`, `create()`, and `update()` methods automatically generated with proper SQL handling.
 
