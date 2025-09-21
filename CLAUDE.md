@@ -173,6 +173,62 @@ User::query().has_posts()                         // Compile-time validated!
 
 **Principle: If something becomes obsolete, remove it entirely. Don't accumulate technical debt.**
 
+### 🚨 ZERO PLACEHOLDER POLICY 🚨
+**NEVER write placeholder implementations, TODOs, or "for now" shortcuts. ALWAYS implement the complete solution.**
+
+❌ **FORBIDDEN** (Accumulates technical debt):
+```rust
+// TODO: Implement proper validation
+fn validate() -> Result<()> { Ok(()) }
+
+// For now, just return empty
+fn get_users() -> Vec<User> { vec![] }
+
+// Placeholder implementation  
+fn execute_migration() -> Result<()> {
+    // Will implement later
+    Ok(())
+}
+```
+
+✅ **REQUIRED** (Complete implementations only):
+```rust
+fn validate(&self) -> Result<()> {
+    // Full validation logic with proper error handling
+    if self.name.is_empty() {
+        return Err(ValidationError::EmptyName);
+    }
+    if !self.email.contains('@') {
+        return Err(ValidationError::InvalidEmail);
+    }
+    Ok(())
+}
+
+fn get_users(&self) -> Result<Vec<User>> {
+    // Complete implementation with proper error handling
+    let sql = "SELECT id, name, email FROM users WHERE active = ?";
+    self.db.query(sql, &[&true])
+        .map_err(|e| UserError::DatabaseError(e))
+        .and_then(|rows| rows.into_iter().map(User::from_row).collect())
+}
+```
+
+### Implementation Requirements:
+1. **COMPLETE IMPLEMENTATIONS ONLY** - Every function must be fully implemented before committing
+2. **NO TODO COMMENTS** - If you identify work needed, implement it immediately or don't add the function
+3. **NO "FOR NOW" LOGIC** - Don't add temporary shortcuts that will need replacement later
+4. **NO PLACEHOLDER RETURNS** - Don't return empty collections, None, or Ok(()) without proper logic
+5. **THINK THROUGH THE COMPLETE SOLUTION** - Consider all edge cases, error handling, and performance requirements upfront
+
+### When You Need to Implement Something:
+- **Research the requirements thoroughly** - Understand what the complete implementation needs
+- **Design the full solution** - Don't start coding until you understand the complete requirements  
+- **Implement all edge cases** - Handle errors, validation, and boundary conditions
+- **Add comprehensive tests** - Ensure the implementation works correctly in all scenarios
+- **Optimize for performance** - Consider memory usage, query efficiency, and compilation time
+
+**Principle: If you can't implement it completely right now, don't add it to the codebase. Wait until you can deliver a complete, production-ready implementation.**
+
 ### Automatic CRUD Operations
 Entities get `find()`, `delete()`, `create()`, and `update()` methods automatically generated with proper SQL handling.
 
@@ -187,14 +243,14 @@ Every migration feature MUST have:
 - **Rollback testing** for all operations
 - **Performance testing** for large dataset migrations
 
-## 🚨 MANDATORY: Implementation Fix Plan
+## 🚨 MANDATORY: Comprehensive Cleanup Plan
 
-**CRITICAL:** This codebase currently has major violations of the design principles above. Follow the implementation plan in `UPDATE_CODE_TODO.md` EXACTLY as specified.
+**CRITICAL:** This codebase currently has major violations of the design principles above. Follow the comprehensive cleanup plan in `CLEANUP_PLAN.md` EXACTLY as specified.
 
 ### Implementation Execution Rules:
 
-1. **FOLLOW THE PLAN**: Implement phases 1-5 in `UPDATE_CODE_TODO.md` in exact order
-2. **TRACK PROGRESS**: Update checklists in `UPDATE_CODE_TODO.md` as items are completed
+1. **FOLLOW THE PLAN**: Implement phases 1-7 in `CLEANUP_PLAN.md` in exact order
+2. **TRACK PROGRESS**: Update checklists in `CLEANUP_PLAN.md` as items are completed
 3. **COMPLETION CRITERIA**: An item is only complete when:
    - ✅ Fully tested for ALL edge cases
    - ✅ Fully satisfies the task requirements
@@ -205,16 +261,16 @@ Every migration feature MUST have:
 ### Quality Gates Before Any Work:
 - [ ] Run `cargo check` - must show ZERO warnings
 - [ ] Run `just test` - all tests must pass cleanly
-- [ ] Review current violations in `UPDATE_CODE_TODO.md`
+- [ ] Review current violations in `CLEANUP_PLAN.md`
 
 ### Quality Gates After Each Item:
 - [ ] Run `cargo check` - must still show ZERO warnings  
 - [ ] Run `just test` - all tests must still pass
-- [ ] Update the specific checklist item in `UPDATE_CODE_TODO.md` as complete
+- [ ] Update the specific checklist item in `CLEANUP_PLAN.md` as complete
 - [ ] Verify the implementation fully addresses the violation
 
 ### Phase Completion Requirements:
-Each phase in `UPDATE_CODE_TODO.md` must meet ALL acceptance criteria before proceeding to the next phase.
+Each phase in `CLEANUP_PLAN.md` must meet ALL acceptance criteria before proceeding to the next phase.
 
 **NEVER skip items or phases. The codebase must be systematically fixed to achieve true type safety and eliminate all violations.**
 
