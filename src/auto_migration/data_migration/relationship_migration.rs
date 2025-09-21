@@ -508,18 +508,179 @@ impl DataMigrator {
     }
     
     /// Execute cascade migration
+    /// Executes migration operations across multiple tables in dependency order to maintain referential integrity
     pub async fn execute_cascade_migration(
         &self,
-        _dependency_order: &[String],
-        _cascade_rules: &std::collections::HashMap<String, String>,
+        dependency_order: &[String],
+        cascade_rules: &std::collections::HashMap<String, String>,
     ) -> Result<TransformationResult> {
-        // Placeholder for cascade migration logic
+        let start_time = Instant::now();
+        let mut warnings = Vec::new();
+        let mut errors = Vec::new();
+        
+        // Validate cascade migration parameters
+        if dependency_order.is_empty() {
+            errors.push(D1RsError::ValidationError("Dependency order cannot be empty for cascade migration".to_string()));
+            return Ok(TransformationResult {
+                success: false,
+                records_processed: 0,
+                records_failed: 0,
+                errors,
+                warnings,
+            });
+        }
+        
+        if cascade_rules.is_empty() {
+            errors.push(D1RsError::ValidationError("Cascade rules cannot be empty for cascade migration".to_string()));
+            return Ok(TransformationResult {
+                success: false,
+                records_processed: 0,
+                records_failed: 0,
+                errors,
+                warnings,
+            });
+        }
+        
+        // Validate that all tables in dependency order have corresponding rules
+        for table in dependency_order {
+            if table.is_empty() {
+                errors.push(D1RsError::ValidationError("Table name in dependency order cannot be empty".to_string()));
+                return Ok(TransformationResult {
+                    success: false,
+                    records_processed: 0,
+                    records_failed: 0,
+                    errors,
+                    warnings,
+                });
+            }
+            
+            if !cascade_rules.contains_key(table) {
+                warnings.push(format!("Table '{}' in dependency order has no corresponding cascade rule", table));
+            }
+        }
+        
+        // Validate cascade rules for basic SQL injection protection
+        for (table_name, rule) in cascade_rules {
+            if table_name.is_empty() {
+                errors.push(D1RsError::ValidationError("Table name in cascade rules cannot be empty".to_string()));
+                return Ok(TransformationResult {
+                    success: false,
+                    records_processed: 0,
+                    records_failed: 0,
+                    errors,
+                    warnings,
+                });
+            }
+            
+            if rule.is_empty() {
+                warnings.push(format!("Cascade rule for table '{}' is empty", table_name));
+                continue;
+            }
+            
+            // Basic SQL injection protection for cascade rules
+            let rule_lower = rule.to_lowercase();
+            let rule_trimmed = rule_lower.trim();
+            let dangerous_patterns = vec!["drop", "truncate", "alter"];
+            
+            for pattern in dangerous_patterns {
+                if rule_lower.contains(pattern) && !rule_trimmed.starts_with("insert") && !rule_trimmed.starts_with("update") && !rule_trimmed.starts_with("select") && !rule_trimmed.starts_with("delete") {
+                    errors.push(D1RsError::ValidationError(format!("Cascade rule for table '{}' contains potentially dangerous SQL pattern: '{}'", table_name, pattern)));
+                    return Ok(TransformationResult {
+                        success: false,
+                        records_processed: 0,
+                        records_failed: 0,
+                        errors,
+                        warnings,
+                    });
+                }
+            }
+        }
+        
+        // Execute cascade migration in dependency order
+        let mut total_processed = 0u64;
+        let mut total_failed = 0u64;
+        let mut processed_tables = Vec::new();
+        
+        for table in dependency_order {
+            // Check if table is accessible
+            let table_check_sql = format!("SELECT COUNT(*) FROM {} LIMIT 1", table);
+            match self.db.execute_returning_count(&table_check_sql, &[]).await {
+                Ok(_) => {
+                    // Table exists and is accessible
+                    if let Some(cascade_rule) = cascade_rules.get(table) {
+                        if cascade_rule.trim().is_empty() {
+                            warnings.push(format!("Skipping table '{}' due to empty cascade rule", table));
+                            continue;
+                        }
+                        
+                        // Get record count before applying rule (for estimation)
+                        let pre_count_sql = format!("SELECT COUNT(*) FROM {}", table);
+                        let estimated_records = match self.db.execute_returning_count(&pre_count_sql, &[]).await {
+                            Ok(count) => count as u64,
+                            Err(_) => {
+                                warnings.push(format!("Could not estimate record count for table '{}'", table));
+                                0
+                            }
+                        };
+                        
+                        // Execute the cascade rule
+                        match self.db.execute(cascade_rule, &[]).await {
+                            Ok(_result) => {
+                                // Rule executed successfully
+                                total_processed += estimated_records;
+                                processed_tables.push(table.clone());
+                                
+                                // Log the successful operation
+                                if estimated_records > 0 {
+                                    warnings.push(format!("Successfully applied cascade rule to table '{}' (estimated {} records)", table, estimated_records));
+                                }
+                            }
+                            Err(e) => {
+                                errors.push(D1RsError::AutoMigration(format!("Cascade rule failed for table '{}': {}", table, e)));
+                                total_failed += estimated_records;
+                                
+                                // Depending on failure strategy, we might want to continue or stop
+                                // For cascade migrations, failures are often critical, so we'll continue but track them
+                                warnings.push(format!("Continuing cascade migration despite failure in table '{}'", table));
+                            }
+                        }
+                    } else {
+                        warnings.push(format!("Table '{}' has no cascade rule, skipping", table));
+                    }
+                }
+                Err(_) => {
+                    warnings.push(format!("Table '{}' not accessible, skipping in cascade migration", table));
+                }
+            }
+        }
+        
+        // Check for unused cascade rules
+        let mut unused_rules = Vec::new();
+        for table_name in cascade_rules.keys() {
+            if !dependency_order.contains(table_name) {
+                unused_rules.push(table_name.clone());
+            }
+        }
+        
+        if !unused_rules.is_empty() {
+            warnings.push(format!("The following tables have cascade rules but are not in dependency order: {}", unused_rules.join(", ")));
+        }
+        
+        // Summary information
+        if !processed_tables.is_empty() {
+            warnings.push(format!("Cascade migration processed {} tables in order: {}", processed_tables.len(), processed_tables.join(" → ")));
+        }
+        
+        // Update metrics
+        let duration = start_time.elapsed();
+        self.update_transformation_metrics("cascade_migration", duration, total_failed == 0);
+        
         Ok(TransformationResult {
-            success: true,
-            records_processed: 0,
-            records_failed: 0,
-            errors: Vec::new(),
-            warnings: Vec::new(),
+            success: total_failed == 0,
+            records_processed: total_processed,
+            records_failed: total_failed,
+            errors,
+            warnings,
         })
     }
 }

@@ -2375,3 +2375,488 @@ async fn test_execute_business_logic_recreation_validation_failures() {
     // Should have summary warning about total violations
     assert!(result.warnings.iter().any(|w| w.contains("validation violations were found")));
 }
+
+async fn create_test_tables_for_cascade_migration(db: &D1Client) {
+    // Create a set of interdependent tables to test cascade migration
+    // Order: companies -> departments -> employees -> projects
+    
+    // 1. Companies table (no dependencies)
+    let create_companies_sql = r#"
+        CREATE TABLE companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            status TEXT DEFAULT 'active',
+            migration_status TEXT DEFAULT 'pending'
+        )
+    "#;
+    
+    db.execute(create_companies_sql, &[])
+        .await
+        .expect("Failed to create companies table");
+    
+    // 2. Departments table (depends on companies)
+    let create_departments_sql = r#"
+        CREATE TABLE departments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            company_id INTEGER NOT NULL,
+            budget REAL DEFAULT 0.0,
+            migration_status TEXT DEFAULT 'pending'
+        )
+    "#;
+    
+    db.execute(create_departments_sql, &[])
+        .await
+        .expect("Failed to create departments table");
+    
+    // 3. Employees table (depends on departments)
+    let create_employees_sql = r#"
+        CREATE TABLE employees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            department_id INTEGER NOT NULL,
+            salary REAL DEFAULT 0.0,
+            migration_status TEXT DEFAULT 'pending'
+        )
+    "#;
+    
+    db.execute(create_employees_sql, &[])
+        .await
+        .expect("Failed to create employees table");
+    
+    // 4. Projects table (depends on employees and departments)
+    let create_projects_sql = r#"
+        CREATE TABLE projects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            department_id INTEGER NOT NULL,
+            lead_employee_id INTEGER,
+            status TEXT DEFAULT 'planning',
+            migration_status TEXT DEFAULT 'pending'
+        )
+    "#;
+    
+    db.execute(create_projects_sql, &[])
+        .await
+        .expect("Failed to create projects table");
+    
+    // Insert test data
+    // Companies
+    let companies = vec![
+        ("TechCorp", "active"),
+        ("DataSys", "active"),
+    ];
+    
+    for (name, status) in companies {
+        db.execute(
+            "INSERT INTO companies (name, status) VALUES (?, ?)",
+            &[
+                Value::String(name.to_string()),
+                Value::String(status.to_string()),
+            ]
+        ).await.expect("Failed to insert company data");
+    }
+    
+    // Departments
+    let departments = vec![
+        ("Engineering", 1, 100000.0),
+        ("Marketing", 1, 50000.0),
+        ("Sales", 2, 75000.0),
+    ];
+    
+    for (name, company_id, budget) in departments {
+        db.execute(
+            "INSERT INTO departments (name, company_id, budget) VALUES (?, ?, ?)",
+            &[
+                Value::String(name.to_string()),
+                Value::Number(company_id.into()),
+                Value::Number(serde_json::Number::from_f64(budget).unwrap()),
+            ]
+        ).await.expect("Failed to insert department data");
+    }
+    
+    // Employees
+    let employees = vec![
+        ("Alice Johnson", 1, 75000.0),
+        ("Bob Smith", 1, 80000.0),
+        ("Carol Davis", 2, 60000.0),
+        ("David Wilson", 3, 65000.0),
+    ];
+    
+    for (name, dept_id, salary) in employees {
+        db.execute(
+            "INSERT INTO employees (name, department_id, salary) VALUES (?, ?, ?)",
+            &[
+                Value::String(name.to_string()),
+                Value::Number(dept_id.into()),
+                Value::Number(serde_json::Number::from_f64(salary).unwrap()),
+            ]
+        ).await.expect("Failed to insert employee data");
+    }
+    
+    // Projects
+    let projects = vec![
+        ("Website Redesign", 1, Some(1), "active"),
+        ("Data Analytics", 1, Some(2), "planning"),
+        ("Marketing Campaign", 2, Some(3), "active"),
+    ];
+    
+    for (name, dept_id, lead_id, status) in projects {
+        db.execute(
+            "INSERT INTO projects (name, department_id, lead_employee_id, status) VALUES (?, ?, ?, ?)",
+            &[
+                Value::String(name.to_string()),
+                Value::Number(dept_id.into()),
+                match lead_id {
+                    Some(id) => Value::Number(id.into()),
+                    None => Value::Null,
+                },
+                Value::String(status.to_string()),
+            ]
+        ).await.expect("Failed to insert project data");
+    }
+}
+
+#[tokio::test]
+async fn test_execute_cascade_migration_validation_errors() {
+    let db = setup_test_db().await;
+    create_test_tables_for_cascade_migration(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test empty dependency order
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+    
+    let result = data_migration.execute_cascade_migration(
+        &[],  // Empty dependency order
+        &cascade_rules
+    ).await.expect("Should handle empty dependency order gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Dependency order cannot be empty"));
+    
+    // Test empty cascade rules
+    let dependency_order = vec!["companies".to_string()];
+    let empty_rules = HashMap::new();
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &empty_rules  // Empty rules
+    ).await.expect("Should handle empty cascade rules gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Cascade rules cannot be empty"));
+    
+    // Test empty table name in dependency order
+    let dependency_order = vec!["".to_string()];  // Empty table name
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Should handle empty table name gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Table name in dependency order cannot be empty"));
+    
+    // Test empty table name in cascade rules
+    let dependency_order = vec!["companies".to_string()];
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());  // Empty table name
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Should handle empty table name in rules gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Table name in cascade rules cannot be empty"));
+}
+
+#[tokio::test]
+async fn test_execute_cascade_migration_sql_injection_protection() {
+    let db = setup_test_db().await;
+    create_test_tables_for_cascade_migration(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test dangerous DROP pattern
+    let dependency_order = vec!["companies".to_string()];
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "DROP TABLE companies".to_string());  // Dangerous query
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Should handle dangerous query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("potentially dangerous SQL pattern"));
+    
+    // Test dangerous TRUNCATE pattern
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "TRUNCATE TABLE companies".to_string());  // Dangerous query
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Should handle dangerous query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("potentially dangerous SQL pattern"));
+    
+    // Test dangerous ALTER pattern
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "ALTER TABLE companies ADD COLUMN test TEXT".to_string());  // Dangerous query
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Should handle dangerous query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("potentially dangerous SQL pattern"));
+}
+
+#[tokio::test]
+async fn test_execute_cascade_migration_missing_rules_and_tables() {
+    let db = setup_test_db().await;
+    create_test_tables_for_cascade_migration(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test table in dependency order without corresponding rule
+    let dependency_order = vec!["companies".to_string(), "departments".to_string()];
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+    // Note: departments rule is missing
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Should handle missing rule gracefully");
+    
+    assert!(result.success);
+    assert!(result.warnings.iter().any(|w| w.contains("departments") && w.contains("no corresponding cascade rule")));
+    
+    // Test non-existent table
+    let dependency_order = vec!["non_existent_table".to_string()];
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("non_existent_table".to_string(), "UPDATE non_existent_table SET status = 'completed'".to_string());
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Should handle non-existent table gracefully");
+    
+    assert!(result.success);
+    assert!(result.warnings.iter().any(|w| w.contains("not accessible")));
+    
+    // Test unused cascade rules
+    let dependency_order = vec!["companies".to_string()];
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+    cascade_rules.insert("unused_table".to_string(), "UPDATE unused_table SET status = 'completed'".to_string());
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Should handle unused rules gracefully");
+    
+    assert!(result.success);
+    assert!(result.warnings.iter().any(|w| w.contains("have cascade rules but are not in dependency order")));
+}
+
+#[tokio::test]
+async fn test_execute_cascade_migration_successful_operation() {
+    let db = setup_test_db().await;
+    create_test_tables_for_cascade_migration(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Define proper dependency order: companies -> departments -> employees -> projects
+    let dependency_order = vec![
+        "companies".to_string(),
+        "departments".to_string(),
+        "employees".to_string(),
+        "projects".to_string(),
+    ];
+    
+    // Define cascade rules for each table
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed' WHERE migration_status = 'pending'".to_string());
+    cascade_rules.insert("departments".to_string(), "UPDATE departments SET migration_status = 'completed' WHERE migration_status = 'pending'".to_string());
+    cascade_rules.insert("employees".to_string(), "UPDATE employees SET migration_status = 'completed' WHERE migration_status = 'pending'".to_string());
+    cascade_rules.insert("projects".to_string(), "UPDATE projects SET migration_status = 'completed' WHERE migration_status = 'pending'".to_string());
+    
+    // Execute cascade migration
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Cascade migration should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 12); // 2 companies + 3 departments + 4 employees + 3 projects
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have summary of processed tables
+    assert!(result.warnings.iter().any(|w| w.contains("Cascade migration processed 4 tables in order: companies → departments → employees → projects")));
+    
+    // Verify the migration was applied correctly - check that all records have completed status
+    let companies_result = db.execute("SELECT COUNT(*) as count FROM companies WHERE migration_status = 'completed'", &[])
+        .await.expect("Failed to query companies");
+    
+    if let Value::Object(row) = &companies_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert_eq!(count.as_u64().unwrap(), 2);
+        }
+    }
+    
+    let departments_result = db.execute("SELECT COUNT(*) as count FROM departments WHERE migration_status = 'completed'", &[])
+        .await.expect("Failed to query departments");
+    
+    if let Value::Object(row) = &departments_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert_eq!(count.as_u64().unwrap(), 3);
+        }
+    }
+    
+    let employees_result = db.execute("SELECT COUNT(*) as count FROM employees WHERE migration_status = 'completed'", &[])
+        .await.expect("Failed to query employees");
+    
+    if let Value::Object(row) = &employees_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert_eq!(count.as_u64().unwrap(), 4);
+        }
+    }
+    
+    let projects_result = db.execute("SELECT COUNT(*) as count FROM projects WHERE migration_status = 'completed'", &[])
+        .await.expect("Failed to query projects");
+    
+    if let Value::Object(row) = &projects_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert_eq!(count.as_u64().unwrap(), 3);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_cascade_migration_partial_failure() {
+    let db = setup_test_db().await;
+    create_test_tables_for_cascade_migration(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Define dependency order
+    let dependency_order = vec![
+        "companies".to_string(),
+        "departments".to_string(),
+        "employees".to_string(),
+    ];
+    
+    // Define cascade rules with one invalid rule
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+    cascade_rules.insert("departments".to_string(), "UPDATE non_existent_column SET invalid = 'fail'".to_string());  // This will fail
+    cascade_rules.insert("employees".to_string(), "UPDATE employees SET migration_status = 'completed'".to_string());
+    
+    // Execute cascade migration
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Cascade migration should handle failure gracefully");
+    
+    assert!(!result.success);  // Should fail due to invalid SQL
+    assert!(result.records_failed > 0);
+    assert!(!result.errors.is_empty());
+    
+    // Should have error for the failing table
+    assert!(result.errors.iter().any(|e| e.to_string().contains("departments")));
+    
+    // Should continue processing after failure
+    assert!(result.warnings.iter().any(|w| w.contains("Continuing cascade migration despite failure")));
+}
+
+#[tokio::test]
+async fn test_execute_cascade_migration_empty_rules() {
+    let db = setup_test_db().await;
+    create_test_tables_for_cascade_migration(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test with some empty rules
+    let dependency_order = vec![
+        "companies".to_string(),
+        "departments".to_string(),
+    ];
+    
+    let mut cascade_rules = HashMap::new();
+    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+    cascade_rules.insert("departments".to_string(), "".to_string());  // Empty rule
+    
+    let result = data_migration.execute_cascade_migration(
+        &dependency_order,
+        &cascade_rules
+    ).await.expect("Should handle empty rules gracefully");
+    
+    assert!(result.success);
+    assert!(result.warnings.iter().any(|w| w.contains("Cascade rule for table 'departments' is empty")));
+    assert!(result.warnings.iter().any(|w| w.contains("Skipping table 'departments' due to empty cascade rule")));
+}
