@@ -4301,6 +4301,631 @@ async fn test_execute_business_rules_population_complex_business_logic() {
     }
 }
 
+// Test helper function for external source population tests
+async fn create_test_tables_for_external_source_population(db: &D1Client) {
+    // Create external_assignments junction table
+    let create_junction_sql = r#"
+        CREATE TABLE external_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            external_user_id INTEGER NOT NULL,
+            external_project_id INTEGER NOT NULL,
+            assignment_role TEXT DEFAULT 'member',
+            start_date TEXT,
+            end_date TEXT
+        )
+    "#;
+    
+    db.execute(create_junction_sql, &[])
+        .await
+        .expect("Failed to create external assignments junction table");
+    
+    // Create another test junction table
+    let create_external_permissions_sql = r#"
+        CREATE TABLE external_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_ref INTEGER NOT NULL,
+            permission_ref INTEGER NOT NULL,
+            granted_date TEXT
+        )
+    "#;
+    
+    db.execute(create_external_permissions_sql, &[])
+        .await
+        .expect("Failed to create external permissions junction table");
+}
+
+#[tokio::test]
+async fn test_execute_external_source_population_validation_errors() {
+    let db = setup_test_db().await;
+    create_test_tables_for_external_source_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let json_data = r#"[{"user_id": 1, "project_id": 1, "role": "lead"}]"#;
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "external_user_id".to_string());
+    column_mapping.insert("project_id".to_string(), "external_project_id".to_string());
+    let validation_rules = vec!["SELECT COUNT(*) FROM external_assignments".to_string()];
+    
+    // Test empty junction table
+    let result = data_migration.execute_external_source_population(
+        "",  // Empty junction table
+        json_data,
+        "json",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Should handle empty junction table gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Junction table cannot be empty"));
+    
+    // Test empty source data
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        "",  // Empty source data
+        "json",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Should handle empty source data gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Source data cannot be empty"));
+    
+    // Test empty source format
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        json_data,
+        "",  // Empty source format
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Should handle empty source format gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Source format cannot be empty"));
+    
+    // Test unsupported source format
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        json_data,
+        "xml",  // Unsupported format
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Should handle unsupported format gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Unsupported source format 'xml'"));
+    
+    // Test empty column mapping
+    let empty_mapping = HashMap::new();
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        json_data,
+        "json",
+        &empty_mapping,
+        &validation_rules
+    ).await.expect("Should handle empty column mapping gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Column mapping cannot be empty"));
+    
+    // Test empty column names in mapping
+    let mut invalid_mapping = HashMap::new();
+    invalid_mapping.insert("".to_string(), "external_user_id".to_string());  // Empty source column
+    invalid_mapping.insert("project_id".to_string(), "external_project_id".to_string());
+    
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        json_data,
+        "json",
+        &invalid_mapping,
+        &validation_rules
+    ).await.expect("Should handle empty column names gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Column names in mapping cannot be empty"));
+    
+    // Test duplicate target columns
+    let mut duplicate_mapping = HashMap::new();
+    duplicate_mapping.insert("user_id".to_string(), "external_user_id".to_string());
+    duplicate_mapping.insert("project_id".to_string(), "external_user_id".to_string());  // Duplicate target
+    
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        json_data,
+        "json",
+        &duplicate_mapping,
+        &validation_rules
+    ).await.expect("Should handle duplicate target columns gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Duplicate target column 'external_user_id'"));
+    
+    // Test dangerous validation rule
+    let dangerous_validation_rules = vec!["DROP TABLE external_assignments".to_string()];
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        json_data,
+        "json",
+        &column_mapping,
+        &dangerous_validation_rules
+    ).await.expect("Should handle dangerous validation rule gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Validation rule 1 contains potentially dangerous SQL patterns"));
+}
+
+#[tokio::test]
+async fn test_execute_external_source_population_missing_table() {
+    let db = setup_test_db().await;
+    create_test_tables_for_external_source_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let json_data = r#"[{"user_id": 1, "project_id": 1}]"#;
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "external_user_id".to_string());
+    column_mapping.insert("project_id".to_string(), "external_project_id".to_string());
+    let validation_rules = vec!["SELECT COUNT(*) FROM non_existent_table".to_string()];
+    
+    // Test non-existent junction table
+    let result = data_migration.execute_external_source_population(
+        "non_existent_table",
+        json_data,
+        "json",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Should handle missing table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("Junction table non_existent_table not accessible")));
+}
+
+#[tokio::test]
+async fn test_execute_external_source_population_json_success() {
+    let db = setup_test_db().await;
+    create_test_tables_for_external_source_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 2,  // Small batch size to test batch processing
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // JSON array format
+    let json_data = r#"[
+        {"user_id": 1, "project_id": 1, "role": "lead", "start": "2024-01-01"},
+        {"user_id": 2, "project_id": 1, "role": "member", "start": "2024-01-02"},
+        {"user_id": 3, "project_id": 2, "role": "member", "start": "2024-01-03"}
+    ]"#;
+    
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "external_user_id".to_string());
+    column_mapping.insert("project_id".to_string(), "external_project_id".to_string());
+    column_mapping.insert("role".to_string(), "assignment_role".to_string());
+    column_mapping.insert("start".to_string(), "start_date".to_string());
+    
+    let validation_rules = vec![
+        "SELECT COUNT(*) FROM external_assignments".to_string(),
+        "SELECT COUNT(*) FROM external_assignments WHERE assignment_role IN ('lead', 'member')".to_string(),
+    ];
+    
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        json_data,
+        "json",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("JSON external source population should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 3);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have parsing success message
+    assert!(result.warnings.iter().any(|w| w.contains("Parsed 3 records from external source (format: json)")));
+    
+    // Should have validation summary
+    assert!(result.warnings.iter().any(|w| w.contains("validation rules to verify external source data integrity")));
+    assert!(result.warnings.iter().any(|w| w.contains("All validation rules passed successfully")));
+    
+    // Verify the records were inserted correctly
+    let assignments_result = db.execute(
+        "SELECT external_user_id, external_project_id, assignment_role, start_date FROM external_assignments ORDER BY external_user_id",
+        &[]
+    ).await.expect("Failed to query assignments");
+    
+    assert_eq!(assignments_result.rows.len(), 3);
+    
+    // Check specific record values
+    if let Value::Object(row) = &assignments_result.rows[0] {
+        if let (Some(Value::Number(user_id)), Some(Value::String(role))) = 
+            (row.get("external_user_id"), row.get("assignment_role")) {
+            assert_eq!(user_id.as_u64().unwrap(), 1);
+            assert_eq!(role, "lead");
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_external_source_population_csv_success() {
+    let db = setup_test_db().await;
+    create_test_tables_for_external_source_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // CSV format data
+    let csv_data = r#"user_ref,permission_ref,granted
+1,101,2024-01-01
+2,102,2024-01-02
+3,101,2024-01-03
+4,103,2024-01-04"#;
+    
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_ref".to_string(), "user_ref".to_string());
+    column_mapping.insert("permission_ref".to_string(), "permission_ref".to_string());
+    column_mapping.insert("granted".to_string(), "granted_date".to_string());
+    
+    let validation_rules = vec![
+        "SELECT COUNT(*) FROM external_permissions".to_string(),
+        "SELECT COUNT(*) FROM external_permissions WHERE user_ref > 0".to_string(),
+    ];
+    
+    let result = data_migration.execute_external_source_population(
+        "external_permissions",
+        csv_data,
+        "csv",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("CSV external source population should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 4);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have parsing success message
+    assert!(result.warnings.iter().any(|w| w.contains("Parsed 4 records from external source (format: csv)")));
+    
+    // Verify the records were inserted correctly
+    let permissions_result = db.execute(
+        "SELECT user_ref, permission_ref, granted_date FROM external_permissions ORDER BY user_ref",
+        &[]
+    ).await.expect("Failed to query permissions");
+    
+    assert_eq!(permissions_result.rows.len(), 4);
+    
+    // Check specific record values
+    if let Value::Object(row) = &permissions_result.rows[0] {
+        if let (Some(Value::Number(user_ref)), Some(Value::Number(permission_ref))) = 
+            (row.get("user_ref"), row.get("permission_ref")) {
+            assert_eq!(user_ref.as_u64().unwrap(), 1);
+            assert_eq!(permission_ref.as_u64().unwrap(), 101);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_external_source_population_array_format() {
+    let db = setup_test_db().await;
+    create_test_tables_for_external_source_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Array format (newline-separated JSON objects)
+    let array_data = r#"{"user_id": 10, "project_id": 10, "role": "admin"}
+{"user_id": 11, "project_id": 10, "role": "member"}
+{"user_id": 12, "project_id": 11, "role": "lead"}"#;
+    
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "external_user_id".to_string());
+    column_mapping.insert("project_id".to_string(), "external_project_id".to_string());
+    column_mapping.insert("role".to_string(), "assignment_role".to_string());
+    
+    let validation_rules: Vec<String> = vec![];  // No validation rules
+    
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        array_data,
+        "array",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Array external source population should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 3);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have parsing success message
+    assert!(result.warnings.iter().any(|w| w.contains("Parsed 3 records from external source (format: array)")));
+    
+    // Should NOT have validation messages since no rules were provided
+    assert!(!result.warnings.iter().any(|w| w.contains("validation rules")));
+    
+    // Verify the records were inserted correctly
+    let array_result = db.execute(
+        "SELECT external_user_id, assignment_role FROM external_assignments WHERE external_user_id >= 10 ORDER BY external_user_id",
+        &[]
+    ).await.expect("Failed to query array assignments");
+    
+    assert_eq!(array_result.rows.len(), 3);
+    
+    // Check specific record values
+    if let Value::Object(row) = &array_result.rows[0] {
+        if let (Some(Value::Number(user_id)), Some(Value::String(role))) = 
+            (row.get("external_user_id"), row.get("assignment_role")) {
+            assert_eq!(user_id.as_u64().unwrap(), 10);
+            assert_eq!(role, "admin");
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_external_source_population_parsing_failures() {
+    let db = setup_test_db().await;
+    create_test_tables_for_external_source_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "external_user_id".to_string());
+    column_mapping.insert("project_id".to_string(), "external_project_id".to_string());
+    let validation_rules: Vec<String> = vec![];
+    
+    // Test invalid JSON
+    let invalid_json = r#"{"user_id": 1, "project_id": invalid}"#;
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        invalid_json,
+        "json",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Should handle invalid JSON gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors.iter().any(|e| e.to_string().contains("Failed to parse external source data")));
+    
+    // Test invalid CSV (mismatched columns)
+    let invalid_csv = r#"user_id,project_id
+1,2,3"#;  // 3 values but 2 headers
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        invalid_csv,
+        "csv",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Should handle invalid CSV gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors.iter().any(|e| e.to_string().contains("Failed to parse external source data")));
+    
+    // Test JSON array with non-objects
+    let invalid_json_array = r#"[1, 2, 3]"#;
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        invalid_json_array,
+        "json",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Should handle non-object JSON array gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors.iter().any(|e| e.to_string().contains("Failed to parse external source data")));
+}
+
+#[tokio::test]
+async fn test_execute_external_source_population_missing_columns() {
+    let db = setup_test_db().await;
+    create_test_tables_for_external_source_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // JSON data missing some columns that are required by mapping
+    let incomplete_json = r#"[
+        {"user_id": 1, "project_id": 1},
+        {"user_id": 2, "missing_project": 2},
+        {"user_id": 3, "project_id": 3}
+    ]"#;
+    
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "external_user_id".to_string());
+    column_mapping.insert("project_id".to_string(), "external_project_id".to_string());
+    let validation_rules: Vec<String> = vec![];
+    
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        incomplete_json,
+        "json",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Should handle missing columns gracefully");
+    
+    // Success should be false as 2 out of 3 records succeeded (66.7% < 80% threshold)
+    assert!(!result.success);
+    assert_eq!(result.records_processed, 3);
+    assert_eq!(result.records_failed, 1);  // One record missing project_id
+    
+    // Should have warnings about missing columns
+    assert!(result.warnings.iter().any(|w| w.contains("Source column 'project_id' not found")));
+    
+    // Should have summary about failed records
+    assert!(result.warnings.iter().any(|w| w.contains("Failed to process 1 out of 3 external records")));
+    
+    // Verify only 2 records were inserted
+    let incomplete_result = db.execute(
+        "SELECT COUNT(*) as count FROM external_assignments",
+        &[]
+    ).await.expect("Failed to count records");
+    
+    if let Value::Object(row) = &incomplete_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert!(count.as_u64().unwrap() >= 2);  // At least 2 records from previous tests
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_external_source_population_validation_failure() {
+    let db = setup_test_db().await;
+    create_test_tables_for_external_source_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let json_data = r#"[{"user_id": 100, "project_id": 100}]"#;
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "external_user_id".to_string());
+    column_mapping.insert("project_id".to_string(), "external_project_id".to_string());
+    
+    // Validation rules that will fail
+    let failing_validation_rules = vec![
+        "SELECT COUNT(*) FROM external_assignments".to_string(),  // This will pass
+        "SELECT COUNT(*) FROM invalid_table_name".to_string(),  // This will fail
+    ];
+    
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        json_data,
+        "json",
+        &column_mapping,
+        &failing_validation_rules
+    ).await.expect("Should handle validation failure gracefully");
+    
+    assert!(!result.success);  // Should fail due to validation failures
+    assert!(result.records_processed > 0);
+    assert!(result.records_failed > 0);  // Validation failures are counted
+    assert!(result.errors.iter().any(|e| e.to_string().contains("Validation rule 2 failed")));
+    
+    // Should have validation failure summary
+    assert!(result.warnings.iter().any(|w| w.contains("validation rules failed or detected issues")));
+}
+
+#[tokio::test]
+async fn test_execute_external_source_population_single_json_object() {
+    let db = setup_test_db().await;
+    create_test_tables_for_external_source_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Single JSON object (not an array)
+    let single_json = r#"{"user_id": 999, "project_id": 999, "role": "owner"}"#;
+    
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "external_user_id".to_string());
+    column_mapping.insert("project_id".to_string(), "external_project_id".to_string());
+    column_mapping.insert("role".to_string(), "assignment_role".to_string());
+    
+    let validation_rules: Vec<String> = vec![];
+    
+    let result = data_migration.execute_external_source_population(
+        "external_assignments",
+        single_json,
+        "json",
+        &column_mapping,
+        &validation_rules
+    ).await.expect("Single JSON object population should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 1);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have parsing success message
+    assert!(result.warnings.iter().any(|w| w.contains("Parsed 1 records from external source (format: json)")));
+    
+    // Verify the record was inserted correctly
+    let single_result = db.execute(
+        "SELECT external_user_id, assignment_role FROM external_assignments WHERE external_user_id = 999",
+        &[]
+    ).await.expect("Failed to query single assignment");
+    
+    assert_eq!(single_result.rows.len(), 1);
+    
+    if let Value::Object(row) = &single_result.rows[0] {
+        if let Some(Value::String(role)) = row.get("assignment_role") {
+            assert_eq!(role, "owner");
+        }
+    }
+}
+
 #[tokio::test]
 async fn test_execute_denormalized_column_population_different_delimiters() {
     let db = setup_test_db().await;
