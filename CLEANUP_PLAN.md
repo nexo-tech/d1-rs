@@ -52,8 +52,8 @@ An item is only ✅ COMPLETE when:
 
 #### 1.1.4 Replace Placeholder Custom Migration Logic
 - [x] **L859**: Replace `execute_custom_transformation` placeholder with full implementation ✅ COMPLETE
-- [ ] **L869-880**: Replace `execute_built_in_custom_migration` placeholder with full implementation
-- [ ] **L923**: Replace `restore_from_backup` placeholder with full implementation
+- [x] **L869-880**: Replace `execute_built_in_custom_migration` placeholder with full implementation ✅ COMPLETE
+- [x] **L923**: Replace `restore_from_backup` placeholder with full implementation ✅ COMPLETE
 
 ### Phase 1.2: Auto Migration Validator
 **Target**: `src/auto_migration/validator.rs`
