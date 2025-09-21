@@ -39,8 +39,8 @@ An item is only ✅ COMPLETE when:
 - [x] **L683-695**: Replace `execute_format_transformation` placeholder with full implementation ✅ COMPLETE
 
 #### 1.1.2 Replace Placeholder Relationship Migration Logic
-- [ ] **L702-710**: Replace `execute_direct_fk_copy` placeholder with full implementation
-- [ ] **L715-730**: Replace `execute_id_mapping_migration` placeholder with full implementation
+- [x] **L702-710**: Replace `execute_direct_fk_copy` placeholder with full implementation ✅ COMPLETE
+- [x] **L715-730**: Replace `execute_id_mapping_migration` placeholder with full implementation ✅ COMPLETE
 - [ ] **L735-745**: Replace `execute_business_logic_recreation` placeholder with full implementation
 - [ ] **L750-760**: Replace `execute_cascade_migration` placeholder with full implementation
 
