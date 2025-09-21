@@ -2860,3 +2860,544 @@ async fn test_execute_cascade_migration_empty_rules() {
     assert!(result.warnings.iter().any(|w| w.contains("Cascade rule for table 'departments' is empty")));
     assert!(result.warnings.iter().any(|w| w.contains("Skipping table 'departments' due to empty cascade rule")));
 }
+
+// Test helper function for denormalized column population tests
+async fn create_test_tables_for_denormalized_population(db: &D1Client) {
+    // Create source table with denormalized data
+    let create_source_sql = r#"
+        CREATE TABLE articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            tags TEXT,  -- Denormalized tags like "technology,programming,rust"
+            categories TEXT  -- Denormalized categories like "tech,dev"
+        )
+    "#;
+    
+    db.execute(create_source_sql, &[])
+        .await
+        .expect("Failed to create source table");
+    
+    // Create junction table for article-tags relationship
+    let create_junction_sql = r#"
+        CREATE TABLE article_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL,
+            tag_name TEXT NOT NULL
+        )
+    "#;
+    
+    db.execute(create_junction_sql, &[])
+        .await
+        .expect("Failed to create junction table");
+    
+    // Create another junction table for article-categories relationship
+    let create_categories_junction_sql = r#"
+        CREATE TABLE article_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL,
+            category_name TEXT NOT NULL
+        )
+    "#;
+    
+    db.execute(create_categories_junction_sql, &[])
+        .await
+        .expect("Failed to create categories junction table");
+    
+    // Insert test data with denormalized columns
+    let articles = vec![
+        ("Getting Started with Rust", Some("programming,rust,tutorial"), "tech,development"),
+        ("Advanced Database Patterns", Some("database,sql,patterns"), "tech,data"),
+        ("Web Development Guide", Some("web,javascript,frontend"), "web,tutorial"),
+        ("Data Migration Strategies", Some("migration,database,automation"), "data,enterprise"),
+        ("Article with Empty Tags", Some(""), "misc"),  // Empty tags
+        ("Article with Null Tags", None, "misc"),  // Null tags
+    ];
+    
+    for (title, tags, categories) in articles {
+        let tags_value = match tags {
+            Some(t) => Value::String(t.to_string()),
+            None => Value::Null,
+        };
+        
+        db.execute(
+            "INSERT INTO articles (title, tags, categories) VALUES (?, ?, ?)",
+            &[
+                Value::String(title.to_string()),
+                tags_value,
+                Value::String(categories.to_string()),
+            ]
+        ).await.expect("Failed to insert article data");
+    }
+}
+
+#[tokio::test]
+async fn test_execute_denormalized_column_population_validation_errors() {
+    let db = setup_test_db().await;
+    create_test_tables_for_denormalized_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test empty junction table
+    let result = data_migration.execute_denormalized_column_population(
+        "",  // Empty junction table
+        "articles",
+        "tags",
+        ",",
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle empty junction table gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Junction table cannot be empty"));
+    
+    // Test empty source table
+    let result = data_migration.execute_denormalized_column_population(
+        "article_tags",
+        "",  // Empty source table
+        "tags",
+        ",",
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle empty source table gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Source table cannot be empty"));
+    
+    // Test empty source column
+    let result = data_migration.execute_denormalized_column_population(
+        "article_tags",
+        "articles",
+        "",  // Empty source column
+        ",",
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle empty source column gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Source column cannot be empty"));
+    
+    // Test empty delimiter
+    let result = data_migration.execute_denormalized_column_population(
+        "article_tags",
+        "articles",
+        "tags",
+        "",  // Empty delimiter
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle empty delimiter gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Delimiter cannot be empty"));
+    
+    // Test empty foreign key columns
+    let result = data_migration.execute_denormalized_column_population(
+        "article_tags",
+        "articles",
+        "tags",
+        ",",
+        "",  // Empty source FK
+        "tag_name"
+    ).await.expect("Should handle empty source FK gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Source and target foreign key columns cannot be empty"));
+    
+    let result = data_migration.execute_denormalized_column_population(
+        "article_tags",
+        "articles",
+        "tags",
+        ",",
+        "article_id",
+        ""  // Empty target FK
+    ).await.expect("Should handle empty target FK gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Source and target foreign key columns cannot be empty"));
+    
+    // Test same source and target foreign key columns
+    let result = data_migration.execute_denormalized_column_population(
+        "article_tags",
+        "articles",
+        "tags",
+        ",",
+        "article_id",
+        "article_id"  // Same column
+    ).await.expect("Should handle same FK columns gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Source and target foreign key columns cannot be the same"));
+}
+
+#[tokio::test]
+async fn test_execute_denormalized_column_population_missing_tables() {
+    let db = setup_test_db().await;
+    create_test_tables_for_denormalized_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test non-existent source table
+    let result = data_migration.execute_denormalized_column_population(
+        "article_tags",
+        "non_existent_articles",  // Non-existent source table
+        "tags",
+        ",",
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle missing source table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("Source table non_existent_articles not accessible")));
+    
+    // Test non-existent junction table
+    let result = data_migration.execute_denormalized_column_population(
+        "non_existent_junction",  // Non-existent junction table
+        "articles",
+        "tags",
+        ",",
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle missing junction table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("Junction table non_existent_junction not accessible")));
+}
+
+#[tokio::test]
+async fn test_execute_denormalized_column_population_successful_operation() {
+    let db = setup_test_db().await;
+    create_test_tables_for_denormalized_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 2,  // Small batch size to test batch processing
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Execute denormalized column population for tags
+    let result = data_migration.execute_denormalized_column_population(
+        "article_tags",
+        "articles",
+        "tags",
+        ",",
+        "article_id",
+        "tag_name"
+    ).await.expect("Denormalized column population should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 4);  // 4 articles with non-empty tags
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have summary of created junction records
+    assert!(result.warnings.iter().any(|w| w.contains("Created") && w.contains("junction records")));
+    
+    // Verify the junction records were created correctly
+    let junction_result = db.execute("SELECT article_id, tag_name FROM article_tags ORDER BY article_id, tag_name", &[])
+        .await.expect("Failed to query junction table");
+    
+    // Expected records:
+    // Article 1: programming, rust, tutorial (3 tags)
+    // Article 2: database, sql, patterns (3 tags)
+    // Article 3: web, javascript, frontend (3 tags)
+    // Article 4: migration, database, automation (3 tags)
+    assert_eq!(junction_result.rows.len(), 12);  // Total tag entries
+    
+    // Check specific tag entries
+    let tags_for_article_1: Vec<String> = junction_result.rows
+        .iter()
+        .filter_map(|row| {
+            if let Value::Object(row_map) = row {
+                if let (Some(Value::Number(article_id)), Some(Value::String(tag_name))) = 
+                    (row_map.get("article_id"), row_map.get("tag_name")) {
+                    if article_id.as_u64() == Some(1) {
+                        return Some(tag_name.clone());
+                    }
+                }
+            }
+            None
+        })
+        .collect();
+    
+    assert_eq!(tags_for_article_1.len(), 3);
+    assert!(tags_for_article_1.contains(&"programming".to_string()));
+    assert!(tags_for_article_1.contains(&"rust".to_string()));
+    assert!(tags_for_article_1.contains(&"tutorial".to_string()));
+}
+
+#[tokio::test]
+async fn test_execute_denormalized_column_population_no_data() {
+    let db = setup_test_db().await;
+    
+    // Create empty tables
+    let create_empty_source_sql = r#"
+        CREATE TABLE empty_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            tags TEXT
+        )
+    "#;
+    
+    db.execute(create_empty_source_sql, &[])
+        .await
+        .expect("Failed to create empty source table");
+    
+    let create_empty_junction_sql = r#"
+        CREATE TABLE empty_article_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL,
+            tag_name TEXT NOT NULL
+        )
+    "#;
+    
+    db.execute(create_empty_junction_sql, &[])
+        .await
+        .expect("Failed to create empty junction table");
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test with empty source table
+    let result = data_migration.execute_denormalized_column_population(
+        "empty_article_tags",
+        "empty_articles",
+        "tags",
+        ",",
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle empty source table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("No records with denormalized data found")));
+}
+
+#[tokio::test]
+async fn test_execute_denormalized_column_population_empty_values() {
+    let db = setup_test_db().await;
+    
+    // Create tables with articles that have empty/null denormalized data
+    let create_source_sql = r#"
+        CREATE TABLE test_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            tags TEXT
+        )
+    "#;
+    
+    db.execute(create_source_sql, &[])
+        .await
+        .expect("Failed to create source table");
+    
+    let create_junction_sql = r#"
+        CREATE TABLE test_article_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL,
+            tag_name TEXT NOT NULL
+        )
+    "#;
+    
+    db.execute(create_junction_sql, &[])
+        .await
+        .expect("Failed to create junction table");
+    
+    // Insert articles with various empty tag scenarios
+    let test_articles = vec![
+        ("Article with commas only", ",,,,"),  // Only commas
+        ("Article with spaces and commas", " , , , "),  // Spaces and commas
+        ("Article with valid and empty", "valid,,empty,   ,another"),  // Mixed valid and empty
+    ];
+    
+    for (title, tags) in test_articles {
+        db.execute(
+            "INSERT INTO test_articles (title, tags) VALUES (?, ?)",
+            &[
+                Value::String(title.to_string()),
+                Value::String(tags.to_string()),
+            ]
+        ).await.expect("Failed to insert test article");
+    }
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Execute denormalized column population
+    let result = data_migration.execute_denormalized_column_population(
+        "test_article_tags",
+        "test_articles",
+        "tags",
+        ",",
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle empty values gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 3);
+    assert_eq!(result.records_failed, 0);
+    
+    // Verify only valid tags were inserted (should filter out empty strings)
+    let junction_result = db.execute("SELECT tag_name FROM test_article_tags ORDER BY tag_name", &[])
+        .await.expect("Failed to query junction table");
+    
+    // Should have only valid tags: "another", "empty", "valid"
+    assert_eq!(junction_result.rows.len(), 3);
+    
+    let tag_names: Vec<String> = junction_result.rows
+        .iter()
+        .filter_map(|row| {
+            if let Value::Object(row_map) = row {
+                if let Some(Value::String(tag_name)) = row_map.get("tag_name") {
+                    return Some(tag_name.clone());
+                }
+            }
+            None
+        })
+        .collect();
+    
+    assert!(tag_names.contains(&"valid".to_string()));
+    assert!(tag_names.contains(&"empty".to_string()));
+    assert!(tag_names.contains(&"another".to_string()));
+}
+
+#[tokio::test]
+async fn test_execute_denormalized_column_population_different_delimiters() {
+    let db = setup_test_db().await;
+    
+    // Create tables for testing different delimiters
+    let create_source_sql = r#"
+        CREATE TABLE delimiter_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            pipe_tags TEXT,
+            semicolon_tags TEXT
+        )
+    "#;
+    
+    db.execute(create_source_sql, &[])
+        .await
+        .expect("Failed to create source table");
+    
+    let create_junction_sql = r#"
+        CREATE TABLE delimiter_article_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL,
+            tag_name TEXT NOT NULL
+        )
+    "#;
+    
+    db.execute(create_junction_sql, &[])
+        .await
+        .expect("Failed to create junction table");
+    
+    // Insert articles with different delimiters
+    db.execute(
+        "INSERT INTO delimiter_articles (title, pipe_tags, semicolon_tags) VALUES (?, ?, ?)",
+        &[
+            Value::String("Test Article".to_string()),
+            Value::String("tag1|tag2|tag3".to_string()),  // Pipe delimited
+            Value::String("tag4;tag5;tag6".to_string()),  // Semicolon delimited
+        ]
+    ).await.expect("Failed to insert test article");
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test pipe delimiter
+    let result = data_migration.execute_denormalized_column_population(
+        "delimiter_article_tags",
+        "delimiter_articles",
+        "pipe_tags",
+        "|",
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle pipe delimiter");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 1);
+    
+    // Verify pipe-delimited tags were inserted
+    let pipe_result = db.execute("SELECT COUNT(*) as count FROM delimiter_article_tags", &[])
+        .await.expect("Failed to query junction table");
+    
+    if let Value::Object(row) = &pipe_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert_eq!(count.as_u64().unwrap(), 3);  // tag1, tag2, tag3
+        }
+    }
+    
+    // Clear junction table for next test
+    db.execute("DELETE FROM delimiter_article_tags", &[])
+        .await.expect("Failed to clear junction table");
+    
+    // Test semicolon delimiter
+    let result = data_migration.execute_denormalized_column_population(
+        "delimiter_article_tags",
+        "delimiter_articles",
+        "semicolon_tags",
+        ";",
+        "article_id",
+        "tag_name"
+    ).await.expect("Should handle semicolon delimiter");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 1);
+    
+    // Verify semicolon-delimited tags were inserted
+    let semi_result = db.execute("SELECT COUNT(*) as count FROM delimiter_article_tags", &[])
+        .await.expect("Failed to query junction table");
+    
+    if let Value::Object(row) = &semi_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert_eq!(count.as_u64().unwrap(), 3);  // tag4, tag5, tag6
+        }
+    }
+}
