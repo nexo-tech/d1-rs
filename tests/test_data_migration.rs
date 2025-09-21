@@ -1914,3 +1914,464 @@ async fn test_execute_id_mapping_migration_batch_processing() {
         assert_eq!(row.get("new_category_id"), Some(&Value::Number(100.into())));
     }
 }
+
+async fn create_test_tables_for_business_logic(db: &D1Client) {
+    // Create source table with customer data
+    let create_source_sql = r#"
+        CREATE TABLE customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            total_orders INTEGER DEFAULT 0,
+            total_spent REAL DEFAULT 0.0,
+            status TEXT DEFAULT 'active',
+            created_at TEXT
+        )
+    "#;
+    
+    db.execute(create_source_sql, &[])
+        .await
+        .expect("Failed to create customers table");
+    
+    // Create target table for customer analytics
+    let create_target_sql = r#"
+        CREATE TABLE customer_analytics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            tier TEXT NOT NULL,
+            lifetime_value REAL NOT NULL,
+            risk_score INTEGER NOT NULL,
+            created_at TEXT
+        )
+    "#;
+    
+    db.execute(create_target_sql, &[])
+        .await
+        .expect("Failed to create customer_analytics table");
+    
+    // Create orders table for business logic calculations
+    let create_orders_sql = r#"
+        CREATE TABLE orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT
+        )
+    "#;
+    
+    db.execute(create_orders_sql, &[])
+        .await
+        .expect("Failed to create orders table");
+    
+    // Insert test customers
+    let customers = vec![
+        ("Alice Smith", "alice@example.com", "2023-01-01"),
+        ("Bob Johnson", "bob@example.com", "2023-01-02"),
+        ("Charlie Brown", "charlie@example.com", "2023-01-03"),
+        ("Diana Prince", "diana@example.com", "2023-01-04"),
+    ];
+    
+    for (name, email, created_at) in customers {
+        db.execute(
+            "INSERT INTO customers (name, email, created_at) VALUES (?, ?, ?)",
+            &[
+                Value::String(name.to_string()),
+                Value::String(email.to_string()),
+                Value::String(created_at.to_string()),
+            ]
+        ).await.expect("Failed to insert customer data");
+    }
+    
+    // Insert test orders
+    let orders = vec![
+        (1, 100.0, "completed"),
+        (1, 250.0, "completed"),
+        (2, 75.0, "completed"),
+        (2, 125.0, "completed"),
+        (2, 50.0, "completed"),
+        (3, 500.0, "completed"),
+        (4, 25.0, "completed"),
+    ];
+    
+    for (customer_id, amount, status) in orders {
+        db.execute(
+            "INSERT INTO orders (customer_id, amount, status, created_at) VALUES (?, ?, ?, ?)",
+            &[
+                Value::Number(customer_id.into()),
+                Value::Number(serde_json::Number::from_f64(amount).unwrap()),
+                Value::String(status.to_string()),
+                Value::String("2023-01-15".to_string()),
+            ]
+        ).await.expect("Failed to insert order data");
+    }
+}
+
+#[tokio::test]
+async fn test_execute_business_logic_recreation_validation_errors() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_logic(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test empty source table
+    let result = data_migration.execute_business_logic_recreation(
+        "",  // Empty source table
+        "customer_analytics",
+        "INSERT INTO customer_analytics SELECT * FROM customers",
+        &[]
+    ).await.expect("Should handle empty source table gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Source table cannot be empty"));
+    
+    // Test empty target table
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "",  // Empty target table
+        "INSERT INTO customer_analytics SELECT * FROM customers",
+        &[]
+    ).await.expect("Should handle empty target table gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Target table cannot be empty"));
+    
+    // Test empty recreation query
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "customer_analytics",
+        "",  // Empty query
+        &[]
+    ).await.expect("Should handle empty query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Recreation query cannot be empty"));
+}
+
+#[tokio::test]
+async fn test_execute_business_logic_recreation_sql_injection_protection() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_logic(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test dangerous DROP pattern
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "customer_analytics",
+        "DROP TABLE customers",  // Dangerous query
+        &[]
+    ).await.expect("Should handle dangerous query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("potentially dangerous SQL pattern"));
+    
+    // Test dangerous DELETE pattern
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "customer_analytics", 
+        "DELETE FROM customers WHERE id = 1",  // Dangerous query
+        &[]
+    ).await.expect("Should handle dangerous query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("potentially dangerous SQL pattern"));
+    
+    // Test dangerous TRUNCATE pattern
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "customer_analytics",
+        "TRUNCATE TABLE customers",  // Dangerous query
+        &[]
+    ).await.expect("Should handle dangerous query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("potentially dangerous SQL pattern"));
+}
+
+#[tokio::test]
+async fn test_execute_business_logic_recreation_missing_tables() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_logic(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test non-existent source table
+    let result = data_migration.execute_business_logic_recreation(
+        "non_existent_source",
+        "customer_analytics",
+        "INSERT INTO customer_analytics SELECT 1, 1, 'bronze', 100.0, 1, '2023-01-01'",
+        &[]
+    ).await.expect("Should handle missing source table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("not accessible")));
+    
+    // Test non-existent target table
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "non_existent_target",
+        "SELECT COUNT(*) FROM customers",
+        &[]
+    ).await.expect("Should handle missing target table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("not accessible")));
+}
+
+#[tokio::test]
+async fn test_execute_business_logic_recreation_table_reference_warnings() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_logic(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test query that doesn't reference expected tables
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "customer_analytics",
+        "SELECT 1",  // Query doesn't reference either table
+        &[]
+    ).await.expect("Should execute query with warnings");
+    
+    assert!(result.success);
+    assert!(result.warnings.iter().any(|w| w.contains("does not reference source table")));
+    assert!(result.warnings.iter().any(|w| w.contains("does not reference target table")));
+}
+
+#[tokio::test]
+async fn test_execute_business_logic_recreation_successful_operation() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_logic(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Create business logic recreation query that calculates customer tiers based on order totals
+    let recreation_query = r#"
+        INSERT INTO customer_analytics (customer_id, tier, lifetime_value, risk_score, created_at)
+        SELECT 
+            c.id,
+            CASE 
+                WHEN COALESCE(SUM(o.amount), 0) >= 400 THEN 'gold'
+                WHEN COALESCE(SUM(o.amount), 0) >= 200 THEN 'silver'
+                ELSE 'bronze'
+            END as tier,
+            COALESCE(SUM(o.amount), 0) as lifetime_value,
+            CASE 
+                WHEN COALESCE(SUM(o.amount), 0) < 50 THEN 1
+                ELSE 0
+            END as risk_score,
+            datetime('now') as created_at
+        FROM customers c
+        LEFT JOIN orders o ON c.id = o.customer_id AND o.status = 'completed'
+        GROUP BY c.id, c.name, c.email
+    "#;
+    
+    // Execute business logic recreation
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "customer_analytics",
+        recreation_query,
+        &[]
+    ).await.expect("Business logic recreation should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 4); // 4 customers
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Verify the business logic was applied correctly
+    let analytics_rows = db.execute("SELECT customer_id, tier, lifetime_value, risk_score FROM customer_analytics ORDER BY customer_id", &[])
+        .await.expect("Failed to query analytics results");
+    
+    assert_eq!(analytics_rows.rows.len(), 4);
+    
+    // Check expected tiers based on order totals:
+    // Customer 1: $350 total -> silver
+    // Customer 2: $250 total -> silver  
+    // Customer 3: $500 total -> gold
+    // Customer 4: $25 total -> bronze (high risk)
+    let expected_analytics = vec![
+        (1, "silver", 350.0, 0),
+        (2, "silver", 250.0, 0),
+        (3, "gold", 500.0, 0),
+        (4, "bronze", 25.0, 1), // High risk due to low spend
+    ];
+    
+    for (i, (expected_customer_id, expected_tier, expected_value, expected_risk)) in expected_analytics.iter().enumerate() {
+        if let Value::Object(row) = &analytics_rows.rows[i] {
+            assert_eq!(row.get("customer_id"), Some(&Value::Number((*expected_customer_id).into())));
+            assert_eq!(row.get("tier"), Some(&Value::String(expected_tier.to_string())));
+            assert_eq!(row.get("lifetime_value"), Some(&Value::Number(serde_json::Number::from_f64(*expected_value).unwrap())));
+            assert_eq!(row.get("risk_score"), Some(&Value::Number((*expected_risk).into())));
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_business_logic_recreation_with_validation_rules() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_logic(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // First, populate the analytics table with some data
+    let recreation_query = r#"
+        INSERT INTO customer_analytics (customer_id, tier, lifetime_value, risk_score, created_at)
+        SELECT 
+            c.id,
+            'bronze' as tier,
+            0.0 as lifetime_value,
+            1 as risk_score,
+            datetime('now') as created_at
+        FROM customers c
+    "#;
+    
+    // Define validation rules that check data integrity
+    let validation_rules = vec![
+        // Check for duplicate customer_ids
+        "SELECT COUNT(*) FROM (SELECT customer_id FROM customer_analytics GROUP BY customer_id HAVING COUNT(*) > 1)".to_string(),
+        
+        // Check for invalid tier values
+        "SELECT COUNT(*) FROM customer_analytics WHERE tier NOT IN ('bronze', 'silver', 'gold')".to_string(),
+        
+        // Check for negative lifetime values
+        "SELECT COUNT(*) FROM customer_analytics WHERE lifetime_value < 0".to_string(),
+        
+        // Check for invalid risk scores
+        "SELECT COUNT(*) FROM customer_analytics WHERE risk_score NOT IN (0, 1)".to_string(),
+    ];
+    
+    // Execute business logic recreation with validation
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "customer_analytics",
+        recreation_query,
+        &validation_rules
+    ).await.expect("Business logic recreation with validation should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 4);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have no validation warnings since our data is valid
+    let validation_warnings: Vec<_> = result.warnings.iter()
+        .filter(|w| w.contains("violations"))
+        .collect();
+    assert!(validation_warnings.is_empty(), "Expected no validation violations, but got: {:?}", validation_warnings);
+}
+
+#[tokio::test]
+async fn test_execute_business_logic_recreation_validation_failures() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_logic(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Insert some data that will violate validation rules
+    let recreation_query = r#"
+        INSERT INTO customer_analytics (customer_id, tier, lifetime_value, risk_score, created_at)
+        VALUES 
+            (1, 'invalid_tier', -100.0, 5, datetime('now')),
+            (2, 'bronze', 100.0, 0, datetime('now')),
+            (1, 'silver', 200.0, 1, datetime('now'))
+    "#;
+    
+    let validation_rules = vec![
+        // Check for duplicate customer_ids (should find 1 violation)
+        "SELECT COUNT(*) FROM (SELECT customer_id FROM customer_analytics GROUP BY customer_id HAVING COUNT(*) > 1)".to_string(),
+        
+        // Check for invalid tier values (should find 1 violation)
+        "SELECT COUNT(*) FROM customer_analytics WHERE tier NOT IN ('bronze', 'silver', 'gold')".to_string(),
+        
+        // Check for negative lifetime values (should find 1 violation)
+        "SELECT COUNT(*) FROM customer_analytics WHERE lifetime_value < 0".to_string(),
+    ];
+    
+    let result = data_migration.execute_business_logic_recreation(
+        "customers",
+        "customer_analytics",
+        recreation_query,
+        &validation_rules
+    ).await.expect("Business logic recreation should succeed despite validation violations");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 4); // Based on customers count
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have validation warnings for each rule that found violations
+    let validation_warnings: Vec<_> = result.warnings.iter()
+        .filter(|w| w.contains("violations"))
+        .collect();
+    assert!(!validation_warnings.is_empty());
+    
+    // Should have summary warning about total violations
+    assert!(result.warnings.iter().any(|w| w.contains("validation violations were found")));
+}

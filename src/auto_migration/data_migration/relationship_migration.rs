@@ -331,20 +331,179 @@ impl DataMigrator {
     }
     
     /// Execute business logic recreation
+    /// Recreates business logic between source and target tables using custom SQL queries and validation rules
     pub async fn execute_business_logic_recreation(
         &self,
-        _source_table: &str,
-        _target_table: &str,
-        _recreation_query: &str,
-        _validation_rules: &[String],
+        source_table: &str,
+        target_table: &str,
+        recreation_query: &str,
+        validation_rules: &[String],
     ) -> Result<TransformationResult> {
-        // Placeholder for business logic recreation
+        let start_time = Instant::now();
+        let mut warnings = Vec::new();
+        let mut errors = Vec::new();
+        
+        // Validate business logic recreation parameters
+        if source_table.is_empty() {
+            errors.push(D1RsError::ValidationError("Source table cannot be empty for business logic recreation".to_string()));
+            return Ok(TransformationResult {
+                success: false,
+                records_processed: 0,
+                records_failed: 0,
+                errors,
+                warnings,
+            });
+        }
+        
+        if target_table.is_empty() {
+            errors.push(D1RsError::ValidationError("Target table cannot be empty for business logic recreation".to_string()));
+            return Ok(TransformationResult {
+                success: false,
+                records_processed: 0,
+                records_failed: 0,
+                errors,
+                warnings,
+            });
+        }
+        
+        if recreation_query.is_empty() {
+            errors.push(D1RsError::ValidationError("Recreation query cannot be empty for business logic recreation".to_string()));
+            return Ok(TransformationResult {
+                success: false,
+                records_processed: 0,
+                records_failed: 0,
+                errors,
+                warnings,
+            });
+        }
+        
+        // Validate that recreation query contains expected table references
+        let query_lower = recreation_query.to_lowercase();
+        if !query_lower.contains(&source_table.to_lowercase()) {
+            warnings.push(format!("Recreation query does not reference source table '{}', this may be intentional", source_table));
+        }
+        
+        if !query_lower.contains(&target_table.to_lowercase()) {
+            warnings.push(format!("Recreation query does not reference target table '{}', this may be intentional", target_table));
+        }
+        
+        // Basic SQL injection protection - check for dangerous patterns
+        let query_trimmed = query_lower.trim();
+        let dangerous_patterns = vec!["drop", "delete", "truncate", "alter", "create"];
+        for pattern in dangerous_patterns {
+            if query_lower.contains(pattern) && !query_trimmed.starts_with("insert") && !query_trimmed.starts_with("update") && !query_trimmed.starts_with("select") {
+                errors.push(D1RsError::ValidationError(format!("Recreation query contains potentially dangerous SQL pattern: '{}'", pattern)));
+                return Ok(TransformationResult {
+                    success: false,
+                    records_processed: 0,
+                    records_failed: 0,
+                    errors,
+                    warnings,
+                });
+            }
+        }
+        
+        // Validate source table exists and is accessible
+        let source_check_sql = format!("SELECT COUNT(*) FROM {} LIMIT 1", source_table);
+        if let Err(_) = self.db.execute_returning_count(&source_check_sql, &[]).await {
+            warnings.push(format!("Source table {} not accessible, skipping business logic recreation", source_table));
+            return Ok(TransformationResult {
+                success: true,
+                records_processed: 0,
+                records_failed: 0,
+                errors,
+                warnings,
+            });
+        }
+        
+        // Validate target table exists and is accessible
+        let target_check_sql = format!("SELECT COUNT(*) FROM {} LIMIT 1", target_table);
+        if let Err(_) = self.db.execute_returning_count(&target_check_sql, &[]).await {
+            warnings.push(format!("Target table {} not accessible, skipping business logic recreation", target_table));
+            return Ok(TransformationResult {
+                success: true,
+                records_processed: 0,
+                records_failed: 0,
+                errors,
+                warnings,
+            });
+        }
+        
+        // Get count of records that would be affected by the recreation query
+        // Try to estimate by counting source table records
+        let source_count_sql = format!("SELECT COUNT(*) FROM {}", source_table);
+        let estimated_records = match self.db.execute_returning_count(&source_count_sql, &[]).await {
+            Ok(count) => count as u64,
+            Err(_) => {
+                warnings.push("Could not estimate number of records to process".to_string());
+                0
+            }
+        };
+        
+        if estimated_records == 0 {
+            warnings.push("No records found in source table for business logic recreation".to_string());
+            return Ok(TransformationResult {
+                success: true,
+                records_processed: 0,
+                records_failed: 0,
+                errors,
+                warnings,
+            });
+        }
+        
+        // Execute the recreation query
+        let mut total_processed = 0u64;
+        let mut total_failed = 0u64;
+        
+        match self.db.execute(recreation_query, &[]).await {
+            Ok(_result) => {
+                // Query executed successfully
+                total_processed = estimated_records;
+                
+                // Apply validation rules if provided
+                if !validation_rules.is_empty() {
+                    let mut validation_failures = 0u64;
+                    
+                    for (i, rule) in validation_rules.iter().enumerate() {
+                        if rule.trim().is_empty() {
+                            continue;
+                        }
+                        
+                        // Execute validation rule as a query that should return count of violations
+                        match self.db.execute_returning_count(rule, &[]).await {
+                            Ok(violation_count) => {
+                                if violation_count > 0 {
+                                    warnings.push(format!("Validation rule {} found {} violations: {}", i + 1, violation_count, rule));
+                                    validation_failures += violation_count as u64;
+                                }
+                            }
+                            Err(e) => {
+                                errors.push(D1RsError::AutoMigration(format!("Validation rule {} failed to execute: {}", i + 1, e)));
+                            }
+                        }
+                    }
+                    
+                    if validation_failures > 0 {
+                        warnings.push(format!("Business logic recreation completed but {} validation violations were found", validation_failures));
+                    }
+                }
+            }
+            Err(e) => {
+                errors.push(D1RsError::AutoMigration(format!("Business logic recreation query failed: {}", e)));
+                total_failed = estimated_records;
+            }
+        }
+        
+        // Update metrics
+        let duration = start_time.elapsed();
+        self.update_transformation_metrics("business_logic_recreation", duration, total_failed == 0);
+        
         Ok(TransformationResult {
-            success: true,
-            records_processed: 0,
-            records_failed: 0,
-            errors: Vec::new(),
-            warnings: Vec::new(),
+            success: total_failed == 0,
+            records_processed: total_processed,
+            records_failed: total_failed,
+            errors,
+            warnings,
         })
     }
     
