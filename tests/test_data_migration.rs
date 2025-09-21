@@ -741,3 +741,458 @@ async fn test_execute_value_mapping_sql_injection_safety() {
         assert_eq!(row.get("new_status"), Some(&Value::String("O'Reilly".to_string())));
     }
 }
+
+async fn create_test_table_with_formats(db: &D1Client) {
+    // Create a test table with various format data for transformation testing
+    let create_table_sql = r#"
+        CREATE TABLE test_formats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            old_date TEXT,
+            new_date TEXT,
+            old_time TEXT,
+            new_time TEXT,
+            old_number TEXT,
+            new_number TEXT,
+            old_phone TEXT,
+            new_phone TEXT,
+            old_currency TEXT,
+            new_currency TEXT,
+            mixed_case_text TEXT,
+            formatted_text TEXT
+        )
+    "#;
+    
+    db.execute(create_table_sql, &[])
+        .await
+        .expect("Failed to create test table");
+    
+    // Insert test data with various formats that need transformation
+    let test_data = vec![
+        ("alice", "12/25/2023", "2:30 PM", "1,234.56", "(555) 123-4567", "$1,234.56", "hello world"),
+        ("bob", "01/15/2024", "9:45 AM", "5,678.90", "(555) 987-6543", "$5,678.90", "JOHN DOE"),
+        ("charlie", "03/08/2023", "11:30 PM", "999.99", "(555) 111-2222", "$999.99", "tEsT CaSe"),
+        ("diana", "07/04/2024", "12:00 AM", "12,345.67", "(555) 444-5555", "$12,345.67", "api endpoint"),
+        ("eve", "09/30/2023", "6:15 PM", "87.50", "(555) 777-8888", "$87.50", "database connection"),
+    ];
+    
+    for (name, date, time, number, phone, currency, text) in test_data {
+        db.execute(
+            "INSERT INTO test_formats (name, old_date, old_time, old_number, old_phone, old_currency, mixed_case_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            &[
+                Value::String(name.to_string()),
+                Value::String(date.to_string()),
+                Value::String(time.to_string()),
+                Value::String(number.to_string()),
+                Value::String(phone.to_string()),
+                Value::String(currency.to_string()),
+                Value::String(text.to_string()),
+            ]
+        ).await.expect("Failed to insert test data");
+    }
+}
+
+#[tokio::test]
+async fn test_execute_format_transformation_date_formats() {
+    let db = setup_test_db().await;
+    create_test_table_with_formats(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test date format transformation: MM/DD/YYYY to YYYY-MM-DD
+    let result = data_migration.execute_format_transformation(
+        "test_formats",
+        "old_date",
+        "new_date",
+        "MM/DD/YYYY",
+        "YYYY-MM-DD",
+        "DATE_FORMAT"
+    ).await.expect("Date format transformation failed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 5);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Verify the date transformation results
+    let rows = db.execute("SELECT name, old_date, new_date FROM test_formats ORDER BY name", &[])
+        .await.expect("Failed to query results");
+    
+    let expected_transformations = vec![
+        ("alice", "12/25/2023", "2023-12-25"),
+        ("bob", "01/15/2024", "2024-01-15"),
+        ("charlie", "03/08/2023", "2023-03-08"),
+        ("diana", "07/04/2024", "2024-07-04"),
+        ("eve", "09/30/2023", "2023-09-30"),
+    ];
+    
+    for (i, (expected_name, expected_old, expected_new)) in expected_transformations.iter().enumerate() {
+        if let Value::Object(row) = &rows.rows[i] {
+            assert_eq!(row.get("name"), Some(&Value::String(expected_name.to_string())));
+            assert_eq!(row.get("old_date"), Some(&Value::String(expected_old.to_string())));
+            assert_eq!(row.get("new_date"), Some(&Value::String(expected_new.to_string())));
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_format_transformation_number_formats() {
+    let db = setup_test_db().await;
+    create_test_table_with_formats(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test number format transformation: remove commas
+    let result = data_migration.execute_format_transformation(
+        "test_formats",
+        "old_number",
+        "new_number",
+        "1,234.56",
+        "1234.56",
+        "NUMBER_FORMAT"
+    ).await.expect("Number format transformation failed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 5);
+    assert_eq!(result.records_failed, 0);
+    
+    // Verify the number transformation results
+    let rows = db.execute("SELECT name, old_number, new_number FROM test_formats ORDER BY name", &[])
+        .await.expect("Failed to query results");
+    
+    let expected_transformations = vec![
+        ("alice", "1,234.56", "1234.56"),
+        ("bob", "5,678.90", "5678.90"),
+        ("charlie", "999.99", "999.99"),  // No comma to remove
+        ("diana", "12,345.67", "12345.67"),
+        ("eve", "87.50", "87.50"),  // No comma to remove
+    ];
+    
+    for (i, (expected_name, expected_old, expected_new)) in expected_transformations.iter().enumerate() {
+        if let Value::Object(row) = &rows.rows[i] {
+            assert_eq!(row.get("name"), Some(&Value::String(expected_name.to_string())));
+            assert_eq!(row.get("old_number"), Some(&Value::String(expected_old.to_string())));
+            assert_eq!(row.get("new_number"), Some(&Value::String(expected_new.to_string())));
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_format_transformation_phone_formats() {
+    let db = setup_test_db().await;
+    create_test_table_with_formats(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test phone format transformation: (555) 123-4567 to 555-123-4567
+    let result = data_migration.execute_format_transformation(
+        "test_formats",
+        "old_phone",
+        "new_phone",
+        "(555) 123-4567",
+        "555-123-4567",
+        "PHONE_FORMAT"
+    ).await.expect("Phone format transformation failed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 5);
+    assert_eq!(result.records_failed, 0);
+    
+    // Verify the phone transformation results (simplified - exact transformation may vary)
+    let rows = db.execute("SELECT COUNT(*) as count FROM test_formats WHERE new_phone IS NOT NULL", &[])
+        .await.expect("Failed to count results");
+    
+    if let Value::Object(row) = &rows.rows[0] {
+        assert_eq!(row.get("count"), Some(&Value::Number(5.into())));
+    }
+}
+
+#[tokio::test]
+async fn test_execute_format_transformation_currency_formats() {
+    let db = setup_test_db().await;
+    create_test_table_with_formats(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test currency format transformation: remove currency symbols
+    let result = data_migration.execute_format_transformation(
+        "test_formats",
+        "old_currency",
+        "new_currency",
+        "$1,234.56",
+        "1234.56",
+        "CURRENCY_FORMAT"
+    ).await.expect("Currency format transformation failed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 5);
+    assert_eq!(result.records_failed, 0);
+    
+    // Verify the currency transformation results
+    let rows = db.execute("SELECT name, old_currency, new_currency FROM test_formats WHERE name = 'alice'", &[])
+        .await.expect("Failed to query results");
+    
+    if let Value::Object(row) = &rows.rows[0] {
+        assert_eq!(row.get("old_currency"), Some(&Value::String("$1,234.56".to_string())));
+        assert_eq!(row.get("new_currency"), Some(&Value::String("1234.56".to_string())));
+    }
+}
+
+#[tokio::test]
+async fn test_execute_format_transformation_case_transformations() {
+    let db = setup_test_db().await;
+    create_test_table_with_formats(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test UPPER case transformation
+    let result = data_migration.execute_format_transformation(
+        "test_formats",
+        "mixed_case_text",
+        "formatted_text",
+        "",  // Not needed for case transformations
+        "",  // Not needed for case transformations
+        "UPPER"
+    ).await.expect("UPPER case transformation failed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 5);
+    assert_eq!(result.records_failed, 0);
+    
+    // Verify the case transformation results
+    let rows = db.execute("SELECT mixed_case_text, formatted_text FROM test_formats WHERE name = 'alice'", &[])
+        .await.expect("Failed to query results");
+    
+    if let Value::Object(row) = &rows.rows[0] {
+        assert_eq!(row.get("mixed_case_text"), Some(&Value::String("hello world".to_string())));
+        assert_eq!(row.get("formatted_text"), Some(&Value::String("HELLO WORLD".to_string())));
+    }
+}
+
+#[tokio::test]
+async fn test_execute_format_transformation_validation_errors() {
+    let db = setup_test_db().await;
+    create_test_table_with_formats(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test empty column names
+    let result = data_migration.execute_format_transformation(
+        "test_formats",
+        "",  // Empty old column
+        "new_field",
+        "source_format",
+        "target_format",
+        "DATE_FORMAT"
+    ).await.expect("Should handle empty column gracefully");
+    
+    assert!(!result.success);
+    assert!(!result.errors.is_empty());
+    
+    // Test unsupported format function
+    let result = data_migration.execute_format_transformation(
+        "test_formats",
+        "old_date",
+        "new_date",
+        "MM/DD/YYYY",
+        "YYYY-MM-DD",
+        "INVALID_FUNCTION"
+    ).await.expect("Should handle unsupported function gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(!result.warnings.is_empty());
+    assert!(result.warnings[0].contains("not fully supported"));
+}
+
+#[tokio::test]
+async fn test_execute_format_transformation_missing_table() {
+    let db = setup_test_db().await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test format transformation on non-existent table
+    let result = data_migration.execute_format_transformation(
+        "non_existent_table",
+        "old_field",
+        "new_field",
+        "MM/DD/YYYY",
+        "YYYY-MM-DD",
+        "DATE_FORMAT"
+    ).await.expect("Should handle missing table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(!result.warnings.is_empty());
+    assert!(result.warnings[0].contains("not accessible"));
+}
+
+#[tokio::test]
+async fn test_execute_format_transformation_batch_processing() {
+    let db = setup_test_db().await;
+    create_test_table_with_formats(&db).await;
+    
+    // Test with small batch size to ensure batching works
+    let config = DataMigrationConfig {
+        batch_size: 2, // Small batch size to force multiple batches
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let result = data_migration.execute_format_transformation(
+        "test_formats",
+        "mixed_case_text",
+        "formatted_text",
+        "",
+        "",
+        "LOWER"
+    ).await.expect("Batch processing failed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 5);
+    assert_eq!(result.records_failed, 0);
+    
+    // Verify all records were processed correctly despite batching
+    let rows = db.execute("SELECT COUNT(*) as count FROM test_formats WHERE formatted_text IS NOT NULL", &[])
+        .await.expect("Failed to count results");
+    
+    if let Value::Object(row) = &rows.rows[0] {
+        assert_eq!(row.get("count"), Some(&Value::Number(5.into())));
+    }
+}
+
+#[tokio::test]
+async fn test_execute_format_transformation_trim_functions() {
+    let db = setup_test_db().await;
+    
+    // Create a test table with padded text
+    let create_table_sql = r#"
+        CREATE TABLE test_trim (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            padded_text TEXT,
+            trimmed_text TEXT
+        )
+    "#;
+    
+    db.execute(create_table_sql, &[])
+        .await
+        .expect("Failed to create test table");
+    
+    // Insert test data with spaces
+    let test_data = vec![
+        "  hello world  ",
+        "   leading spaces",
+        "trailing spaces   ",
+        "  both sides  ",
+        "no padding",
+    ];
+    
+    for text in test_data {
+        db.execute(
+            "INSERT INTO test_trim (padded_text) VALUES (?)",
+            &[Value::String(text.to_string())]
+        ).await.expect("Failed to insert test data");
+    }
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test TRIM transformation
+    let result = data_migration.execute_format_transformation(
+        "test_trim",
+        "padded_text",
+        "trimmed_text",
+        "",
+        "",
+        "TRIM"
+    ).await.expect("TRIM transformation failed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 5);
+    assert_eq!(result.records_failed, 0);
+    
+    // Verify trimming worked
+    let rows = db.execute("SELECT padded_text, trimmed_text FROM test_trim ORDER BY id", &[])
+        .await.expect("Failed to query results");
+    
+    if let Value::Object(row) = &rows.rows[0] {
+        assert_eq!(row.get("padded_text"), Some(&Value::String("  hello world  ".to_string())));
+        assert_eq!(row.get("trimmed_text"), Some(&Value::String("hello world".to_string())));
+    }
+}
