@@ -1,34 +1,29 @@
 # Introduction
 
-Welcome to **d1-rs**, the **world's most advanced type-safe ORM** that revolutionizes database interactions in Rust with unprecedented compile-time safety and performance!
+Welcome to **d1-rs**, a **type-safe ORM** for Cloudflare D1 that provides compile-time safety and performance optimizations for Rust applications.
 
 ## What is d1-rs?
 
-d1-rs is a **revolutionary Object-Relational Mapping (ORM)** library that is the **first ORM in any language** to provide compile-time safe relationships, nested eager loading, recursive relationships, and rich M2M entities. Designed specifically for Cloudflare D1, with first-class support for local SQLite testing.
+d1-rs is an Object-Relational Mapping (ORM) library designed specifically for Cloudflare D1, with first-class support for local SQLite testing. It provides type-safe database operations, automatic query generation, and compile-time validation of entity relationships.
 
-## 🚀 **Revolutionary Features - World Firsts**
+## 🚀 **Key Features**
 
-### 🏆 **World's First Compile-Time Safe Nested Eager Loading**
-- **IMPOSSIBLE ERRORS**: All nested relation names validated at compile-time
-- **REVOLUTIONARY SYNTAX**: `User::query().with_posts(|posts| posts.with_categories()).all()`
-- **AUTOMATIC N+1 PREVENTION**: Multi-level JOINs generated automatically
-- **IDE AUTO-COMPLETION**: Full IntelliSense support for nested relations
+### 🛡️ **Type Safety**
+- **Compile-time validation**: Field and relation names validated at compile-time
+- **No string literals**: Type-safe query methods for all entity fields
+- **Automatic CRUD generation**: Create, read, update, delete operations generated automatically
+- **Type-safe query builders**: Fluent API with method chaining
 
-### 🔥 **World's First Compile-Time Safe Recursive Relationships**
-- **TYPE-SAFE RECURSION**: Self-referential relations with compile-time safety
-- **INTELLIGENT HANDLING**: Automatic null handling for optional foreign keys
-- **UNLIMITED DEPTH**: Tree structures, hierarchies, and self-referencing entities
+### 🔗 **Relationships**
+- **Type-safe relations**: Define relationships using the `relations!` macro
+- **Automatic query generation**: Association methods generated for related entities
+- **Foreign key validation**: Compile-time validation of foreign key relationships
+- **Recursive relationships**: Support for self-referential entity relationships
 
-### 🚀 **World's First Rich M2M with Junction Entities**
-- **UNPRECEDENTED**: Junction tables as first-class entities with full Entity powers
-- **RICH DATA**: Additional fields in M2M relationships (granted_by, expires_at, etc.)
-- **DIRECT QUERYING**: Query junction entities directly - no other ORM allows this!
-
-### 🛡️ **Ultimate Type Safety**
-- **ZERO STRING LITERALS**: All field/relation names compile-time validated
-- **IMPOSSIBLE ERRORS**: Typos = compile errors, not runtime crashes
-- **COMPILE-TIME VALIDATION**: All relationships analyzed for consistency
-- **ZERO RUNTIME OVERHEAD**: All validation happens at compile-time
+### ⚡ **Performance**
+- **Optimal SQL generation**: Efficient database queries using proper SQL operations
+- **Memory efficient**: COUNT(*) and LIMIT 1 queries instead of loading unnecessary data
+- **Zero-cost abstractions**: Compile-time optimizations with no runtime overhead
 
 ### ⚡ **Dual Backend System**
 - **Production**: Seamless Cloudflare D1 integration
@@ -102,11 +97,15 @@ relations! {
     }
 }
 
-// 🏆 WORLD'S FIRST: Compile-time safe nested eager loading
-let users_with_data = User::query()
-    .with_posts(|posts| posts.with_categories())  // ✅ Impossible errors!
-    .with_profile()
+// Type-safe query operations
+let users = User::query()
+    .where_is_active_eq(true)
     .all(&db).await?;
+
+// Get related data using association methods
+for user in &users {
+    let user_posts = user.posts().all(&db).await?;
+}
 
 // 🚀 REVOLUTIONARY: Type-safe recursive relationships
 let category_hierarchy = root_category.children().all(&db).await?;
@@ -162,21 +161,17 @@ d1-rs delivers world-first compile-time safe relationships through advanced arch
         └───────────────────────┘
 ```
 
-## 🏆 d1-rs vs Other ORMs - No Competition
+## Why Choose d1-rs?
 
-| Feature | d1-rs | Rails/ActiveRecord | Django ORM | Eloquent | Ent-Go | Prisma |
-|---------|-------|-------------------|------------|----------|--------|--------|
-| **Nested Eager Loading** | ✅ Compile-time safe | ❌ Runtime strings | ❌ Runtime strings | ❌ Runtime strings | ❌ Runtime strings | ❌ Runtime strings |
-| **Type Safety** | ✅ Full compile-time | ❌ Runtime only | ❌ Runtime only | ❌ Runtime only | ❌ Runtime only | ❌ Runtime only |
-| **Recursive Relations** | ✅ Compile-time safe | ❌ Manual/limited | ❌ Manual/limited | ❌ Manual/limited | ❌ Manual/limited | ❌ Manual/limited |
-| **Rich M2M Junction** | ✅ First-class entities | ❌ Limited | ❌ Limited | ❌ Limited | ❌ Limited | ❌ Limited |
-| **N+1 Prevention** | ✅ Automatic | ❌ Manual includes | ❌ Manual select_related | ❌ Manual with | ❌ Manual preload | ❌ Manual include |
-| **Error Prevention** | ✅ Impossible errors | ❌ Runtime crashes | ❌ Runtime crashes | ❌ Runtime crashes | ❌ Runtime crashes | ❌ Runtime crashes |
-| **IDE Support** | ✅ Full auto-complete | ❌ String literals | ❌ String literals | ❌ String literals | ❌ String literals | ❌ String literals |
-| **Performance** | ✅ Zero overhead | ❌ Runtime overhead | ❌ Runtime overhead | ❌ Runtime overhead | ❌ Runtime overhead | ❌ Runtime overhead |
+### **Perfect for Cloudflare Workers**
+d1-rs is specifically designed for Cloudflare's edge computing platform with D1 database integration, providing seamless deployment and optimal performance.
 
-**d1-rs is literally impossible to match - there is no competition!** 🌟
+### **Type-Safe Development**
+Leverage Rust's type system to catch database-related errors at compile-time rather than runtime, improving reliability and developer experience.
 
-## Ready to Experience the Revolution?
+### **Testing Made Easy**
+Write comprehensive tests using local SQLite without needing cloud database access, enabling fast development cycles and CI/CD integration.
 
-Jump into the [Installation](./installation.md) guide to set up d1-rs in your project, or check out the [Quick Start](./quick-start.md) for a hands-on tutorial with the world's most advanced ORM!
+## Getting Started
+
+Jump into the [Installation](./installation.md) guide to set up d1-rs in your project, or check out the [Quick Start](./quick-start.md) for a hands-on tutorial!

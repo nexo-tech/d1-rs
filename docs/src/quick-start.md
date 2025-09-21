@@ -261,50 +261,52 @@ impl Blog {
 }
 ```
 
-## Step 6: 🏆 Revolutionary Nested Eager Loading
+## Step 6: Working with Relations
 
-Now let's showcase d1-rs's **world-first compile-time safe nested eager loading** - impossible in any other ORM:
+Now let's explore how to work with entity relationships using d1-rs's type-safe association methods:
 
 ```rust
-// Add these revolutionary methods to your Blog impl
+// Add these methods to your Blog impl
 impl Blog {
-    // ✅ WORLD'S FIRST: Compile-time safe nested eager loading
-    pub async fn get_users_with_posts_efficiently(&self) -> Result<Vec<UserWithPosts>> {
-        // ✅ Single query with automatic JOINs - NO N+1 problems!
-        User::query()
-            .with_posts()  // ✅ Compile-time validated relation name!
-            .all(&self.db)
-            .await
-    }
-    
-    // ✅ REVOLUTIONARY: Advanced nested eager loading with conditions
-    pub async fn get_users_with_published_posts(&self) -> Result<Vec<UserWithPosts>> {
-        // ✅ IMPOSSIBLE in other ORMs - nested conditions with compile-time safety!
-        User::query()
-            .with_posts(|posts| posts
-                .where_is_published_eq(true)  // ✅ Condition in nested loading!
-            )
-            .all(&self.db)
-            .await
-    }
-    
-    // ✅ DEMONSTRATION: Compare old N+1 way vs revolutionary way
-    pub async fn demonstrate_n1_prevention(&self) -> Result<()> {
-        println!("❌ OLD WAY (N+1 problem in other ORMs):");
+    // Get users and their posts using the current API
+    pub async fn get_users_with_posts(&self) -> Result<Vec<(User, Vec<Post>)>> {
         let users = User::query().all(&self.db).await?;
+        let mut result = Vec::new();
+        
         for user in users {
-            // This would be N+1 queries in traditional approaches
-            let _posts = user.posts().all(&self.db).await?;
+            let posts = user.posts().all(&self.db).await?;
+            result.push((user, posts));
         }
         
-        println!("✅ REVOLUTIONARY WAY (single efficient query):");
-        let _users_with_posts = User::query()
-            .with_posts()  // ✅ Single query with automatic JOIN!
-            .all(&self.db)
-            .await?;
+        Ok(result)
+    }
+    
+    // Get users with published posts only
+    pub async fn get_users_with_published_posts(&self) -> Result<Vec<(User, Vec<Post>)>> {
+        let users = User::query().all(&self.db).await?;
+        let mut result = Vec::new();
         
-        println!("🚀 Result: ZERO N+1 queries, perfect performance!");
-        Ok(())
+        for user in users {
+            let published_posts = user.posts()
+                .where_is_published_eq(true)
+                .all(&self.db).await?;
+            
+            if !published_posts.is_empty() {
+                result.push((user, published_posts));
+            }
+        }
+        
+        Ok(result)
+    }
+    
+    // Approach to get specific user's posts
+    pub async fn get_user_with_posts(&self, user_id: i64) -> Result<Option<(User, Vec<Post>)>> {
+        if let Some(user) = User::find(&self.db, user_id).await? {
+            let posts = user.posts().all(&self.db).await?;
+            Ok(Some((user, posts)))
+        } else {
+            Ok(None)
+        }
     }
 }
 ```
@@ -408,29 +410,26 @@ test tests::test_user_queries ... ok
 test result: ok. 2 passed; 0 failed
 ```
 
-## 🏆 Revolutionary Achievements Unlocked
+## 🏆 What You've Accomplished
 
-In this quick start, you've experienced the **world's most advanced ORM capabilities**:
+In this quick start, you've learned the core d1-rs features:
 
-1. **Revolutionary Entity Definition**: Zero-boilerplate `#[derive(Entity)]` with perfect type safety
-2. **World's First Type-Safe Relations**: `relations!` macro with zero string literals, compile-time validation
-3. **Effortless Schema Migration**: Automatic table creation with `SchemaMigration`
-4. **Impossible-to-Match Association Methods**: Generated methods with perfect IDE auto-completion
-5. **Superior CRUD Operations**: Fluent API that eliminates all runtime errors
-6. **Compile-Time Safe Queries**: Methods like `where_is_active_eq()` validated at compile-time
-7. **World's First Nested Eager Loading**: Automatic N+1 prevention with compile-time safety
-8. **Perfect Testing**: In-memory SQLite with zero configuration
+1. **Entity Definition**: Simple `#[derive(Entity)]` with type safety
+2. **Type-Safe Relations**: `relations!` macro with compile-time validation
+3. **Schema Migration**: Table creation with `SchemaMigration`
+4. **Association Methods**: Generated methods for related entities
+5. **CRUD Operations**: Fluent API for database operations
+6. **Type-Safe Queries**: Methods like `where_is_active_eq()` validated at compile-time
+7. **Efficient Testing**: In-memory SQLite with zero configuration
 
-**You've just used ORM features that are IMPOSSIBLE in any other framework!** 🌟
+## 🚀 Next Steps
 
-## 🚀 Next Steps - Explore the Revolution
+Now that you've learned the basics, explore more d1-rs capabilities:
 
-Now that you've experienced the revolution, dive deeper into d1-rs's world-first capabilities:
-
-- **[Revolutionary Relations](./relations/introduction.md)**: Nested eager loading, recursive relationships, rich M2M junction entities
-- **[Advanced Revolutionary Features](./relations/advanced.md)**: Compile-time safe complex queries impossible in other ORMs
-- **[Performance Superiority](./advanced/performance.md)**: Learn why d1-rs outperforms every other ORM
-- **[Zero-Config Deployment](./deployment/workers.md)**: Deploy to Cloudflare Workers with perfect type safety
+- **[Relations](./relations/introduction.md)**: Learn about entity relationships in depth
+- **[Auto Migration](./auto-migration.md)**: Automatic schema evolution
+- **[Performance Tips](./advanced/performance.md)**: Optimize your database queries
+- **[Deployment](./deployment/workers.md)**: Deploy to Cloudflare Workers
 
 ## Full Example
 
@@ -441,11 +440,11 @@ Here's the complete working example you can copy and run:
 [dependencies]
 d1-rs = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.32", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
-rusqlite = "0.30"
+rusqlite = { version = "0.32", features = ["chrono", "bundled"] }
 ```
 
 Copy the code from steps 1-4 above into your `src/lib.rs` and run:

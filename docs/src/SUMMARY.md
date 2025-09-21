@@ -13,6 +13,7 @@
 - [Entities](./entities.md)
 - [Queries](./queries.md)
 - [Migrations](./migrations.md)
+- [Auto Migration](./auto-migration.md)
 - [Schema Evolution](./schema-evolution.md)
 
 # Relations

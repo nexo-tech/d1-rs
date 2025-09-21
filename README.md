@@ -83,12 +83,12 @@ serde = { version = "1.0", features = ["derive"] }
 
 # For Cloudflare Workers
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-worker = "0.0.18"
+worker = { version = "0.4", features = ["d1"] }
 
 # For testing  
 [dev-dependencies]
-rusqlite = "0.30"
-tokio = { version = "1.0", features = ["full"] }
+rusqlite = { version = "0.32", features = ["chrono", "bundled"] }
+tokio = { version = "1.32", features = ["full"] }
 ```
 
 ## 🏗️ **Schema & Migrations**

@@ -438,8 +438,113 @@ Plan for rollbacks by keeping operations reversible when possible:
 // Rather than renaming, add new column and migrate data gradually
 ```
 
+## Type-Safe Migrations
+
+d1-rs also provides a revolutionary type-safe migration system that eliminates string literals and provides compile-time validation.
+
+### TypeSafeMigration Trait
+
+The `TypeSafeMigration` trait allows you to define migrations using your entity types directly:
+
+```rust
+use d1_rs::*;
+
+struct CreateUsersTable;
+
+impl TypeSafeMigration for CreateUsersTable {
+    async fn up(&self, db: &D1Client) -> Result<()> {
+        // Use entity-based type-safe migrations
+        let migration = TypeSafeMigrationBuilder::new()
+            .create_table_for_entity::<User>()
+            .execute(db).await?;
+        Ok(())
+    }
+    
+    async fn down(&self, db: &D1Client) -> Result<()> {
+        // Type-safe rollback
+        let migration = TypeSafeMigrationBuilder::new()
+            .drop_table_for_entity::<User>()
+            .execute(db).await?;
+        Ok(())
+    }
+}
+```
+
+### Type-Safe Column Definitions
+
+Define columns using compile-time safe types:
+
+```rust
+use d1_rs::*;
+
+// Define type-safe columns based on entity fields
+struct UserNameColumn;
+impl TypeSafeColumn for UserNameColumn {
+    type RustType = String;
+    fn column_name() -> &'static str { "name" }
+}
+
+// Use in migrations
+let migration = TypeSafeMigrationBuilder::new()
+    .create_table("users")
+        .add_typed_column::<UserNameColumn>()
+            .not_null()
+            .build()
+    .build();
+```
+
+### Entity-Based Migration Generation
+
+Generate migrations automatically from entity definitions:
+
+```rust
+#[derive(Entity)]
+pub struct User {
+    #[primary_key]
+    pub id: i64,
+    pub name: String,
+    pub email: String,
+    pub is_active: bool,
+}
+
+// Automatically generate CREATE TABLE migration
+let migration = TypeSafeMigrationBuilder::from_entity::<User>()
+    .build();
+```
+
+### Benefits of Type-Safe Migrations
+
+1. **Compile-Time Validation**: All column names and types validated at compile time
+2. **No String Literals**: Eliminate typos and runtime errors in column names
+3. **IDE Support**: Full auto-completion for column names and operations
+4. **Type Safety**: Column types automatically inferred from Rust types
+5. **Refactoring Safe**: Renaming entity fields automatically updates migrations
+
+### Using Type-Safe Migrations
+
+```rust
+use d1_rs::*;
+
+pub struct MigrationRunner;
+
+impl MigrationRunner {
+    pub async fn run_type_safe_migrations(db: &D1Client) -> Result<()> {
+        // Create migration instances
+        let create_users = CreateUsersTable;
+        let create_posts = CreatePostsTable;
+        
+        // Execute migrations
+        create_users.up(db).await?;
+        create_posts.up(db).await?;
+        
+        Ok(())
+    }
+}
+```
+
 ## Next Steps
 
-- Learn about [Schema Evolution](./schema-evolution.md) for advanced schema management
-- Explore [Relations](./relations/introduction.md) for connecting tables with foreign keys
-- Check out [Testing](./advanced/testing.md) for comprehensive migration testing strategies
+- Learn about [Auto Migration](./auto-migration.md) for automatic schema evolution
+- Explore [Schema Evolution](./schema-evolution.md) for advanced schema management
+- Check out [Relations](./relations/introduction.md) for connecting tables with foreign keys
+- Review [Testing](./advanced/testing.md) for comprehensive migration testing strategies

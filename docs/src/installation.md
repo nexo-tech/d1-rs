@@ -16,15 +16,15 @@ Add d1-rs to your `Cargo.toml`:
 [dependencies]
 d1-rs = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.32", features = ["full"] }
 
 # For Cloudflare Workers
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-worker = "0.0.18"
+worker = { version = "0.4", features = ["d1"] }
 
 # For local development and testing  
 [dev-dependencies]
-rusqlite = "0.30"
+rusqlite = { version = "0.32", features = ["chrono", "bundled"] }
 ```
 
 ## Feature Flags
@@ -115,7 +115,7 @@ For local development and testing, d1-rs automatically uses SQLite:
 
 ```toml
 [dev-dependencies]
-rusqlite = "0.30"
+rusqlite = { version = "0.32", features = ["chrono", "bundled"] }
 tokio-test = "0.4"
 ```
 
