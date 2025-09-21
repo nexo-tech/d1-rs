@@ -47,8 +47,13 @@ cargo test --target $(rustc -vV | sed -n 's|host: ||p')
 # Run tests with SQLite features
 cargo test --features sqlite
 
-# Run a specific test
-cargo test test_name
+# Run a specific test exactly (faster, avoids filtering all tests)
+cargo test test_name -- --exact
+
+# Run a specific test with output
+cargo test test_name -- --exact --nocapture
+
+# Note: --exact ensures only the test with exact name runs, not substring matches
 ```
 
 ### Building
