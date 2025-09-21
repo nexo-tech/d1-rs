@@ -1,5 +1,5 @@
 use d1_rs::*;
-use d1_rs::auto_migration::{DataMigrator, DataMigrationConfig, FailureStrategy};
+use d1_rs::auto_migration::{DataMigrator, DataMigrationConfig, FailureStrategy, TransformationFunction, MigrationContext};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -5025,5 +5025,484 @@ async fn test_execute_denormalized_column_population_different_delimiters() {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 3);  // tag4, tag5, tag6
         }
+    }
+}
+
+// Test custom transformation function implementations
+struct TestTransformationFunction {
+    name: String,
+}
+
+impl TestTransformationFunction {
+    fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+        }
+    }
+}
+
+impl TransformationFunction for TestTransformationFunction {
+    fn transform(
+        &self,
+        input_data: &HashMap<String, serde_json::Value>,
+        _context: &MigrationContext,
+    ) -> Result<HashMap<String, serde_json::Value>> {
+        let mut output = HashMap::new();
+        
+        // Simple transformation: uppercase name field, double age values, keep other fields unchanged
+        for (key, value) in input_data {
+            let transformed_value = match value {
+                serde_json::Value::String(s) if key == "name" => serde_json::Value::String(s.to_uppercase()),
+                serde_json::Value::Number(n) if key == "age" => {
+                    // Only double the age field
+                    if let Some(int_val) = n.as_i64() {
+                        serde_json::Value::Number((int_val * 2).into())
+                    } else if let Some(float_val) = n.as_f64() {
+                        serde_json::Value::Number(serde_json::Number::from_f64(float_val * 2.0).unwrap_or_else(|| 0.into()))
+                    } else {
+                        value.clone()
+                    }
+                }
+                _ => value.clone(),
+            };
+            output.insert(key.clone(), transformed_value);
+            
+            // Add computed field
+            if key == "name" {
+                output.insert("computed_field".to_string(), serde_json::Value::String("computed_value".to_string()));
+            }
+        }
+        
+        Ok(output)
+    }
+    
+    fn validate_config(&self) -> Result<()> {
+        if self.name.is_empty() {
+            return Err(D1RsError::ValidationError("Transformation name cannot be empty".to_string()));
+        }
+        Ok(())
+    }
+    
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+struct FailingTransformationFunction;
+
+impl TransformationFunction for FailingTransformationFunction {
+    fn transform(
+        &self,
+        _input_data: &HashMap<String, serde_json::Value>,
+        _context: &MigrationContext,
+    ) -> Result<HashMap<String, serde_json::Value>> {
+        Err(D1RsError::ValidationError("Intentional transformation failure".to_string()))
+    }
+    
+    fn validate_config(&self) -> Result<()> {
+        Ok(())
+    }
+    
+    fn name(&self) -> &str {
+        "failing_transformation"
+    }
+}
+
+async fn create_test_tables_for_custom_transformation(db: &D1Client) {
+    // Create source table with test data
+    db.execute(
+        "CREATE TABLE custom_source_users (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            age INTEGER,
+            email TEXT
+        )",
+        &[]
+    ).await.expect("Failed to create custom_source_users table");
+    
+    // Insert test data
+    db.execute(
+        "INSERT INTO custom_source_users (id, name, age, email) VALUES 
+        (1, 'alice', 25, 'alice@example.com'),
+        (2, 'bob', 30, 'bob@example.com'),
+        (3, 'charlie', 35, 'charlie@example.com')",
+        &[]
+    ).await.expect("Failed to insert test data");
+    
+    // Create target table
+    db.execute(
+        "CREATE TABLE custom_target_users (
+            id INTEGER PRIMARY KEY,
+            transformed_name TEXT NOT NULL,
+            doubled_age INTEGER,
+            original_email TEXT,
+            computed_field TEXT
+        )",
+        &[]
+    ).await.expect("Failed to create custom_target_users table");
+}
+
+#[tokio::test]
+async fn test_execute_custom_transformation_validation_errors() {
+    let db = setup_test_db().await;
+    create_test_tables_for_custom_transformation(&db).await;
+    
+    let mut custom_transformations = HashMap::new();
+    custom_transformations.insert("test_transform".to_string(), Box::new(TestTransformationFunction::new("test_transform")) as Box<dyn TransformationFunction>);
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations,
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test empty migration name
+    let result = data_migration.execute_custom_transformation(
+        "",
+        "SELECT * FROM custom_source_users",
+        "test_transform",
+        &["INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)".to_string()]
+    ).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Migration name cannot be empty"));
+    
+    // Test empty source query
+    let result = data_migration.execute_custom_transformation(
+        "test_migration",
+        "",
+        "test_transform",
+        &["INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)".to_string()]
+    ).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Source query cannot be empty"));
+    
+    // Test empty transformation logic
+    let result = data_migration.execute_custom_transformation(
+        "test_migration",
+        "SELECT * FROM custom_source_users",
+        "",
+        &["INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)".to_string()]
+    ).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Transformation logic cannot be empty"));
+    
+    // Test empty target operations
+    let result = data_migration.execute_custom_transformation(
+        "test_migration",
+        "SELECT * FROM custom_source_users",
+        "test_transform",
+        &[]
+    ).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("At least one target operation must be specified"));
+    
+    // Test non-existent transformation function
+    let result = data_migration.execute_custom_transformation(
+        "test_migration",
+        "SELECT * FROM custom_source_users",
+        "non_existent_transform",
+        &["INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)".to_string()]
+    ).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Custom transformation 'non_existent_transform' not found"));
+}
+
+#[tokio::test]
+async fn test_execute_custom_transformation_success() {
+    let db = setup_test_db().await;
+    create_test_tables_for_custom_transformation(&db).await;
+    
+    let mut custom_transformations = HashMap::new();
+    custom_transformations.insert("test_transform".to_string(), Box::new(TestTransformationFunction::new("test_transform")) as Box<dyn TransformationFunction>);
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations,
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let target_operations = vec![
+        "INSERT INTO custom_target_users (id, transformed_name, doubled_age, original_email, computed_field) VALUES ($id, $name, $age, $email, $computed_field)".to_string()
+    ];
+    
+    let result = data_migration.execute_custom_transformation(
+        "user_transformation",
+        "SELECT * FROM custom_source_users",
+        "test_transform",
+        &target_operations
+    ).await.expect("Should execute custom transformation successfully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 3);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("Starting custom migration: user_transformation")));
+    assert!(result.warnings.iter().any(|w| w.contains("Using transformation function: test_transform")));
+    
+    // Verify transformed data was inserted correctly
+    let verification_result = db.execute(
+        "SELECT id, transformed_name, doubled_age, original_email, computed_field FROM custom_target_users ORDER BY id",
+        &[]
+    ).await.expect("Failed to verify transformed data");
+    
+    assert_eq!(verification_result.rows.len(), 3);
+    
+    // Verify first row transformation
+    if let Value::Object(row) = &verification_result.rows[0] {
+        assert_eq!(row.get("id").unwrap(), &Value::Number(1.into()));
+        assert_eq!(row.get("transformed_name").unwrap(), &Value::String("ALICE".to_string()));
+        assert_eq!(row.get("doubled_age").unwrap(), &Value::Number(50.into()));
+        assert_eq!(row.get("original_email").unwrap(), &Value::String("alice@example.com".to_string()));
+        assert_eq!(row.get("computed_field").unwrap(), &Value::String("computed_value".to_string()));
+    }
+}
+
+#[tokio::test]
+async fn test_execute_custom_transformation_failure() {
+    let db = setup_test_db().await;
+    create_test_tables_for_custom_transformation(&db).await;
+    
+    let mut custom_transformations = HashMap::new();
+    custom_transformations.insert("failing_transform".to_string(), Box::new(FailingTransformationFunction) as Box<dyn TransformationFunction>);
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations,
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let target_operations = vec![
+        "INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)".to_string()
+    ];
+    
+    let result = data_migration.execute_custom_transformation(
+        "failing_migration",
+        "SELECT * FROM custom_source_users",
+        "failing_transform",
+        &target_operations
+    ).await.expect("Should handle transformation failures gracefully");
+    
+    assert!(!result.success);
+    assert_eq!(result.records_processed, 3);
+    assert_eq!(result.records_failed, 3);
+    assert!(result.errors.iter().any(|e| e.to_string().contains("Custom transformation failed")));
+    
+    // Verify no data was inserted due to transformation failures
+    let verification_result = db.execute(
+        "SELECT COUNT(*) as count FROM custom_target_users",
+        &[]
+    ).await.expect("Failed to verify no data inserted");
+    
+    if let Value::Object(row) = &verification_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert_eq!(count.as_u64().unwrap(), 0);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_custom_transformation_target_operation_failure() {
+    let db = setup_test_db().await;
+    create_test_tables_for_custom_transformation(&db).await;
+    
+    let mut custom_transformations = HashMap::new();
+    custom_transformations.insert("test_transform".to_string(), Box::new(TestTransformationFunction::new("test_transform")) as Box<dyn TransformationFunction>);
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations,
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Use invalid SQL for target operation
+    let target_operations = vec![
+        "INSERT INTO non_existent_table (id, name) VALUES ($id, $name)".to_string()
+    ];
+    
+    let result = data_migration.execute_custom_transformation(
+        "failing_target_migration",
+        "SELECT * FROM custom_source_users",
+        "test_transform",
+        &target_operations
+    ).await.expect("Should handle target operation failures gracefully");
+    
+    assert!(!result.success);
+    assert_eq!(result.records_processed, 3);
+    assert_eq!(result.records_failed, 3);
+    assert!(result.errors.iter().any(|e| e.to_string().contains("Target operation")));
+}
+
+#[tokio::test]
+async fn test_execute_custom_transformation_invalid_source_query() {
+    let db = setup_test_db().await;
+    create_test_tables_for_custom_transformation(&db).await;
+    
+    let mut custom_transformations = HashMap::new();
+    custom_transformations.insert("test_transform".to_string(), Box::new(TestTransformationFunction::new("test_transform")) as Box<dyn TransformationFunction>);
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations,
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let target_operations = vec![
+        "INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)".to_string()
+    ];
+    
+    let result = data_migration.execute_custom_transformation(
+        "invalid_source_migration",
+        "SELECT * FROM non_existent_source_table",
+        "test_transform",
+        &target_operations
+    ).await.expect("Should handle invalid source query gracefully");
+    
+    assert!(!result.success);
+    assert_eq!(result.records_processed, 0);
+    assert_eq!(result.records_failed, 1);
+    assert!(result.errors.iter().any(|e| e.to_string().contains("Failed to execute source query")));
+}
+
+#[tokio::test] 
+async fn test_execute_custom_transformation_batch_processing() {
+    let db = setup_test_db().await;
+    create_test_tables_for_custom_transformation(&db).await;
+    
+    // Insert more test data for batch testing
+    for i in 4..=15 {
+        db.execute(
+            "INSERT INTO custom_source_users (id, name, age, email) VALUES (?, ?, ?, ?)",
+            &[
+                serde_json::Value::Number(i.into()),
+                serde_json::Value::String(format!("user{}", i)),
+                serde_json::Value::Number((20 + i).into()),
+                serde_json::Value::String(format!("user{}@example.com", i))
+            ]
+        ).await.expect("Failed to insert additional test data");
+    }
+    
+    let mut custom_transformations = HashMap::new();
+    custom_transformations.insert("test_transform".to_string(), Box::new(TestTransformationFunction::new("test_transform")) as Box<dyn TransformationFunction>);
+    
+    let config = DataMigrationConfig {
+        batch_size: 5,  // Small batch size to test batching
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations,
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let target_operations = vec![
+        "INSERT INTO custom_target_users (id, transformed_name, doubled_age, original_email, computed_field) VALUES ($id, $name, $age, $email, $computed_field)".to_string()
+    ];
+    
+    let result = data_migration.execute_custom_transformation(
+        "batch_processing_migration",
+        "SELECT * FROM custom_source_users ORDER BY id",
+        "test_transform",
+        &target_operations
+    ).await.expect("Should handle batch processing successfully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 15);  // Total records including original 3 + 12 new
+    assert_eq!(result.records_failed, 0);
+    
+    // Should have batch processing warnings
+    assert!(result.warnings.iter().any(|w| w.contains("Processing batch")));
+    
+    // Verify all records were transformed and inserted
+    let verification_result = db.execute(
+        "SELECT COUNT(*) as count FROM custom_target_users",
+        &[]
+    ).await.expect("Failed to verify batch processing results");
+    
+    if let Value::Object(row) = &verification_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert_eq!(count.as_u64().unwrap(), 15);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_custom_transformation_placeholder_replacement() {
+    let db = setup_test_db().await;
+    create_test_tables_for_custom_transformation(&db).await;
+    
+    let mut custom_transformations = HashMap::new();
+    custom_transformations.insert("test_transform".to_string(), Box::new(TestTransformationFunction::new("test_transform")) as Box<dyn TransformationFunction>);
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations,
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test multiple placeholders and special value handling
+    let target_operations = vec![
+        "INSERT INTO custom_target_users (id, transformed_name, doubled_age, original_email, computed_field) VALUES ($id, $name, $age, $email, $computed_field)".to_string()
+    ];
+    
+    let result = data_migration.execute_custom_transformation(
+        "placeholder_test_migration",
+        "SELECT * FROM custom_source_users WHERE id = 1",
+        "test_transform",
+        &target_operations
+    ).await.expect("Should handle placeholder replacement successfully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 1);
+    assert_eq!(result.records_failed, 0);
+    
+    // Verify placeholder replacement worked correctly by checking the inserted data
+    let verification_result = db.execute(
+        "SELECT id, transformed_name, doubled_age, original_email, computed_field FROM custom_target_users WHERE id = 1",
+        &[]
+    ).await.expect("Failed to verify placeholder replacement");
+    
+    assert_eq!(verification_result.rows.len(), 1);
+    
+    if let Value::Object(row) = &verification_result.rows[0] {
+        // ID should be unchanged
+        assert_eq!(row.get("id").unwrap(), &Value::Number(1.into()));
+        // Name should be uppercased
+        assert_eq!(row.get("transformed_name").unwrap(), &Value::String("ALICE".to_string()));
+        // Age should be doubled
+        assert_eq!(row.get("doubled_age").unwrap(), &Value::Number(50.into()));
+        // Email should be unchanged
+        assert_eq!(row.get("original_email").unwrap(), &Value::String("alice@example.com".to_string()));
+        // Computed field should be added
+        assert_eq!(row.get("computed_field").unwrap(), &Value::String("computed_value".to_string()));
     }
 }

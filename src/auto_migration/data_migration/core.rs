@@ -384,4 +384,192 @@ impl DataMigrator {
         
         metrics.success_rate = (metrics.execution_count - metrics.error_count) as f64 / metrics.execution_count as f64;
     }
+    
+    /// Execute custom transformation logic using registered transformation functions
+    pub async fn execute_custom_transformation(
+        &self,
+        migration_name: &str,
+        source_query: &str,
+        transformation_logic: &str,
+        target_operations: &[String],
+    ) -> Result<TransformationResult> {
+        let start_time = std::time::Instant::now();
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+        
+        // Input validation
+        if migration_name.is_empty() {
+            return Err(D1RsError::ValidationError("Migration name cannot be empty".to_string()));
+        }
+        
+        if source_query.trim().is_empty() {
+            return Err(D1RsError::ValidationError("Source query cannot be empty".to_string()));
+        }
+        
+        if transformation_logic.trim().is_empty() {
+            return Err(D1RsError::ValidationError("Transformation logic cannot be empty".to_string()));
+        }
+        
+        if target_operations.is_empty() {
+            return Err(D1RsError::ValidationError("At least one target operation must be specified".to_string()));
+        }
+        
+        // Validate SQL syntax (basic check for injection protection)
+        if source_query.to_lowercase().contains(";") && source_query.matches(';').count() > 1 {
+            return Err(D1RsError::ValidationError("Source query should not contain multiple statements".to_string()));
+        }
+        
+        // Check if custom transformation function exists
+        let transformation_function = self.config.custom_transformations.get(transformation_logic)
+            .ok_or_else(|| D1RsError::ValidationError(
+                format!("Custom transformation '{}' not found in configuration", transformation_logic)
+            ))?;
+        
+        // Validate transformation configuration
+        if let Err(e) = transformation_function.validate_config() {
+            return Err(D1RsError::ValidationError(
+                format!("Custom transformation validation failed: {}", e)
+            ));
+        }
+        
+        warnings.push(format!("Starting custom migration: {}", migration_name));
+        warnings.push(format!("Using transformation function: {}", transformation_function.name()));
+        
+        let mut total_processed = 0u64;
+        let mut total_failed = 0u64;
+        let mut total_successful = 0u64;
+        
+        // Execute source query to get input data
+        let source_result = match self.db.execute(source_query, &[]).await {
+            Ok(result) => result,
+            Err(e) => {
+                errors.push(D1RsError::AutoMigration(
+                    format!("Failed to execute source query for custom migration '{}': {}", migration_name, e)
+                ));
+                let duration = start_time.elapsed();
+                self.update_transformation_metrics("custom_transformation", duration, false);
+                
+                return Ok(TransformationResult {
+                    success: false,
+                    records_processed: 0,
+                    records_failed: 1,
+                    errors,
+                    warnings,
+                });
+            }
+        };
+        
+        warnings.push(format!("Source query returned {} rows", source_result.rows.len()));
+        
+        let batch_size = self.config.batch_size;
+        
+        // Process source data in batches
+        for (batch_index, chunk) in source_result.rows.chunks(batch_size).enumerate() {
+            warnings.push(format!("Processing batch {} with {} records", batch_index + 1, chunk.len()));
+            
+            for (row_index, row) in chunk.iter().enumerate() {
+                total_processed += 1;
+                
+                // Convert row to HashMap for transformation
+                let mut input_data = HashMap::new();
+                if let serde_json::Value::Object(row_map) = row {
+                    for (key, value) in row_map {
+                        input_data.insert(key.clone(), value.clone());
+                    }
+                } else {
+                    warnings.push(format!("Skipping non-object row {} in batch {}", row_index + 1, batch_index + 1));
+                    total_failed += 1;
+                    continue;
+                }
+                
+                // Apply custom transformation
+                let transformed_data = {
+                    let context = self.context.borrow();
+                    match transformation_function.transform(&input_data, &*context) {
+                        Ok(data) => data,
+                        Err(e) => {
+                            errors.push(D1RsError::AutoMigration(
+                                format!("Custom transformation failed for row {} in batch {}: {}", row_index + 1, batch_index + 1, e)
+                            ));
+                            total_failed += 1;
+                            continue;
+                        }
+                    }
+                };
+                
+                // Execute target operations with transformed data
+                let mut operation_success = true;
+                for (op_index, operation) in target_operations.iter().enumerate() {
+                    // Replace placeholders in operation with transformed data
+                    let mut final_operation = operation.clone();
+                    for (key, value) in &transformed_data {
+                        let placeholder = format!("${}", key);
+                        let value_str = match value {
+                            serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+                            serde_json::Value::Number(n) => n.to_string(),
+                            serde_json::Value::Bool(b) => if *b { "1".to_string() } else { "0".to_string() },
+                            serde_json::Value::Null => "NULL".to_string(),
+                            _ => format!("'{}'", value.to_string().replace('\'', "''")),
+                        };
+                        final_operation = final_operation.replace(&placeholder, &value_str);
+                    }
+                    
+                    // Execute target operation
+                    match self.db.execute(&final_operation, &[]).await {
+                        Ok(_) => {
+                            // Operation succeeded
+                        }
+                        Err(e) => {
+                            errors.push(D1RsError::AutoMigration(
+                                format!("Target operation {} failed for row {} in batch {}: {}", op_index + 1, row_index + 1, batch_index + 1, e)
+                            ));
+                            operation_success = false;
+                            break;
+                        }
+                    }
+                }
+                
+                if operation_success {
+                    total_successful += 1;
+                } else {
+                    total_failed += 1;
+                }
+                
+                // Check timeout
+                if start_time.elapsed() > self.config.max_transformation_time {
+                    warnings.push(format!("Custom transformation timeout reached after processing {} records", total_processed));
+                    break;
+                }
+            }
+            
+            // Check timeout between batches
+            if start_time.elapsed() > self.config.max_transformation_time {
+                warnings.push(format!("Custom transformation timeout reached after {} batches", batch_index + 1));
+                break;
+            }
+        }
+        
+        // Generate summary
+        warnings.push(format!("Custom migration '{}' completed", migration_name));
+        warnings.push(format!("Processed: {}, Successful: {}, Failed: {}", total_processed, total_successful, total_failed));
+        
+        if total_failed > 0 {
+            warnings.push(format!("Failed to process {} out of {} records", total_failed, total_processed));
+        }
+        
+        // Update metrics
+        let duration = start_time.elapsed();
+        self.update_transformation_metrics("custom_transformation", duration, total_failed == 0);
+        
+        // Determine success: all records should be processed successfully
+        let success = total_failed == 0 && errors.is_empty();
+        
+        Ok(TransformationResult {
+            success,
+            records_processed: total_processed,
+            records_failed: total_failed,
+            errors,
+            warnings,
+        })
+    }
 }
