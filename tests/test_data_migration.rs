@@ -3300,6 +3300,1007 @@ async fn test_execute_denormalized_column_population_empty_values() {
     assert!(tag_names.contains(&"another".to_string()));
 }
 
+// Test helper function for existing junction table population tests
+async fn create_test_tables_for_existing_junction_population(db: &D1Client) {
+    // Create old junction table with existing data
+    let create_old_junction_sql = r#"
+        CREATE TABLE old_user_roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'active'
+        )
+    "#;
+    
+    db.execute(create_old_junction_sql, &[])
+        .await
+        .expect("Failed to create old junction table");
+    
+    // Create new junction table with different column names
+    let create_new_junction_sql = r#"
+        CREATE TABLE new_user_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            permission_id INTEGER NOT NULL,
+            state TEXT DEFAULT 'enabled'
+        )
+    "#;
+    
+    db.execute(create_new_junction_sql, &[])
+        .await
+        .expect("Failed to create new junction table");
+    
+    // Insert test data into old junction table
+    let junction_records = vec![
+        (1, 1, "active"),
+        (1, 2, "active"),
+        (2, 1, "active"),
+        (2, 3, "inactive"),
+        (3, 2, "active"),
+    ];
+    
+    for (user_id, role_id, status) in junction_records {
+        db.execute(
+            "INSERT INTO old_user_roles (user_id, role_id, status) VALUES (?, ?, ?)",
+            &[
+                Value::Number(user_id.into()),
+                Value::Number(role_id.into()),
+                Value::String(status.to_string()),
+            ]
+        ).await.expect("Failed to insert junction record");
+    }
+}
+
+#[tokio::test]
+async fn test_execute_existing_junction_table_population_validation_errors() {
+    let db = setup_test_db().await;
+    create_test_tables_for_existing_junction_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test empty new junction table
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "person_id".to_string());
+    column_mapping.insert("role_id".to_string(), "permission_id".to_string());
+    
+    let result = data_migration.execute_existing_junction_table_population(
+        "",  // Empty new junction table
+        "old_user_roles",
+        &column_mapping
+    ).await.expect("Should handle empty new junction table gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("New junction table cannot be empty"));
+    
+    // Test empty old junction table
+    let result = data_migration.execute_existing_junction_table_population(
+        "new_user_permissions",
+        "",  // Empty old junction table
+        &column_mapping
+    ).await.expect("Should handle empty old junction table gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Old junction table cannot be empty"));
+    
+    // Test same table names
+    let result = data_migration.execute_existing_junction_table_population(
+        "old_user_roles",
+        "old_user_roles",  // Same as new table
+        &column_mapping
+    ).await.expect("Should handle same table names gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("New and old junction tables cannot be the same"));
+    
+    // Test empty column mapping
+    let empty_mapping = HashMap::new();
+    let result = data_migration.execute_existing_junction_table_population(
+        "new_user_permissions",
+        "old_user_roles",
+        &empty_mapping
+    ).await.expect("Should handle empty column mapping gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Column mapping cannot be empty"));
+    
+    // Test empty column names in mapping
+    let mut invalid_mapping = HashMap::new();
+    invalid_mapping.insert("".to_string(), "person_id".to_string());  // Empty old column
+    invalid_mapping.insert("role_id".to_string(), "permission_id".to_string());
+    
+    let result = data_migration.execute_existing_junction_table_population(
+        "new_user_permissions",
+        "old_user_roles",
+        &invalid_mapping
+    ).await.expect("Should handle empty column names gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Column names in mapping cannot be empty"));
+    
+    // Test empty new column name in mapping
+    let mut invalid_mapping = HashMap::new();
+    invalid_mapping.insert("user_id".to_string(), "".to_string());  // Empty new column
+    invalid_mapping.insert("role_id".to_string(), "permission_id".to_string());
+    
+    let result = data_migration.execute_existing_junction_table_population(
+        "new_user_permissions",
+        "old_user_roles",
+        &invalid_mapping
+    ).await.expect("Should handle empty column names gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Column names in mapping cannot be empty"));
+    
+    // Test duplicate target columns in mapping
+    let mut duplicate_mapping = HashMap::new();
+    duplicate_mapping.insert("user_id".to_string(), "person_id".to_string());
+    duplicate_mapping.insert("role_id".to_string(), "person_id".to_string());  // Duplicate target
+    
+    let result = data_migration.execute_existing_junction_table_population(
+        "new_user_permissions",
+        "old_user_roles",
+        &duplicate_mapping
+    ).await.expect("Should handle duplicate target columns gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Duplicate target column 'person_id'"));
+}
+
+#[tokio::test]
+async fn test_execute_existing_junction_table_population_self_mapping_warning() {
+    let db = setup_test_db().await;
+    
+    // Create tables with same column names to test self-mapping properly
+    let create_source_sql = r#"
+        CREATE TABLE source_junction (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'active'
+        )
+    "#;
+    
+    db.execute(create_source_sql, &[])
+        .await
+        .expect("Failed to create source junction table");
+    
+    let create_target_sql = r#"
+        CREATE TABLE target_junction (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            permission_id INTEGER NOT NULL,
+            state TEXT DEFAULT 'enabled'
+        )
+    "#;
+    
+    db.execute(create_target_sql, &[])
+        .await
+        .expect("Failed to create target junction table");
+    
+    // Insert test data
+    db.execute(
+        "INSERT INTO source_junction (user_id, role_id, status) VALUES (?, ?, ?)",
+        &[
+            Value::Number(1.into()),
+            Value::Number(1.into()),
+            Value::String("active".to_string()),
+        ]
+    ).await.expect("Failed to insert test data");
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test column mapping to itself (should generate warning)
+    let mut self_mapping = HashMap::new();
+    self_mapping.insert("user_id".to_string(), "user_id".to_string());  // Maps to itself - this should cause warning
+    self_mapping.insert("role_id".to_string(), "permission_id".to_string());  // Valid mapping
+    
+    let result = data_migration.execute_existing_junction_table_population(
+        "target_junction",
+        "source_junction",
+        &self_mapping
+    ).await.expect("Should handle self mapping gracefully");
+    
+    assert!(result.success);
+    assert!(result.warnings.iter().any(|w| w.contains("Column mapping maps 'user_id' to itself")));
+}
+
+#[tokio::test]
+async fn test_execute_existing_junction_table_population_missing_tables() {
+    let db = setup_test_db().await;
+    create_test_tables_for_existing_junction_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "person_id".to_string());
+    column_mapping.insert("role_id".to_string(), "permission_id".to_string());
+    
+    // Test non-existent old junction table
+    let result = data_migration.execute_existing_junction_table_population(
+        "new_user_permissions",
+        "non_existent_old_table",  // Non-existent old table
+        &column_mapping
+    ).await.expect("Should handle missing old table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("Old junction table non_existent_old_table not accessible")));
+    
+    // Test non-existent new junction table
+    let result = data_migration.execute_existing_junction_table_population(
+        "non_existent_new_table",  // Non-existent new table
+        "old_user_roles",
+        &column_mapping
+    ).await.expect("Should handle missing new table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("New junction table non_existent_new_table not accessible")));
+}
+
+#[tokio::test]
+async fn test_execute_existing_junction_table_population_successful_operation() {
+    let db = setup_test_db().await;
+    create_test_tables_for_existing_junction_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 2,  // Small batch size to test batch processing
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Execute existing junction table population with column mapping
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "person_id".to_string());
+    column_mapping.insert("role_id".to_string(), "permission_id".to_string());
+    column_mapping.insert("status".to_string(), "state".to_string());
+    
+    let result = data_migration.execute_existing_junction_table_population(
+        "new_user_permissions",
+        "old_user_roles",
+        &column_mapping
+    ).await.expect("Existing junction table population should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 5);  // 5 records in old table
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have summary of copied records
+    assert!(result.warnings.iter().any(|w| w.contains("Copied 5 records from old_user_roles to new_user_permissions")));
+    
+    // Should have column mapping summary
+    assert!(result.warnings.iter().any(|w| w.contains("Applied column mappings:")));
+    
+    // Verify the records were copied correctly with column mapping
+    let new_records_result = db.execute("SELECT person_id, permission_id, state FROM new_user_permissions ORDER BY person_id, permission_id", &[])
+        .await.expect("Failed to query new junction table");
+    
+    assert_eq!(new_records_result.rows.len(), 5);
+    
+    // Check specific records were mapped correctly
+    if let Value::Object(row) = &new_records_result.rows[0] {
+        if let (Some(Value::Number(person_id)), Some(Value::Number(permission_id)), Some(Value::String(state))) = 
+            (row.get("person_id"), row.get("permission_id"), row.get("state")) {
+            assert_eq!(person_id.as_u64().unwrap(), 1);
+            assert_eq!(permission_id.as_u64().unwrap(), 1);
+            assert_eq!(state, "active");
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_existing_junction_table_population_no_data() {
+    let db = setup_test_db().await;
+    
+    // Create empty tables
+    let create_empty_old_sql = r#"
+        CREATE TABLE empty_old_junction (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role_id INTEGER NOT NULL
+        )
+    "#;
+    
+    db.execute(create_empty_old_sql, &[])
+        .await
+        .expect("Failed to create empty old junction table");
+    
+    let create_empty_new_sql = r#"
+        CREATE TABLE empty_new_junction (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            permission_id INTEGER NOT NULL
+        )
+    "#;
+    
+    db.execute(create_empty_new_sql, &[])
+        .await
+        .expect("Failed to create empty new junction table");
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test with empty old table
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("user_id".to_string(), "person_id".to_string());
+    column_mapping.insert("role_id".to_string(), "permission_id".to_string());
+    
+    let result = data_migration.execute_existing_junction_table_population(
+        "empty_new_junction",
+        "empty_old_junction",
+        &column_mapping
+    ).await.expect("Should handle empty old table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("No records found in old junction table")));
+}
+
+#[tokio::test]
+async fn test_execute_existing_junction_table_population_partial_column_mapping() {
+    let db = setup_test_db().await;
+    create_test_tables_for_existing_junction_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test with partial column mapping (only map some columns)
+    let mut partial_mapping = HashMap::new();
+    partial_mapping.insert("user_id".to_string(), "person_id".to_string());
+    partial_mapping.insert("role_id".to_string(), "permission_id".to_string());
+    // Note: not mapping 'status' column, so records should be skipped
+    
+    let result = data_migration.execute_existing_junction_table_population(
+        "new_user_permissions",
+        "old_user_roles",
+        &partial_mapping
+    ).await.expect("Should handle partial column mapping gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 5);  // All records are processed
+    assert_eq!(result.records_failed, 0);
+    
+    // Should have warnings about missing columns - but the implementation doesn't require all columns
+    // Instead it only selects the columns specified in the mapping
+    
+    // Verify records were copied with only the mapped columns
+    let new_records_result = db.execute("SELECT person_id, permission_id FROM new_user_permissions ORDER BY person_id, permission_id", &[])
+        .await.expect("Failed to query new junction table");
+    
+    assert_eq!(new_records_result.rows.len(), 5);
+}
+
+#[tokio::test]
+async fn test_execute_existing_junction_table_population_batch_processing() {
+    let db = setup_test_db().await;
+    
+    // Create tables with more data to test batch processing
+    let create_old_sql = r#"
+        CREATE TABLE batch_old_junction (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            target_id INTEGER NOT NULL
+        )
+    "#;
+    
+    db.execute(create_old_sql, &[])
+        .await
+        .expect("Failed to create batch old junction table");
+    
+    let create_new_sql = r#"
+        CREATE TABLE batch_new_junction (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_id INTEGER NOT NULL,
+            to_id INTEGER NOT NULL
+        )
+    "#;
+    
+    db.execute(create_new_sql, &[])
+        .await
+        .expect("Failed to create batch new junction table");
+    
+    // Insert multiple records to test batching
+    for i in 1..=10 {
+        for j in 1..=3 {
+            db.execute(
+                "INSERT INTO batch_old_junction (source_id, target_id) VALUES (?, ?)",
+                &[
+                    Value::Number(i.into()),
+                    Value::Number(j.into()),
+                ]
+            ).await.expect("Failed to insert batch test record");
+        }
+    }
+    
+    let config = DataMigrationConfig {
+        batch_size: 3,  // Very small batch size to test multiple batches
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Execute with small batch size
+    let mut column_mapping = HashMap::new();
+    column_mapping.insert("source_id".to_string(), "from_id".to_string());
+    column_mapping.insert("target_id".to_string(), "to_id".to_string());
+    
+    let result = data_migration.execute_existing_junction_table_population(
+        "batch_new_junction",
+        "batch_old_junction",
+        &column_mapping
+    ).await.expect("Batch processing should succeed");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 30);  // 10 * 3 = 30 records
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Verify all records were copied
+    let count_result = db.execute("SELECT COUNT(*) as count FROM batch_new_junction", &[])
+        .await.expect("Failed to count new records");
+    
+    if let Value::Object(row) = &count_result.rows[0] {
+        if let Some(Value::Number(count)) = row.get("count") {
+            assert_eq!(count.as_u64().unwrap(), 30);
+        }
+    }
+}
+
+// Test helper function for business rules population tests
+async fn create_test_tables_for_business_rules_population(db: &D1Client) {
+    // Create users table
+    let create_users_sql = r#"
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            department TEXT NOT NULL,
+            role TEXT NOT NULL,
+            seniority_level INTEGER DEFAULT 1
+        )
+    "#;
+    
+    db.execute(create_users_sql, &[])
+        .await
+        .expect("Failed to create users table");
+    
+    // Create projects table
+    let create_projects_sql = r#"
+        CREATE TABLE projects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            department TEXT NOT NULL,
+            complexity_level INTEGER DEFAULT 1,
+            status TEXT DEFAULT 'active'
+        )
+    "#;
+    
+    db.execute(create_projects_sql, &[])
+        .await
+        .expect("Failed to create projects table");
+    
+    // Create user_project_assignments junction table
+    let create_junction_sql = r#"
+        CREATE TABLE user_project_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            project_id INTEGER NOT NULL,
+            assignment_type TEXT DEFAULT 'standard'
+        )
+    "#;
+    
+    db.execute(create_junction_sql, &[])
+        .await
+        .expect("Failed to create junction table");
+    
+    // Insert test users
+    let users = vec![
+        ("Alice Johnson", "Engineering", "Senior Developer", 4),
+        ("Bob Smith", "Engineering", "Junior Developer", 2),
+        ("Carol Davis", "Marketing", "Marketing Manager", 3),
+        ("David Wilson", "Engineering", "Tech Lead", 5),
+        ("Eve Brown", "Design", "UI Designer", 3),
+    ];
+    
+    for (name, department, role, seniority) in users {
+        db.execute(
+            "INSERT INTO users (name, department, role, seniority_level) VALUES (?, ?, ?, ?)",
+            &[
+                Value::String(name.to_string()),
+                Value::String(department.to_string()),
+                Value::String(role.to_string()),
+                Value::Number(seniority.into()),
+            ]
+        ).await.expect("Failed to insert user data");
+    }
+    
+    // Insert test projects
+    let projects = vec![
+        ("Web Platform Redesign", "Engineering", 4),
+        ("Mobile App Development", "Engineering", 5),
+        ("Marketing Campaign", "Marketing", 2),
+        ("API Documentation", "Engineering", 3),
+        ("Brand Identity", "Design", 3),
+    ];
+    
+    for (name, department, complexity) in projects {
+        db.execute(
+            "INSERT INTO projects (name, department, complexity_level) VALUES (?, ?, ?)",
+            &[
+                Value::String(name.to_string()),
+                Value::String(department.to_string()),
+                Value::Number(complexity.into()),
+            ]
+        ).await.expect("Failed to insert project data");
+    }
+}
+
+#[tokio::test]
+async fn test_execute_business_rules_population_validation_errors() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_rules_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test empty junction table
+    let generation_query = "INSERT INTO user_project_assignments (user_id, project_id) VALUES (1, 1)";
+    let validation_rules = vec!["SELECT COUNT(*) FROM user_project_assignments".to_string()];
+    
+    let result = data_migration.execute_business_rules_population(
+        "",  // Empty junction table
+        generation_query,
+        &validation_rules
+    ).await.expect("Should handle empty junction table gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Junction table cannot be empty"));
+    
+    // Test empty generation query
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        "",  // Empty generation query
+        &validation_rules
+    ).await.expect("Should handle empty generation query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Generation query cannot be empty"));
+    
+    // Test dangerous generation query (DROP)
+    let dangerous_query = "DROP TABLE user_project_assignments";
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        dangerous_query,
+        &validation_rules
+    ).await.expect("Should handle dangerous query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("potentially dangerous SQL patterns"));
+    
+    // Test dangerous generation query (DELETE)
+    let dangerous_query = "DELETE FROM user_project_assignments";
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        dangerous_query,
+        &validation_rules
+    ).await.expect("Should handle dangerous query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("potentially dangerous SQL patterns"));
+    
+    // Test non-INSERT generation query
+    let non_insert_query = "SELECT * FROM users";
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        non_insert_query,
+        &validation_rules
+    ).await.expect("Should handle non-INSERT query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Generation query must be an INSERT statement"));
+    
+    // Test generation query targeting wrong table
+    let wrong_table_query = "INSERT INTO wrong_table (user_id, project_id) VALUES (1, 1)";
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        wrong_table_query,
+        &validation_rules
+    ).await.expect("Should handle wrong table query gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("does not target the specified junction table"));
+    
+    // Test empty validation rule
+    let empty_validation_rules = vec!["".to_string()];
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        generation_query,
+        &empty_validation_rules
+    ).await.expect("Should handle empty validation rule gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Validation rule 1 cannot be empty"));
+    
+    // Test dangerous validation rule
+    let dangerous_validation_rules = vec!["DROP TABLE users".to_string()];
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        generation_query,
+        &dangerous_validation_rules
+    ).await.expect("Should handle dangerous validation rule gracefully");
+    
+    assert!(!result.success);
+    assert!(result.errors[0].to_string().contains("Validation rule 1 contains potentially dangerous SQL patterns"));
+}
+
+#[tokio::test]
+async fn test_execute_business_rules_population_missing_table() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_rules_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Test non-existent junction table
+    let generation_query = "INSERT INTO non_existent_table (user_id, project_id) VALUES (1, 1)";
+    let validation_rules = vec!["SELECT COUNT(*) FROM non_existent_table".to_string()];
+    
+    let result = data_migration.execute_business_rules_population(
+        "non_existent_table",
+        generation_query,
+        &validation_rules
+    ).await.expect("Should handle missing table gracefully");
+    
+    assert!(result.success);
+    assert_eq!(result.records_processed, 0);
+    assert!(result.warnings.iter().any(|w| w.contains("Junction table non_existent_table not accessible")));
+}
+
+#[tokio::test]
+async fn test_execute_business_rules_population_successful_operation() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_rules_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Business rule: Assign users to projects in the same department where seniority >= complexity
+    let generation_query = r#"
+        INSERT INTO user_project_assignments (user_id, project_id, assignment_type)
+        SELECT u.id, p.id, 
+               CASE WHEN u.seniority_level >= p.complexity_level + 2 THEN 'lead'
+                    WHEN u.seniority_level >= p.complexity_level THEN 'standard'
+                    ELSE 'support'
+               END
+        FROM users u
+        CROSS JOIN projects p
+        WHERE u.department = p.department
+        AND u.seniority_level >= p.complexity_level - 1
+    "#;
+    
+    let validation_rules = vec![
+        // Rule 1: Check that all assignments have valid users and projects
+        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id".to_string(),
+        // Rule 2: Check for department consistency
+        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id WHERE u.department = p.department".to_string(),
+        // Rule 3: Check assignment types are valid
+        "SELECT COUNT(*) FROM user_project_assignments WHERE assignment_type IN ('lead', 'standard', 'support')".to_string(),
+    ];
+    
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        generation_query,
+        &validation_rules
+    ).await.expect("Business rules population should succeed");
+    
+    assert!(result.success);
+    assert!(result.records_processed > 0);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should have generation success message
+    assert!(result.warnings.iter().any(|w| w.contains("Generation query executed successfully")));
+    
+    // Should have validation summary
+    assert!(result.warnings.iter().any(|w| w.contains("validation rules to verify business rules compliance")));
+    assert!(result.warnings.iter().any(|w| w.contains("All validation rules passed successfully")));
+    
+    // Verify the business rules were applied correctly
+    let assignments_result = db.execute(
+        "SELECT ua.assignment_type, u.seniority_level, p.complexity_level FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id ORDER BY ua.id",
+        &[]
+    ).await.expect("Failed to query assignments");
+    
+    // Check that assignment types follow the business rules
+    for row in &assignments_result.rows {
+        if let Value::Object(row_map) = row {
+            if let (Some(Value::String(assignment_type)), Some(Value::Number(seniority)), Some(Value::Number(complexity))) = 
+                (row_map.get("assignment_type"), row_map.get("seniority_level"), row_map.get("complexity_level")) {
+                let seniority_val = seniority.as_u64().unwrap();
+                let complexity_val = complexity.as_u64().unwrap();
+                
+                match assignment_type.as_str() {
+                    "lead" => assert!(seniority_val >= complexity_val + 2),
+                    "standard" => assert!(seniority_val >= complexity_val && seniority_val < complexity_val + 2),
+                    "support" => assert!(seniority_val >= complexity_val.saturating_sub(1) && seniority_val < complexity_val),
+                    _ => panic!("Invalid assignment type: {}", assignment_type),
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_execute_business_rules_population_generation_failure() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_rules_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Use a generation query that will fail (invalid column reference)
+    let failing_query = "INSERT INTO user_project_assignments (user_id, project_id) SELECT invalid_column, id FROM projects";
+    let validation_rules = vec!["SELECT COUNT(*) FROM user_project_assignments".to_string()];
+    
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        failing_query,
+        &validation_rules
+    ).await.expect("Should handle generation failure gracefully");
+    
+    assert!(!result.success);
+    assert!(result.records_failed > 0);
+    assert!(result.errors.iter().any(|e| e.to_string().contains("Generation query failed")));
+}
+
+#[tokio::test]
+async fn test_execute_business_rules_population_validation_failure() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_rules_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Use a simple generation query that will succeed
+    let generation_query = "INSERT INTO user_project_assignments (user_id, project_id) VALUES (1, 1)";
+    
+    // Use validation rules that will fail (invalid table reference)
+    let failing_validation_rules = vec![
+        "SELECT COUNT(*) FROM user_project_assignments".to_string(),  // This will pass
+        "SELECT COUNT(*) FROM invalid_table_name".to_string(),  // This will fail
+    ];
+    
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        generation_query,
+        &failing_validation_rules
+    ).await.expect("Should handle validation failure gracefully");
+    
+    assert!(result.success);  // Generation succeeded, so overall success is true
+    assert!(result.records_processed > 0);
+    assert!(result.records_failed > 0);  // But validation failures are counted
+    assert!(result.errors.iter().any(|e| e.to_string().contains("Validation rule 2 failed")));
+    
+    // Should have validation failure summary
+    assert!(result.warnings.iter().any(|w| w.contains("validation rules failed or detected issues")));
+}
+
+#[tokio::test]
+async fn test_execute_business_rules_population_no_validation_rules() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_rules_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Use a simple generation query with no validation rules
+    let generation_query = "INSERT INTO user_project_assignments (user_id, project_id) SELECT u.id, p.id FROM users u, projects p WHERE u.department = p.department LIMIT 3";
+    let no_validation_rules: Vec<String> = vec![];
+    
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        generation_query,
+        &no_validation_rules
+    ).await.expect("Should handle no validation rules gracefully");
+    
+    assert!(result.success);
+    assert!(result.records_processed > 0);
+    assert_eq!(result.records_failed, 0);
+    assert!(result.errors.is_empty());
+    
+    // Should not have validation messages since no rules were provided
+    assert!(!result.warnings.iter().any(|w| w.contains("validation rules")));
+    
+    // Should have generation success message
+    assert!(result.warnings.iter().any(|w| w.contains("Generation query executed successfully")));
+}
+
+#[tokio::test]
+async fn test_execute_business_rules_population_complex_business_logic() {
+    let db = setup_test_db().await;
+    create_test_tables_for_business_rules_population(&db).await;
+    
+    let config = DataMigrationConfig {
+        batch_size: 10,
+        max_transformation_time: Duration::from_secs(30),
+        create_backups: false,
+        failure_strategy: FailureStrategy::StopOnFailure,
+        verify_integrity: false,
+        custom_transformations: HashMap::new(),
+    };
+    
+    let data_migration = DataMigrator::new(db.clone(), config);
+    
+    // Complex business rule: Only assign senior developers to high-complexity projects
+    let complex_generation_query = r#"
+        INSERT INTO user_project_assignments (user_id, project_id, assignment_type)
+        SELECT 
+            u.id, 
+            p.id,
+            CASE 
+                WHEN u.role LIKE '%Senior%' AND p.complexity_level >= 4 THEN 'lead'
+                WHEN u.role LIKE '%Lead%' THEN 'lead'
+                WHEN u.seniority_level >= p.complexity_level THEN 'standard'
+                ELSE 'support'
+            END
+        FROM users u
+        CROSS JOIN projects p
+        WHERE 
+            (u.department = p.department) AND
+            (
+                (u.role LIKE '%Senior%' AND p.complexity_level >= 3) OR
+                (u.role LIKE '%Lead%') OR  
+                (u.seniority_level >= p.complexity_level - 1 AND p.complexity_level <= 3)
+            )
+    "#;
+    
+    let complex_validation_rules = vec![
+        // Rule 1: No junior developers on high-complexity projects
+        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id WHERE u.role LIKE '%Junior%' AND p.complexity_level >= 4".to_string(),
+        // Rule 2: All leads should be on appropriate projects
+        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id WHERE ua.assignment_type = 'lead' AND (u.role LIKE '%Senior%' OR u.role LIKE '%Lead%')".to_string(),
+        // Rule 3: Department consistency
+        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id WHERE u.department = p.department".to_string(),
+    ];
+    
+    let result = data_migration.execute_business_rules_population(
+        "user_project_assignments",
+        complex_generation_query,
+        &complex_validation_rules
+    ).await.expect("Complex business rules population should succeed");
+    
+    assert!(result.success);
+    assert!(result.records_processed > 0);
+    // Note: Some validation rules may detect issues (e.g., count=0 for junior devs on high complexity projects)
+    // This is expected behavior and doesn't indicate failure
+    assert!(result.errors.is_empty());
+    
+    // Verify complex business rules were applied
+    let complex_result = db.execute(
+        r#"SELECT 
+            u.role, u.seniority_level, p.complexity_level, ua.assignment_type
+           FROM user_project_assignments ua 
+           JOIN users u ON ua.user_id = u.id 
+           JOIN projects p ON ua.project_id = p.id 
+           ORDER BY p.complexity_level DESC, u.seniority_level DESC"#,
+        &[]
+    ).await.expect("Failed to query complex assignments");
+    
+    // Verify no junior developers are assigned to high-complexity projects
+    for row in &complex_result.rows {
+        if let Value::Object(row_map) = row {
+            if let (Some(Value::String(role)), Some(Value::Number(complexity))) = 
+                (row_map.get("role"), row_map.get("complexity_level")) {
+                let complexity_val = complexity.as_u64().unwrap();
+                if role.contains("Junior") {
+                    assert!(complexity_val < 4, "Junior developer assigned to high-complexity project");
+                }
+            }
+        }
+    }
+}
+
 #[tokio::test]
 async fn test_execute_denormalized_column_population_different_delimiters() {
     let db = setup_test_db().await;
