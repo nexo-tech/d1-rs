@@ -5,6 +5,8 @@
 /// safety validation, risk assessment, and execution tracking.
 
 pub mod types;
+pub mod plan;
 
 // Re-export all public types for convenient access
 pub use types::*;
+pub use plan::*;

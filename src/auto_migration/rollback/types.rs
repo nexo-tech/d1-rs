@@ -9,7 +9,7 @@ use std::time::Duration;
 use std::fmt;
 
 /// Represents a single rollback operation that reverses a forward migration operation
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum RollbackOperation {
     /// Drop a table (reverse of CreateTable)
     DropTable {
@@ -163,6 +163,105 @@ impl RollbackOperation {
         }
     }
     
+    /// Assess the risk level for this rollback operation
+    pub fn assess_risk_level(&self) -> RollbackRiskLevel {
+        match self {
+            RollbackOperation::DropTable { preserve_data, .. } => {
+                if *preserve_data {
+                    RollbackRiskLevel::Medium
+                } else {
+                    RollbackRiskLevel::Critical
+                }
+            }
+            RollbackOperation::RecreateTable { restore_data, .. } => {
+                if *restore_data {
+                    RollbackRiskLevel::High
+                } else {
+                    RollbackRiskLevel::Critical
+                }
+            }
+            RollbackOperation::DropColumn { preserve_data, .. } => {
+                if *preserve_data {
+                    RollbackRiskLevel::Medium
+                } else {
+                    RollbackRiskLevel::High
+                }
+            }
+            RollbackOperation::AddColumn { restore_data, .. } => {
+                if *restore_data {
+                    RollbackRiskLevel::Low
+                } else {
+                    RollbackRiskLevel::Medium
+                }
+            }
+            RollbackOperation::ModifyColumn { preserve_data, changes, .. } => {
+                if changes.is_lossy() {
+                    if *preserve_data {
+                        RollbackRiskLevel::High
+                    } else {
+                        RollbackRiskLevel::Critical
+                    }
+                } else if *preserve_data {
+                    RollbackRiskLevel::Medium
+                } else {
+                    RollbackRiskLevel::High
+                }
+            }
+            RollbackOperation::DropIndex { .. } => RollbackRiskLevel::Low,
+            RollbackOperation::CreateIndex { .. } => RollbackRiskLevel::Low,
+            RollbackOperation::DropForeignKey { .. } => RollbackRiskLevel::Medium,
+            RollbackOperation::AddForeignKey { .. } => RollbackRiskLevel::Medium,
+            RollbackOperation::RenameTable { .. } => RollbackRiskLevel::Low,
+            RollbackOperation::RenameColumn { .. } => RollbackRiskLevel::Low,
+        }
+    }
+    
+    /// Assess the data loss risk for this operation
+    pub fn assess_data_loss_risk(&self) -> DataLossRisk {
+        match self {
+            RollbackOperation::DropTable { preserve_data, .. } => {
+                if *preserve_data {
+                    DataLossRisk::Low
+                } else {
+                    DataLossRisk::High
+                }
+            }
+            RollbackOperation::DropColumn { preserve_data, .. } => {
+                if *preserve_data {
+                    DataLossRisk::Low
+                } else {
+                    DataLossRisk::Medium
+                }
+            }
+            RollbackOperation::ModifyColumn { preserve_data, changes, .. } => {
+                if changes.is_lossy() {
+                    if *preserve_data {
+                        DataLossRisk::Low
+                    } else {
+                        DataLossRisk::High
+                    }
+                } else {
+                    DataLossRisk::None
+                }
+            }
+            RollbackOperation::RecreateTable { restore_data, .. } => {
+                if *restore_data {
+                    DataLossRisk::Low
+                } else {
+                    DataLossRisk::High
+                }
+            }
+            RollbackOperation::AddColumn { restore_data, .. } => {
+                if *restore_data {
+                    DataLossRisk::None
+                } else {
+                    DataLossRisk::Low
+                }
+            }
+            _ => DataLossRisk::None,
+        }
+    }
+    
     /// Estimate the relative complexity/duration of this operation
     pub fn complexity_score(&self) -> u32 {
         match self {
@@ -226,7 +325,7 @@ impl fmt::Display for RollbackOperation {
 }
 
 /// Changes to apply when rolling back a column modification
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RollbackColumnChanges {
     /// Type change to apply (old_type, new_type)
     pub type_change: Option<(String, String)>,
@@ -328,7 +427,7 @@ impl Default for RollbackColumnChanges {
 }
 
 /// Risk level assessment for rollback operations
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, serde::Serialize, serde::Deserialize)]
 pub enum RollbackRiskLevel {
     /// Safe operations with no data loss risk (e.g., renames, index operations)
     Low,
@@ -459,7 +558,7 @@ impl fmt::Display for RollbackRiskSeverity {
 }
 
 /// Assessment of data loss risk for rollback operations
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, serde::Serialize, serde::Deserialize)]
 pub enum DataLossRisk {
     /// No data will be lost
     None,
@@ -526,7 +625,7 @@ impl fmt::Display for DataLossRisk {
 }
 
 /// Configuration options for rollback behavior
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RollbackConfig {
     /// Whether to preserve data when dropping tables/columns
     pub preserve_data_on_rollback: bool,
@@ -672,7 +771,7 @@ impl fmt::Display for RollbackConfig {
 }
 
 /// Strategy for preserving data during rollback operations
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DataPreservationStrategy {
     /// Create a backup table with the original data
     BackupTable {
@@ -771,7 +870,7 @@ impl fmt::Display for DataPreservationStrategy {
 }
 
 /// Format options for data export
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DataExportFormat {
     /// Comma-separated values
     Csv,
@@ -795,7 +894,7 @@ impl fmt::Display for DataExportFormat {
 }
 
 /// Requirements for preserving data during a rollback operation
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DataPreservationRequirement {
     /// Table whose data needs preservation
     pub table: String,
@@ -903,7 +1002,7 @@ impl fmt::Display for DataPreservationRequirement {
 }
 
 /// Priority level for data preservation
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, serde::Serialize, serde::Deserialize)]
 pub enum PreservationPriority {
     /// Low priority - optional preservation
     Low,
