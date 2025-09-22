@@ -14,6 +14,7 @@ pub mod safety;
 pub mod schema_versioning;
 pub mod smart_strategies;
 pub mod validator;
+pub mod validators;
 pub mod zero_downtime;
 
 pub use analyzer::*;
@@ -28,10 +29,19 @@ pub use parallel_execution::*;
 pub use planner::*;
 pub use reporting::*;
 pub use rollback::*;
-pub use safety::*;
+// Remove safety::* re-export to avoid conflict with validators::SafetyAnalyzer
 pub use schema_versioning::*;
 pub use smart_strategies::*;
 pub use validator::*;
+// Re-export specific types from validators to avoid naming conflicts
+pub use validators::{
+    ValidationResult, RiskLevel, ValidationRecommendation, ValidationWarnings,
+    SchemaCompatibilityValidator, SchemaCompatibilityResult, SchemaIncompatibility, CompatibilitySeverity,
+    DataIntegrityValidator, DataIntegrityResult, IntegrityIssue, IntegritySeverity,
+    PerformanceImpactValidator, PerformanceImpactResult, PerformanceImpact, PerformanceRiskLevel,
+    SafetyAnalyzer, SafetyAnalysisResult, SafetyIssue, SafetySeverity, OverallRiskLevel,
+    BreakingChangeDetector, BreakingChangeResult, BreakingChange, BreakingSeverity, OverallImpactLevel,
+};
 pub use zero_downtime::*;
 
 use crate::{D1Client, Result, Entity};

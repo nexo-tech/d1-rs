@@ -1,5 +1,5 @@
 use d1_rs::*;
-use d1_rs::auto_migration::{DataMigrator, DataMigrationConfig, FailureStrategy, TransformationFunction, MigrationContext, RollbackInfo};
+use d1_rs::auto_migration::{DataMigrator, DataMigrationConfig, FailureStrategy};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -995,3 +995,4 @@ async fn test_execute_cascade_migration_empty_rules() {
     assert!(result.warnings.iter().any(|w| w.contains("Cascade rule for table 'departments' is empty")));
     assert!(result.warnings.iter().any(|w| w.contains("Skipping table 'departments' due to empty cascade rule")));
 }
+
