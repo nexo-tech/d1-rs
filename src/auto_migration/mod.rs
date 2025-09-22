@@ -24,27 +24,30 @@ pub use data_seeding::*;
 pub use differ::*;
 pub use executor::*;
 pub use introspector::*;
-pub use migration_snapshots::*;
+pub use migration_snapshots::{
+    MigrationSnapshot, MigrationSnapshotManager, RollbackResult, RollbackValidation,
+    SnapshotConfig, SnapshotStorageStats, SnapshotType,
+};
 pub use parallel_execution::*;
 pub use planner::*;
 pub use reporting::*;
-pub use rollback::*;
-// Remove safety::* re-export to avoid conflict with validators::SafetyAnalyzer
 pub use schema_versioning::*;
 pub use smart_strategies::*;
 pub use validator::*;
+
 // Re-export specific types from validators to avoid naming conflicts
 pub use validators::{
-    ValidationResult, RiskLevel, ValidationRecommendation, ValidationWarnings,
-    SchemaCompatibilityValidator, SchemaCompatibilityResult, SchemaIncompatibility, CompatibilitySeverity,
-    DataIntegrityValidator, DataIntegrityResult, IntegrityIssue, IntegritySeverity,
-    PerformanceImpactValidator, PerformanceImpactResult, PerformanceImpact, PerformanceRiskLevel,
-    SafetyAnalyzer, SafetyAnalysisResult, SafetyIssue, SafetySeverity, OverallRiskLevel,
-    BreakingChangeDetector, BreakingChangeResult, BreakingChange, BreakingSeverity, OverallImpactLevel,
+    BreakingChange, BreakingChangeDetector, BreakingChangeResult, BreakingSeverity,
+    CompatibilitySeverity, DataIntegrityResult, DataIntegrityValidator, IntegrityIssue,
+    IntegritySeverity, OverallImpactLevel, OverallRiskLevel, PerformanceImpact,
+    PerformanceImpactResult, PerformanceImpactValidator, PerformanceRiskLevel, RiskLevel,
+    SafetyAnalysisResult, SafetyAnalyzer, SafetyIssue, SafetySeverity, SchemaCompatibilityResult,
+    SchemaCompatibilityValidator, SchemaIncompatibility, ValidationRecommendation,
+    ValidationResult, ValidationWarnings,
 };
 pub use zero_downtime::*;
 
-use crate::{D1Client, Result, Entity};
+use crate::{D1Client, Entity, Result};
 use std::cell::RefCell;
 
 /// Revolutionary automatic migration system - world's first compile-time safe migrations
@@ -70,9 +73,15 @@ impl AutoSchemaClient {
             validator: MigrationValidator::new(),
             executor: MigrationExecutor::new(),
             data_seeder: RefCell::new(DataSeeder::new()),
-            version_manager: RefCell::new(SchemaVersionManager::with_database_storage("d1_rs_schema_versions")),
-            snapshot_manager: RefCell::new(MigrationSnapshotManager::new(SnapshotConfig::default())),
-            parallel_executor: RefCell::new(ParallelMigrationExecutor::new(ParallelExecutionConfig::default())),
+            version_manager: RefCell::new(SchemaVersionManager::with_database_storage(
+                "d1_rs_schema_versions",
+            )),
+            snapshot_manager: RefCell::new(
+                MigrationSnapshotManager::new(SnapshotConfig::default()),
+            ),
+            parallel_executor: RefCell::new(ParallelMigrationExecutor::new(
+                ParallelExecutionConfig::default(),
+            )),
             db,
         }
     }
@@ -227,18 +236,21 @@ impl AutoSchemaClient {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
         let desired_schema = self.analyzer.borrow().analyze_all_entities().await?;
-        let diff = self.differ.compare_schemas(&current_schema, &desired_schema)?;
+        let diff = self
+            .differ
+            .compare_schemas(&current_schema, &desired_schema)?;
         let migration_plan = self.planner.plan_migrations(diff)?;
 
         // Create zero-downtime migrator with production-safe settings
         let zero_downtime_migrator = ZeroDowntimeMigrator::with_config(
             std::time::Duration::from_secs(30), // 30-second max per step
-            true, // Use shadow tables for safety
-            ConcurrentSafetyMode::Balanced, // Balanced safety mode
+            true,                               // Use shadow tables for safety
+            ConcurrentSafetyMode::Balanced,     // Balanced safety mode
         );
 
         // Convert regular plan to zero-downtime plan
-        let zero_downtime_plan = zero_downtime_migrator.plan_zero_downtime_migration(&migration_plan)?;
+        let zero_downtime_plan =
+            zero_downtime_migrator.plan_zero_downtime_migration(&migration_plan)?;
 
         // Execute with zero-downtime safety
         let result = zero_downtime_migrator
@@ -254,11 +266,14 @@ impl AutoSchemaClient {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
         let desired_schema = self.analyzer.borrow().analyze_all_entities().await?;
-        let diff = self.differ.compare_schemas(&current_schema, &desired_schema)?;
+        let diff = self
+            .differ
+            .compare_schemas(&current_schema, &desired_schema)?;
         let migration_plan = self.planner.plan_migrations(diff)?;
 
         let zero_downtime_migrator = ZeroDowntimeMigrator::new();
-        let zero_downtime_plan = zero_downtime_migrator.plan_zero_downtime_migration(&migration_plan)?;
+        let zero_downtime_plan =
+            zero_downtime_migrator.plan_zero_downtime_migration(&migration_plan)?;
 
         Ok(zero_downtime_plan)
     }
@@ -274,7 +289,9 @@ impl AutoSchemaClient {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
         let desired_schema = self.analyzer.borrow().analyze_all_entities().await?;
-        let diff = self.differ.compare_schemas(&current_schema, &desired_schema)?;
+        let diff = self
+            .differ
+            .compare_schemas(&current_schema, &desired_schema)?;
         let migration_plan = self.planner.plan_migrations(diff)?;
 
         let zero_downtime_migrator = ZeroDowntimeMigrator::with_config(
@@ -283,7 +300,8 @@ impl AutoSchemaClient {
             concurrent_safety,
         );
 
-        let zero_downtime_plan = zero_downtime_migrator.plan_zero_downtime_migration(&migration_plan)?;
+        let zero_downtime_plan =
+            zero_downtime_migrator.plan_zero_downtime_migration(&migration_plan)?;
         let result = zero_downtime_migrator
             .execute_zero_downtime_migration(&self.db, &zero_downtime_plan)
             .await?;
@@ -336,14 +354,20 @@ impl AutoSchemaClient {
     /// ⚡ PHASE 3.2: Add dependency between seeds
     /// Ensures seeds are executed in correct order
     pub fn add_seed_dependency(&self, seed_id: &str, depends_on: &str) -> Result<()> {
-        self.data_seeder.borrow_mut().add_seed_dependency(seed_id, depends_on)
+        self.data_seeder
+            .borrow_mut()
+            .add_seed_dependency(seed_id, depends_on)
     }
 
     /// ⚡ PHASE 3.2: Execute data seeding for specific environment
     /// Automatically populates database with registered seed data
     pub async fn seed_data(&self, environment: &str) -> Result<SeedResult> {
         let plan = self.data_seeder.borrow().create_seeding_plan(environment)?;
-        let result = self.data_seeder.borrow().execute_seeding(&self.db, &plan).await?;
+        let result = self
+            .data_seeder
+            .borrow()
+            .execute_seeding(&self.db, &plan)
+            .await?;
         Ok(result)
     }
 
@@ -355,7 +379,10 @@ impl AutoSchemaClient {
 
     /// ⚡ PHASE 3.2: Auto-migrate with data seeding
     /// Combines schema migration with automatic data population
-    pub async fn auto_migrate_with_seeding(&self, environment: &str) -> Result<(MigrationResult, SeedResult)> {
+    pub async fn auto_migrate_with_seeding(
+        &self,
+        environment: &str,
+    ) -> Result<(MigrationResult, SeedResult)> {
         // First, run the schema migration
         let migration_result = self.auto_migrate().await?;
 
@@ -381,7 +408,10 @@ impl AutoSchemaClient {
             // If migration failed, return empty seed result
             SeedResult {
                 completed_seeds: vec![],
-                failed_seeds: vec![("migration_failed".to_string(), "Migration failed, skipping seeding".to_string())],
+                failed_seeds: vec![(
+                    "migration_failed".to_string(),
+                    "Migration failed, skipping seeding".to_string(),
+                )],
                 records_inserted: 0,
                 records_updated: 0,
                 records_skipped: 0,
@@ -397,8 +427,11 @@ impl AutoSchemaClient {
     pub async fn initialize_versioning(&self) -> Result<SchemaVersion> {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
-        let initial_version = self.version_manager.borrow_mut()
-            .initialize(&self.db, current_schema).await?;
+        let initial_version = self
+            .version_manager
+            .borrow_mut()
+            .initialize(&self.db, current_schema)
+            .await?;
         Ok(initial_version)
     }
 
@@ -414,10 +447,14 @@ impl AutoSchemaClient {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
         let desired_schema = self.analyzer.borrow().analyze_all_entities().await?;
-        let diff = self.differ.compare_schemas(&current_schema, &desired_schema)?;
+        let diff = self
+            .differ
+            .compare_schemas(&current_schema, &desired_schema)?;
         let migration_plan = self.planner.plan_migrations(diff)?;
 
-        let schema_version = self.version_manager.borrow_mut()
+        let schema_version = self
+            .version_manager
+            .borrow_mut()
             .create_version(
                 &self.db,
                 version,
@@ -426,7 +463,8 @@ impl AutoSchemaClient {
                 migration_plan,
                 environment,
                 author,
-            ).await?;
+            )
+            .await?;
 
         Ok(schema_version)
     }
@@ -434,22 +472,28 @@ impl AutoSchemaClient {
     /// ⚡ PHASE 3.2: Get current schema version
     /// Retrieve the current version of the database schema
     pub async fn get_current_schema_version(&self) -> Result<Option<SchemaVersion>> {
-        self.version_manager.borrow_mut()
-            .get_current_version(&self.db).await
+        self.version_manager
+            .borrow_mut()
+            .get_current_version(&self.db)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Get specific schema version
     /// Retrieve a specific version by identifier
     pub async fn get_schema_version(&self, version: &str) -> Result<Option<SchemaVersion>> {
-        self.version_manager.borrow_mut()
-            .get_version(&self.db, version).await
+        self.version_manager
+            .borrow_mut()
+            .get_version(&self.db, version)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Get all schema versions
     /// Retrieve complete version history in chronological order
     pub async fn get_all_schema_versions(&self) -> Result<Vec<SchemaVersion>> {
-        self.version_manager.borrow()
-            .get_all_versions(&self.db).await
+        self.version_manager
+            .borrow()
+            .get_all_versions(&self.db)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Compare schema versions
@@ -459,8 +503,10 @@ impl AutoSchemaClient {
         from_version: &str,
         to_version: &str,
     ) -> Result<VersionComparison> {
-        self.version_manager.borrow_mut()
-            .compare_versions(&self.db, from_version, to_version).await
+        self.version_manager
+            .borrow_mut()
+            .compare_versions(&self.db, from_version, to_version)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Create migration snapshot
@@ -473,25 +519,26 @@ impl AutoSchemaClient {
     ) -> Result<MigrationSnapshot> {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
-        
-        self.snapshot_manager.borrow()
-            .create_snapshot(
-                id,
-                description,
-                current_schema,
-                SnapshotType::Manual,
-                tags,
-            ).await
+
+        self.snapshot_manager
+            .borrow()
+            .create_snapshot(id, description, current_schema, SnapshotType::Manual, tags)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Create automatic pre-migration snapshot
     /// Automatically capture state before migration for safety
-    pub async fn create_pre_migration_snapshot(&self, migration_id: &str) -> Result<MigrationSnapshot> {
+    pub async fn create_pre_migration_snapshot(
+        &self,
+        migration_id: &str,
+    ) -> Result<MigrationSnapshot> {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
-        
-        self.snapshot_manager.borrow()
-            .create_pre_migration_snapshot(migration_id, current_schema).await
+
+        self.snapshot_manager
+            .borrow()
+            .create_pre_migration_snapshot(migration_id, current_schema)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Create automatic post-migration snapshot
@@ -503,9 +550,11 @@ impl AutoSchemaClient {
     ) -> Result<MigrationSnapshot> {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
-        
-        self.snapshot_manager.borrow()
-            .create_post_migration_snapshot(migration_id, current_schema, migration_plan).await
+
+        self.snapshot_manager
+            .borrow()
+            .create_post_migration_snapshot(migration_id, current_schema, migration_plan)
+            .await
     }
 
     /// ⚡ PHASE 3.2: List all migration snapshots
@@ -528,12 +577,17 @@ impl AutoSchemaClient {
 
     /// ⚡ PHASE 3.2: Validate rollback safety
     /// Check if rollback to snapshot is safe without data loss
-    pub async fn validate_rollback_to_snapshot(&self, snapshot_id: &str) -> Result<RollbackValidation> {
+    pub async fn validate_rollback_to_snapshot(
+        &self,
+        snapshot_id: &str,
+    ) -> Result<RollbackValidation> {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
-        
-        self.snapshot_manager.borrow()
-            .validate_rollback(snapshot_id, &current_schema).await
+
+        self.snapshot_manager
+            .borrow()
+            .validate_rollback(snapshot_id, &current_schema)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Rollback to migration snapshot
@@ -545,9 +599,11 @@ impl AutoSchemaClient {
     ) -> Result<RollbackResult> {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
-        
-        self.snapshot_manager.borrow()
-            .rollback_to_snapshot(snapshot_id, &current_schema, create_backup).await
+
+        self.snapshot_manager
+            .borrow()
+            .rollback_to_snapshot(snapshot_id, &current_schema, create_backup)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Get snapshot storage statistics
@@ -559,15 +615,19 @@ impl AutoSchemaClient {
     /// ⚡ PHASE 3.2: Generate schema evolution report
     /// Create comprehensive report of schema evolution over time
     pub async fn generate_schema_evolution_report(&self) -> Result<VersionEvolutionReport> {
-        self.version_manager.borrow()
-            .generate_evolution_report(&self.db).await
+        self.version_manager
+            .borrow()
+            .generate_evolution_report(&self.db)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Tag schema version
     /// Add tags to specific versions for categorization
     pub async fn tag_schema_version(&self, version: &str, tag: &str) -> Result<()> {
-        self.version_manager.borrow_mut()
-            .tag_version(&self.db, version, tag).await
+        self.version_manager
+            .borrow_mut()
+            .tag_version(&self.db, version, tag)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Auto-migrate with versioning
@@ -583,12 +643,9 @@ impl AutoSchemaClient {
         let migration_result = self.auto_migrate().await?;
 
         // Then, create the version record
-        let schema_version = self.create_schema_version(
-            version,
-            description,
-            environment,
-            author,
-        ).await?;
+        let schema_version = self
+            .create_schema_version(version, description, environment, author)
+            .await?;
 
         Ok((migration_result, schema_version))
     }
@@ -611,12 +668,16 @@ impl AutoSchemaClient {
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
         let desired_schema = self.analyzer.borrow().analyze_all_entities().await?;
-        let diff = self.differ.compare_schemas(&current_schema, &desired_schema)?;
+        let diff = self
+            .differ
+            .compare_schemas(&current_schema, &desired_schema)?;
         let migration_plan = self.planner.plan_migrations(diff)?;
 
         // Execute in parallel
-        self.parallel_executor.borrow()
-            .execute_parallel_migration(&self.db, &migration_plan).await
+        self.parallel_executor
+            .borrow()
+            .execute_parallel_migration(&self.db, &migration_plan)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Execute migration with custom parallel configuration
@@ -627,16 +688,20 @@ impl AutoSchemaClient {
     ) -> Result<ParallelExecutionResult> {
         // Create temporary executor with custom config
         let temp_executor = ParallelMigrationExecutor::new(config);
-        
+
         // Get migration plan
         let introspector = SchemaIntrospector::new(&self.db);
         let current_schema = introspector.introspect_database().await?;
         let desired_schema = self.analyzer.borrow().analyze_all_entities().await?;
-        let diff = self.differ.compare_schemas(&current_schema, &desired_schema)?;
+        let diff = self
+            .differ
+            .compare_schemas(&current_schema, &desired_schema)?;
         let migration_plan = self.planner.plan_migrations(diff)?;
 
         // Execute in parallel
-        temp_executor.execute_parallel_migration(&self.db, &migration_plan).await
+        temp_executor
+            .execute_parallel_migration(&self.db, &migration_plan)
+            .await
     }
 
     /// ⚡ PHASE 3.2: Get parallel execution progress
@@ -670,10 +735,13 @@ impl AutoSchemaClient {
         parallel_config: Option<ParallelExecutionConfig>,
     ) -> Result<UltimateMigrationResult> {
         let start_time = std::time::Instant::now();
-        
+
         // Create pre-migration snapshot if requested
         let pre_snapshot = if create_snapshots {
-            Some(self.create_pre_migration_snapshot(&format!("ultimate_{}", version)).await?)
+            Some(
+                self.create_pre_migration_snapshot(&format!("ultimate_{}", version))
+                    .await?,
+            )
         } else {
             None
         };
@@ -686,12 +754,9 @@ impl AutoSchemaClient {
         };
 
         // Create schema version
-        let schema_version = self.create_schema_version(
-            version,
-            description,
-            environment,
-            author,
-        ).await?;
+        let schema_version = self
+            .create_schema_version(version, description, environment, author)
+            .await?;
 
         // Create post-migration snapshot if requested
         let post_snapshot = if create_snapshots {
@@ -702,7 +767,13 @@ impl AutoSchemaClient {
                 estimated_duration: migration_result.total_execution_time,
                 safety_warnings: Vec::new(),
             };
-            Some(self.create_post_migration_snapshot(&format!("ultimate_{}", version), migration_plan).await?)
+            Some(
+                self.create_post_migration_snapshot(
+                    &format!("ultimate_{}", version),
+                    migration_plan,
+                )
+                .await?,
+            )
         } else {
             None
         };
@@ -724,16 +795,16 @@ impl AutoSchemaClient {
 pub struct UltimateMigrationResult {
     /// Result of parallel migration execution
     pub migration_result: ParallelExecutionResult,
-    
+
     /// Schema version created for this migration
     pub schema_version: SchemaVersion,
-    
+
     /// Pre-migration snapshot (if created)
     pub pre_snapshot: Option<MigrationSnapshot>,
-    
+
     /// Post-migration snapshot (if created)
     pub post_snapshot: Option<MigrationSnapshot>,
-    
+
     /// Total time for the entire ultimate migration process
     pub total_execution_time: std::time::Duration,
 }
@@ -1007,3 +1078,4 @@ pub struct ForeignKeyChange {
     pub new_definition: Option<ForeignKeySchema>,
     pub safety_warnings: Vec<String>,
 }
+
