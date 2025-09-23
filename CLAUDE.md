@@ -4,18 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-d1-rs is a type-safe ORM for Cloudflare D1 with SQLite testing support. It uses conditional compilation to work with both Cloudflare D1 (WASM target) and native SQLite (for testing), providing zero runtime overhead by only including necessary backends.
+d1-rs is a database-agnostic, type-safe ORM that supports SQLite, PostgreSQL, and MySQL. Originally designed for Cloudflare D1, it has evolved into a comprehensive ORM solution using sea-query for database-agnostic SQL generation. It uses conditional compilation and feature flags to support multiple backends while providing zero runtime overhead by only including necessary database drivers.
 
 ## 🚀 CRITICAL: Performance & Memory Efficiency
 
 **ALWAYS prioritize performance and memory efficiency:**
 
-- **COUNT queries MUST use SQL COUNT(*)** - NEVER load all records into memory to count with `.len()`
+- **COUNT queries MUST use sea-query COUNT aggregation** - NEVER load all records into memory to count with `.len()`
 - **Use LIMIT 1 for first() queries** - don't load all records then take first  
-- **Generate efficient SQL** - avoid N+1 queries through proper eager loading
+- **Generate efficient SQL via sea-query** - avoid N+1 queries through proper eager loading and JOINs
 - **Memory usage should be minimal** - don't keep unnecessary data in memory
 - **Zero-copy optimizations where possible**
-- **Proper SQL generation** - Use database features, not Rust loops for aggregations
+- **Database-optimized SQL generation** - Use sea-query to generate optimal SQL for each database dialect
+- **Leverage database-specific features** - Use PostgreSQL arrays, MySQL JSON functions, etc. through sea-query
+- **Connection pooling efficiency** - Optimize for each database backend (PostgreSQL/MySQL pools, SQLite connections)
 
 ## 🚨 CRITICAL: Zero Warnings Policy
 
@@ -33,6 +35,36 @@ d1-rs is a type-safe ORM for Cloudflare D1 with SQLite testing support. It uses 
 - Ambiguous glob re-exports
 - Dead code or unreachable patterns
 - Type inference failures
+
+## 🚨 CRITICAL: Sea-Query Only Policy
+
+**NO RAW SQL ALLOWED - ALL database operations MUST use sea-query:**
+
+- **❌ FORBIDDEN**: Hand-written SQL strings, string concatenation, format!() for SQL
+- **❌ FORBIDDEN**: Direct use of `sqlite_master`, `pragma_*`, `information_schema` queries
+- **❌ FORBIDDEN**: Database-specific SQL syntax in business logic
+- **✅ REQUIRED**: All queries MUST use sea-query builders (SelectStatement, InsertStatement, etc.)
+- **✅ REQUIRED**: Database-agnostic code that works on SQLite, PostgreSQL, AND MySQL
+- **✅ REQUIRED**: Dialect-aware SQL generation through DatabaseBackend abstraction
+
+**Migration from Raw SQL:**
+- **Replace existing raw SQL** with sea-query equivalents during any code changes
+- **Use introspection traits** instead of direct schema queries
+- **Generate SQL through DatabaseDialect** renderers, never manual string building
+- **Schema operations** must use sea-query schema builders (CreateTableStatement, etc.)
+
+**Enforcement:**
+- **Code reviews MUST reject** any raw SQL additions
+- **No exceptions** for "quick fixes" or "temporary solutions"
+- **Migration plan** in `SEA_QUERY.md` MUST be followed for systematic replacement
+- **All database operations** MUST be testable across SQLite, PostgreSQL, and MySQL
+
+**Why this matters:**
+- **Type safety**: Compile-time query validation vs runtime SQL errors
+- **Database portability**: Single codebase works on multiple databases
+- **Security**: Built-in SQL injection prevention
+- **Performance**: Database-optimized SQL generation for each dialect
+- **Maintainability**: Refactorable, IDE-friendly query building
 
 ## Development Commands
 
