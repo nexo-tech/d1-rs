@@ -248,13 +248,13 @@ impl RollbackOperationGenerator {
    - Estimate storage requirements
 
 **Checklist:**
-- [ ] Implement complete operation reversal for all migration types
-- [ ] Add schema element lookup and reconstruction
-- [ ] Create comprehensive data preservation analysis
-- [ ] Implement SQL generation for all rollback operations
-- [ ] Add operation ordering and dependency resolution
-- [ ] Create duration estimation based on operation complexity
-- [ ] Add comprehensive error handling for missing schema elements
+- [x] Implement complete operation reversal for all migration types
+- [x] Add schema element lookup and reconstruction
+- [x] Create comprehensive data preservation analysis
+- [x] Implement SQL generation for all rollback operations
+- [x] Add operation ordering and dependency resolution
+- [x] Create duration estimation based on operation complexity
+- [x] Add comprehensive error handling for missing schema elements
 
 ### 2.2 SQL Generation Engine
 **File:** `src/auto_migration/rollback/sql_generator.rs`
@@ -291,12 +291,12 @@ impl RollbackSqlGenerator {
 ```
 
 **Checklist:**
-- [ ] Implement SQL generation for all DDL operations
-- [ ] Add proper column type and constraint handling
-- [ ] Create index generation with UNIQUE support
-- [ ] Implement foreign key constraint generation
-- [ ] Add SQL escaping and injection prevention
-- [ ] Create batch SQL generation for complex operations
+- [x] Implement SQL generation for all DDL operations
+- [x] Add proper column type and constraint handling
+- [x] Create index generation with UNIQUE support
+- [x] Implement foreign key constraint generation
+- [x] Add SQL escaping and injection prevention
+- [x] Create batch SQL generation for complex operations
 
 ## Phase 3: Safety Validation System
 

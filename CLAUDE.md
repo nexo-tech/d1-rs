@@ -37,23 +37,22 @@ d1-rs is a type-safe ORM for Cloudflare D1 with SQLite testing support. It uses 
 ## Development Commands
 
 ### Testing
+**MANDATORY: Use nextest for all testing - much faster than cargo test**
+
 ```bash
-# Run all tests (using justfile)
+# Run all tests (FAST parallel execution)
 just test
 
-# Run all tests directly with cargo
-cargo test --target $(rustc -vV | sed -n 's|host: ||p')
+# Run specific test (FASTEST for iteration)  
+just test-one test_name
 
-# Run tests with SQLite features
-cargo test --features sqlite
+# Run tests matching pattern
+just test-filter pattern
 
-# Run a specific test exactly (faster, avoids filtering all tests)
-cargo test test_name -- --exact
+# Debug single test with output
+just test-debug test_name
 
-# Run a specific test with output
-cargo test test_name -- --exact --nocapture
-
-# Note: --exact ensures only the test with exact name runs, not substring matches
+# NEVER use cargo test directly - always use nextest via just commands
 ```
 
 ### Building
@@ -302,12 +301,15 @@ Entities get `find()`, `delete()`, `create()`, and `update()` methods automatica
 Tests run on the native target using in-memory SQLite databases, allowing full integration testing without requiring actual D1 databases.
 
 ### Testing Requirements
-Every migration feature MUST have:
-- **Unit tests** for individual components
-- **Integration tests** with real database operations
-- **Edge case testing** for complex scenarios (table restructuring, etc.)
-- **Rollback testing** for all operations
-- **Performance testing** for large dataset migrations
+**MANDATORY: Use nextest for all testing operations**
+
+Every feature MUST have:
+- **Unit tests**: `just test-filter unit`
+- **Integration tests**: `just test-filter integration` 
+- **Single test debug**: `just test-debug test_name`
+- **Performance tests**: `just test-filter performance`
+
+**NEVER use `cargo test` - always use `just test` commands for speed**
 
 ## 🚨 MANDATORY: Comprehensive Cleanup Plan
 

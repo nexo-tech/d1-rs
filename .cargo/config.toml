@@ -1,5 +1,9 @@
+
+# macOS targets with optimized linking and framework paths
 [target.aarch64-apple-darwin]
 rustflags = [
+  "-C", "link-arg=-Wl,-dead_strip",
+  "-C", "link-arg=-Wl,-no_compact_unwind",
   "-L", "framework=/nix/store/xkncazpf21ql7daw70hdjd0g3snv4i9r-apple-framework-CoreFoundation-11.0.0/Library/Frameworks",
   "-L", "framework=/nix/store/i7dzlp60aafc9zl9qgzr3zrhby067gfz-apple-framework-Security-11.0.0/Library/Frameworks", 
   "-L", "framework=/nix/store/q75j88knb9d2cm6mv1379mv314fdx37q-apple-framework-SystemConfiguration-11.0.0/Library/Frameworks",
@@ -8,8 +12,20 @@ rustflags = [
 
 [target.x86_64-apple-darwin]  
 rustflags = [
+  "-C", "link-arg=-Wl,-dead_strip",
+  "-C", "link-arg=-Wl,-no_compact_unwind",
   "-L", "framework=/nix/store/xkncazpf21ql7daw70hdjd0g3snv4i9r-apple-framework-CoreFoundation-11.0.0/Library/Frameworks",
   "-L", "framework=/nix/store/i7dzlp60aafc9zl9qgzr3zrhby067gfz-apple-framework-Security-11.0.0/Library/Frameworks",
   "-L", "framework=/nix/store/q75j88knb9d2cm6mv1379mv314fdx37q-apple-framework-SystemConfiguration-11.0.0/Library/Frameworks",
   "-L", "/nix/store/6mkvrsyrv5b331782qh68qp9asv7hz5z-libiconv-99/lib",
 ]
+
+
+# Global compilation optimizations for faster builds
+[build]
+# jobs setting removed - cargo auto-detects available cores by default
+
+[profile.dev]
+opt-level = 1        # Slight optimization for faster debug builds
+debug = 1            # Reduced debug info for faster compilation
+incremental = true   # Enable incremental compilation

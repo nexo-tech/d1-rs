@@ -1,10 +1,11 @@
-use crate::{Result, Entity};
-use crate::auto_migration::introspector::{TableSchema, ColumnSchema, IndexSchema, ForeignKeySchema, DatabaseSchema};
+use crate::auto_migration::introspector::{
+    ColumnSchema, DatabaseSchema, ForeignKeySchema, IndexSchema, TableSchema,
+};
 use crate::types::{SqlTypeMappable, TypeCategory};
-use std::collections::HashMap;
+use crate::{Entity, Result};
 use std::any::TypeId;
+use std::collections::HashMap;
 use std::marker::PhantomData;
-
 
 /// Advanced analysis result containing table schema and extended information
 #[derive(Debug, Clone)]
@@ -48,9 +49,9 @@ pub struct RecursiveRelationInfo {
 /// Type of recursive relationship
 #[derive(Debug, Clone, PartialEq)]
 pub enum RecursiveRelationType {
-    SelfReferential,  // parent_id -> id (same table)
-    TreeStructure,    // Tree/hierarchy structures
-    GraphStructure,   // Allow cycles
+    SelfReferential, // parent_id -> id (same table)
+    TreeStructure,   // Tree/hierarchy structures
+    GraphStructure,  // Allow cycles
 }
 
 /// Schema information for Many-to-Many junction tables
@@ -84,7 +85,7 @@ impl EntityAnalyzer {
     /// Analyze a single entity and extract its expected table schema
     pub fn analyze_entity<T: Entity + 'static>(&mut self) -> Result<TableSchema> {
         let type_id = TypeId::of::<T>();
-        
+
         // Check if already analyzed
         if let Some(schema) = self.entity_schemas.get(&type_id) {
             return Ok(schema.clone());
@@ -96,13 +97,13 @@ impl EntityAnalyzer {
 
         // Extract column information from entity fields
         let columns = self.extract_columns::<T>()?;
-        
+
         // Extract indexes (currently placeholder - would need macro integration)
         let indexes = self.extract_indexes::<T>()?;
-        
+
         // Extract foreign keys from relationships
         let foreign_keys = self.extract_foreign_keys::<T>()?;
-        
+
         // Extract other constraints
         let constraints = self.extract_constraints::<T>()?;
 
@@ -124,10 +125,10 @@ impl EntityAnalyzer {
         T: EntityTuple,
     {
         let mut tables = Vec::new();
-        
+
         // Use trait to analyze each entity in the tuple
         entities.analyze_all(self, &mut tables)?;
-        
+
         Ok(DatabaseSchema { tables })
     }
 
@@ -137,10 +138,10 @@ impl EntityAnalyzer {
     /// Uses the advanced field_definitions() method for complete schema extraction
     fn extract_columns<T: Entity + 'static>(&self) -> Result<Vec<ColumnSchema>> {
         let mut columns = Vec::new();
-        
+
         // Get comprehensive field information from Entity trait
         let field_definitions = T::field_definitions();
-        
+
         // Convert FieldDefinition to ColumnSchema
         for field_def in field_definitions {
             columns.push(ColumnSchema {
@@ -150,11 +151,11 @@ impl EntityAnalyzer {
                 default_value: field_def.default_value,
                 primary_key: field_def.primary_key,
                 auto_increment: field_def.auto_increment,
-                unique: false, // TODO: Would be extracted from field attributes
+                unique: false,       // TODO: Would be extracted from field attributes
                 constraints: vec![], // TODO: Would be extracted from field attributes
             });
         }
-        
+
         Ok(columns)
     }
 
@@ -162,7 +163,7 @@ impl EntityAnalyzer {
     pub fn rust_type_to_sql_type(&self, rust_type: &str, is_boolean: bool) -> Result<String> {
         // Handle Option<T> by extracting T
         let base_type = if rust_type.starts_with("Option<") && rust_type.ends_with('>') {
-            &rust_type[7..rust_type.len()-1]
+            &rust_type[7..rust_type.len() - 1]
         } else {
             rust_type
         };
@@ -170,25 +171,29 @@ impl EntityAnalyzer {
         let sql_type = match base_type {
             // Basic integer types
             "i32" | "i64" | "u32" | "u64" | "isize" | "usize" => {
-                if is_boolean { "BOOLEAN" } else { "INTEGER" }
-            },
+                if is_boolean {
+                    "BOOLEAN"
+                } else {
+                    "INTEGER"
+                }
+            }
             "i8" | "u8" => "INTEGER",
             "i16" | "u16" => "INTEGER",
             "i128" | "u128" => "TEXT", // SQLite doesn't support 128-bit integers
-            
+
             // Floating point types
             "f32" | "f64" => "REAL",
-            
+
             // String and text types
             "String" | "str" | "&str" | "Cow<str>" => "TEXT",
             "char" => "TEXT",
-            
+
             // Boolean
             "bool" => "BOOLEAN",
-            
+
             // Binary data
             "Vec<u8>" | "&[u8]" | "Box<[u8]>" => "BLOB",
-            
+
             // Date/time types (chrono)
             "chrono::DateTime<chrono::Utc>" | "chrono::DateTime<Utc>" => "DATETIME",
             "chrono::DateTime<chrono::Local>" | "chrono::DateTime<Local>" => "DATETIME",
@@ -196,44 +201,49 @@ impl EntityAnalyzer {
             "chrono::NaiveDateTime" => "DATETIME",
             "chrono::NaiveDate" => "DATE",
             "chrono::NaiveTime" => "TIME",
-            
+
             // JSON and complex data
             "serde_json::Value" | "serde_json::Map" => "JSON",
             "serde_json::Map<String, serde_json::Value>" => "JSON",
-            
+
             // UUID support
             "uuid::Uuid" => "TEXT",
-            
+
             // Decimal/numeric types
             "rust_decimal::Decimal" => "NUMERIC",
             "bigdecimal::BigDecimal" => "NUMERIC",
-            
+
             // Network types
             "std::net::IpAddr" | "std::net::Ipv4Addr" | "std::net::Ipv6Addr" => "TEXT",
-            
+
             // URL types
             "url::Url" => "TEXT",
-            
+
             // Collections stored as JSON
-            t if t.starts_with("Vec<") || t.starts_with("HashMap<") || 
-                 t.starts_with("BTreeMap<") || t.starts_with("HashSet<") ||
-                 t.starts_with("BTreeSet<") => "JSON",
-            
+            t if t.starts_with("Vec<")
+                || t.starts_with("HashMap<")
+                || t.starts_with("BTreeMap<")
+                || t.starts_with("HashSet<")
+                || t.starts_with("BTreeSet<") =>
+            {
+                "JSON"
+            }
+
             // Arrays stored as JSON
             t if t.starts_with("[") && t.ends_with("]") => "JSON",
-            
+
             // Foreign key references - generic pattern for any naming convention
             t if t.ends_with("Id") || t.ends_with("ID") || t.ends_with("id") => "INTEGER",
-            
-            // Self-referential or recursive types  
+
+            // Self-referential or recursive types
             t if self.is_self_referential_type(t) => "INTEGER", // FK to same table
-            
+
             // Unknown types: Default to TEXT (safest, works with any serialization)
             // TODO: In a full implementation, these would be configurable or trait-based:
             // - Enums could implement EnumAsText trait -> TEXT
-            // - Structs could implement StructAsJson trait -> JSON  
+            // - Structs could implement StructAsJson trait -> JSON
             // - Users could configure type mappings in schema
-            _ => "TEXT"
+            _ => "TEXT",
         };
 
         Ok(sql_type.to_string())
@@ -253,8 +263,7 @@ impl EntityAnalyzer {
     /// Check if a type is self-referential (for recursive relationships)
     pub fn is_self_referential_type(&self, type_name: &str) -> bool {
         // Detect patterns like Option<Box<Self>>, Vec<Self>, etc.
-        type_name.contains("Self") || 
-        type_name.contains("Box<") && type_name.contains("Self")
+        type_name.contains("Self") || type_name.contains("Box<") && type_name.contains("Self")
     }
 
     /// Check if a type is a custom struct - PLACEHOLDER for future trait-based detection
@@ -262,7 +271,7 @@ impl EntityAnalyzer {
     pub fn is_custom_struct_type(&self, _type_name: &str) -> bool {
         // TEMPORARY: For now, return false to avoid any hardcoded assumptions
         // In a proper implementation, this would use:
-        // 1. Trait detection (impl StructAsJson for T) 
+        // 1. Trait detection (impl StructAsJson for T)
         // 2. Attribute parsing from derive macro (#[store_as_json])
         // 3. User configuration in schema definition
         false
@@ -274,7 +283,7 @@ impl EntityAnalyzer {
         // REVOLUTIONARY: Trait-based type detection - NO MORE HARDCODED LISTS!
         Self::is_primitive_type_name(type_name)
     }
-    
+
     /// REVOLUTIONARY: Type-safe primitive detection via trait system
     /// Zero hardcoded patterns, 100% extensible, works with ANY naming convention
     fn is_primitive_type_name(type_name: &str) -> bool {
@@ -296,26 +305,26 @@ impl EntityAnalyzer {
             "usize" => crate::types::is_primitive_type::<usize>(),
             "f32" => crate::types::is_primitive_type::<f32>(),
             "f64" => crate::types::is_primitive_type::<f64>(),
-            
+
             // Text types - trait-based detection
             "String" => crate::types::is_primitive_type::<String>(),
             "str" | "&str" => crate::types::is_primitive_type::<&str>(),
             "char" => crate::types::is_primitive_type::<char>(),
-            
-            // Special types - trait-based detection  
+
+            // Special types - trait-based detection
             "bool" => crate::types::is_primitive_type::<bool>(),
-            
+
             // Binary types - trait-based detection
             "Vec<u8>" => crate::types::is_primitive_type::<Vec<u8>>(),
-            
+
             // Temporal types - trait-based detection
             "DateTime<Utc>" => crate::types::is_primitive_type::<chrono::DateTime<chrono::Utc>>(),
-            
+
             // Default: not primitive (custom types, structs, enums)
             _ => false,
         }
     }
-    
+
     /// REVOLUTIONARY: Get type category for intelligent analysis
     /// Enables advanced migration planning based on type semantics
     pub fn get_type_category(&self, type_name: &str) -> TypeCategory {
@@ -336,21 +345,21 @@ impl EntityAnalyzer {
             "usize" => <usize as SqlTypeMappable>::type_category(),
             "f32" => <f32 as SqlTypeMappable>::type_category(),
             "f64" => <f64 as SqlTypeMappable>::type_category(),
-            
+
             // Text types - trait-based detection
             "String" => <String as SqlTypeMappable>::type_category(),
             "str" | "&str" => <&str as SqlTypeMappable>::type_category(),
             "char" => <char as SqlTypeMappable>::type_category(),
-            
+
             // Special types - trait-based detection
             "bool" => <bool as SqlTypeMappable>::type_category(),
-            
+
             // Binary types - trait-based detection
             "Vec<u8>" => <Vec<u8> as SqlTypeMappable>::type_category(),
-            
+
             // Temporal types - trait-based detection
             "DateTime<Utc>" => <chrono::DateTime<chrono::Utc> as SqlTypeMappable>::type_category(),
-            
+
             // Default: Special category for unknown/custom types
             _ => TypeCategory::Special,
         }
@@ -375,10 +384,10 @@ impl EntityAnalyzer {
     /// Combines advanced field_definitions() method with backward-compatible heuristics
     fn extract_foreign_keys<T: Entity + 'static>(&self) -> Result<Vec<ForeignKeySchema>> {
         let mut foreign_keys = Vec::new();
-        
+
         // ADVANCED: Extract foreign keys from field definitions
         let field_definitions = T::field_definitions();
-        
+
         for field_def in field_definitions {
             if let Some(fk_def) = field_def.foreign_key {
                 foreign_keys.push(ForeignKeySchema {
@@ -391,13 +400,13 @@ impl EntityAnalyzer {
                 });
             }
         }
-        
+
         // REVOLUTIONARY: Use trait-based recursive detection (compile-time safe)
         // Eliminates hardcoded string matching with type-safe trait detection
         if let Some(recursive_fk) = Self::extract_recursive_foreign_key::<T>() {
             foreign_keys.push(recursive_fk);
         }
-        
+
         Ok(foreign_keys)
     }
 
@@ -411,13 +420,13 @@ impl EntityAnalyzer {
     /// Detect potential junction tables for Many-to-Many relationships
     fn detect_junction_tables<T: Entity + 'static>(&self) -> Result<Vec<JunctionTableSchema>> {
         let mut junction_tables = Vec::new();
-        
+
         // TODO: In a full implementation, this would analyze relation macros
         // For now, we'll create patterns based on common M2M scenarios
-        
+
         let entity_name = T::TABLE_NAME;
         // REVOLUTIONARY: Removed std::any::type_name() usage - purely trait-based analysis!
-        
+
         // Detect common M2M patterns based on entity names
         if entity_name == "users" {
             // Users might have M2M with roles, groups, etc.
@@ -448,7 +457,7 @@ impl EntityAnalyzer {
             };
             junction_tables.push(user_roles_junction);
         }
-        
+
         if entity_name == "posts" {
             // Posts might have M2M with tags
             let post_tags_junction = JunctionTableSchema {
@@ -478,18 +487,18 @@ impl EntityAnalyzer {
             };
             junction_tables.push(post_tags_junction);
         }
-        
+
         Ok(junction_tables)
     }
 
     /// Analyze an entity for complex field types and relationships
     pub fn analyze_entity_advanced<T: Entity + 'static>(&mut self) -> Result<EntityAnalysisResult> {
         let table_schema = self.analyze_entity::<T>()?;
-        
+
         let complex_fields = self.analyze_complex_fields::<T>()?;
         let recursive_relations = self.analyze_recursive_relations::<T>()?;
         let junction_tables = self.detect_junction_tables::<T>()?;
-        
+
         Ok(EntityAnalysisResult {
             table_schema,
             complex_fields,
@@ -501,12 +510,12 @@ impl EntityAnalyzer {
     /// Analyze complex field types in an entity
     fn analyze_complex_fields<T: Entity + 'static>(&self) -> Result<Vec<ComplexFieldInfo>> {
         let mut complex_fields = Vec::new();
-        
+
         // TODO: In a full implementation, this would analyze actual struct fields
         // For now, we'll create examples based on common patterns
-        
+
         let table_name = T::TABLE_NAME;
-        
+
         // REVOLUTIONARY: Use Entity::TABLE_NAME instead of runtime type analysis!
         // Example: If it's a User entity, it might have complex fields
         if table_name == "users" {
@@ -518,7 +527,7 @@ impl EntityAnalyzer {
                 nullable: true,
                 default_value: Some("'{}'".to_string()),
             });
-            
+
             complex_fields.push(ComplexFieldInfo {
                 field_name: "preferences".to_string(),
                 rust_type: "HashMap<String, String>".to_string(),
@@ -528,15 +537,17 @@ impl EntityAnalyzer {
                 default_value: None,
             });
         }
-        
+
         Ok(complex_fields)
     }
 
     /// Analyze recursive relationships in an entity
     /// REVOLUTIONARY: Uses trait-based detection to eliminate hardcoded string matching
-    fn analyze_recursive_relations<T: Entity + 'static>(&self) -> Result<Vec<RecursiveRelationInfo>> {
+    fn analyze_recursive_relations<T: Entity + 'static>(
+        &self,
+    ) -> Result<Vec<RecursiveRelationInfo>> {
         let mut relations = Vec::new();
-        
+
         // REVOLUTIONARY: Use trait-based detection instead of hardcoded string matching
         if let Some(_recursive_fk) = Self::extract_recursive_foreign_key::<T>() {
             // ADVANCED: Extract relationship information from RecursiveEntity trait
@@ -549,12 +560,14 @@ impl EntityAnalyzer {
                 allow_cycles: false,   // TODO: Extract from trait
             });
         }
-        
+
         Ok(relations)
     }
 
     /// Extract other constraints from entity attributes
-    fn extract_constraints<T: Entity + 'static>(&self) -> Result<Vec<crate::auto_migration::introspector::ConstraintSchema>> {
+    fn extract_constraints<T: Entity + 'static>(
+        &self,
+    ) -> Result<Vec<crate::auto_migration::introspector::ConstraintSchema>> {
         // This would extract from attributes like #[check], etc.
         // For now, return empty - would need macro integration
         Ok(Vec::new())
@@ -591,20 +604,34 @@ impl Default for EntityAnalyzer {
 
 /// Trait for analyzing tuples of entities
 pub trait EntityTuple {
-    fn analyze_all(self, analyzer: &mut EntityAnalyzer, tables: &mut Vec<TableSchema>) -> Result<()>;
+    fn analyze_all(
+        self,
+        analyzer: &mut EntityAnalyzer,
+        tables: &mut Vec<TableSchema>,
+    ) -> Result<()>;
 }
 
 // Implement for tuples of different sizes
 impl<T1: Entity + 'static> EntityTuple for (PhantomData<T1>,) {
-    fn analyze_all(self, analyzer: &mut EntityAnalyzer, tables: &mut Vec<TableSchema>) -> Result<()> {
+    fn analyze_all(
+        self,
+        analyzer: &mut EntityAnalyzer,
+        tables: &mut Vec<TableSchema>,
+    ) -> Result<()> {
         let schema = analyzer.analyze_entity::<T1>()?;
         tables.push(schema);
         Ok(())
     }
 }
 
-impl<T1: Entity + 'static, T2: Entity + 'static> EntityTuple for (PhantomData<T1>, PhantomData<T2>) {
-    fn analyze_all(self, analyzer: &mut EntityAnalyzer, tables: &mut Vec<TableSchema>) -> Result<()> {
+impl<T1: Entity + 'static, T2: Entity + 'static> EntityTuple
+    for (PhantomData<T1>, PhantomData<T2>)
+{
+    fn analyze_all(
+        self,
+        analyzer: &mut EntityAnalyzer,
+        tables: &mut Vec<TableSchema>,
+    ) -> Result<()> {
         let schema1 = analyzer.analyze_entity::<T1>()?;
         tables.push(schema1);
         let schema2 = analyzer.analyze_entity::<T2>()?;
@@ -613,8 +640,14 @@ impl<T1: Entity + 'static, T2: Entity + 'static> EntityTuple for (PhantomData<T1
     }
 }
 
-impl<T1: Entity + 'static, T2: Entity + 'static, T3: Entity + 'static> EntityTuple for (PhantomData<T1>, PhantomData<T2>, PhantomData<T3>) {
-    fn analyze_all(self, analyzer: &mut EntityAnalyzer, tables: &mut Vec<TableSchema>) -> Result<()> {
+impl<T1: Entity + 'static, T2: Entity + 'static, T3: Entity + 'static> EntityTuple
+    for (PhantomData<T1>, PhantomData<T2>, PhantomData<T3>)
+{
+    fn analyze_all(
+        self,
+        analyzer: &mut EntityAnalyzer,
+        tables: &mut Vec<TableSchema>,
+    ) -> Result<()> {
         let schema1 = analyzer.analyze_entity::<T1>()?;
         tables.push(schema1);
         let schema2 = analyzer.analyze_entity::<T2>()?;
@@ -625,8 +658,20 @@ impl<T1: Entity + 'static, T2: Entity + 'static, T3: Entity + 'static> EntityTup
     }
 }
 
-impl<T1: Entity + 'static, T2: Entity + 'static, T3: Entity + 'static, T4: Entity + 'static> EntityTuple for (PhantomData<T1>, PhantomData<T2>, PhantomData<T3>, PhantomData<T4>) {
-    fn analyze_all(self, analyzer: &mut EntityAnalyzer, tables: &mut Vec<TableSchema>) -> Result<()> {
+impl<T1: Entity + 'static, T2: Entity + 'static, T3: Entity + 'static, T4: Entity + 'static>
+    EntityTuple
+    for (
+        PhantomData<T1>,
+        PhantomData<T2>,
+        PhantomData<T3>,
+        PhantomData<T4>,
+    )
+{
+    fn analyze_all(
+        self,
+        analyzer: &mut EntityAnalyzer,
+        tables: &mut Vec<TableSchema>,
+    ) -> Result<()> {
         let schema1 = analyzer.analyze_entity::<T1>()?;
         tables.push(schema1);
         let schema2 = analyzer.analyze_entity::<T2>()?;
@@ -650,7 +695,7 @@ macro_rules! analyze_entities {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{D1Client, QueryBuilder, CreateBuilder, UpdateBuilder};
+    use crate::{CreateBuilder, D1Client, QueryBuilder, UpdateBuilder};
 
     // Mock entities for testing (simplified to work with current Entity trait)
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -661,26 +706,38 @@ mod tests {
 
     #[derive(Debug, Clone)]
     struct TestUserQueryBuilder;
-    
+
     impl QueryBuilder<TestUser> for TestUserQueryBuilder {
-        async fn all(self, _db: &D1Client) -> Result<Vec<TestUser>> { unimplemented!() }
-        async fn first(self, _db: &D1Client) -> Result<Option<TestUser>> { unimplemented!() }
-        async fn count(self, _db: &D1Client) -> Result<i64> { unimplemented!() }
-        fn apply_relation_constraint(self, _field: &str, _value: serde_json::Value) -> Self { self }
+        async fn all(self, _db: &D1Client) -> Result<Vec<TestUser>> {
+            unimplemented!()
+        }
+        async fn first(self, _db: &D1Client) -> Result<Option<TestUser>> {
+            unimplemented!()
+        }
+        async fn count(self, _db: &D1Client) -> Result<i64> {
+            unimplemented!()
+        }
+        fn apply_relation_constraint(self, _field: &str, _value: serde_json::Value) -> Self {
+            self
+        }
     }
-    
+
     #[derive(Debug, Clone)]
     struct TestUserCreateBuilder;
-    
+
     impl CreateBuilder<TestUser> for TestUserCreateBuilder {
-        async fn save(self, _db: &D1Client) -> Result<TestUser> { unimplemented!() }
+        async fn save(self, _db: &D1Client) -> Result<TestUser> {
+            unimplemented!()
+        }
     }
-    
+
     #[derive(Debug, Clone)]
     struct TestUserUpdateBuilder;
-    
+
     impl UpdateBuilder<TestUser> for TestUserUpdateBuilder {
-        async fn save(self, _db: &D1Client) -> Result<TestUser> { unimplemented!() }
+        async fn save(self, _db: &D1Client) -> Result<TestUser> {
+            unimplemented!()
+        }
     }
 
     impl Entity for TestUser {
@@ -690,19 +747,19 @@ mod tests {
         type UpdateBuilder = TestUserUpdateBuilder;
 
         const TABLE_NAME: &'static str = "test_users";
-        
+
         fn primary_key(&self) -> &Self::PrimaryKey {
             &self.id
         }
-        
+
         fn query() -> Self::QueryBuilder {
             TestUserQueryBuilder
         }
-        
+
         fn create() -> Self::CreateBuilder {
             TestUserCreateBuilder
         }
-        
+
         fn update(_key: Self::PrimaryKey) -> Self::UpdateBuilder {
             TestUserUpdateBuilder
         }
@@ -710,7 +767,7 @@ mod tests {
         fn boolean_fields() -> &'static [&'static str] {
             &["is_active"]
         }
-        
+
         fn field_definitions() -> Vec<crate::FieldDefinition> {
             vec![
                 crate::FieldDefinition {
@@ -751,26 +808,38 @@ mod tests {
 
     #[derive(Debug, Clone)]
     struct TestPostQueryBuilder;
-    
+
     impl QueryBuilder<TestPost> for TestPostQueryBuilder {
-        async fn all(self, _db: &D1Client) -> Result<Vec<TestPost>> { unimplemented!() }
-        async fn first(self, _db: &D1Client) -> Result<Option<TestPost>> { unimplemented!() }
-        async fn count(self, _db: &D1Client) -> Result<i64> { unimplemented!() }
-        fn apply_relation_constraint(self, _field: &str, _value: serde_json::Value) -> Self { self }
+        async fn all(self, _db: &D1Client) -> Result<Vec<TestPost>> {
+            unimplemented!()
+        }
+        async fn first(self, _db: &D1Client) -> Result<Option<TestPost>> {
+            unimplemented!()
+        }
+        async fn count(self, _db: &D1Client) -> Result<i64> {
+            unimplemented!()
+        }
+        fn apply_relation_constraint(self, _field: &str, _value: serde_json::Value) -> Self {
+            self
+        }
     }
-    
+
     #[derive(Debug, Clone)]
     struct TestPostCreateBuilder;
-    
+
     impl CreateBuilder<TestPost> for TestPostCreateBuilder {
-        async fn save(self, _db: &D1Client) -> Result<TestPost> { unimplemented!() }
+        async fn save(self, _db: &D1Client) -> Result<TestPost> {
+            unimplemented!()
+        }
     }
-    
+
     #[derive(Debug, Clone)]
     struct TestPostUpdateBuilder;
-    
+
     impl UpdateBuilder<TestPost> for TestPostUpdateBuilder {
-        async fn save(self, _db: &D1Client) -> Result<TestPost> { unimplemented!() }
+        async fn save(self, _db: &D1Client) -> Result<TestPost> {
+            unimplemented!()
+        }
     }
 
     impl Entity for TestPost {
@@ -780,19 +849,19 @@ mod tests {
         type UpdateBuilder = TestPostUpdateBuilder;
 
         const TABLE_NAME: &'static str = "test_posts";
-        
+
         fn primary_key(&self) -> &Self::PrimaryKey {
             &self.id
         }
-        
+
         fn query() -> Self::QueryBuilder {
             TestPostQueryBuilder
         }
-        
+
         fn create() -> Self::CreateBuilder {
             TestPostCreateBuilder
         }
-        
+
         fn update(_key: Self::PrimaryKey) -> Self::UpdateBuilder {
             TestPostUpdateBuilder
         }
@@ -800,7 +869,7 @@ mod tests {
         fn boolean_fields() -> &'static [&'static str] {
             &["published"]
         }
-        
+
         fn field_definitions() -> Vec<crate::FieldDefinition> {
             vec![
                 crate::FieldDefinition {
@@ -836,20 +905,20 @@ mod tests {
     #[tokio::test]
     async fn test_analyze_single_entity() {
         let mut analyzer = EntityAnalyzer::new();
-        
+
         let schema = analyzer.analyze_entity::<TestUser>().unwrap();
-        
+
         assert_eq!(schema.name, "test_users");
         // With current limited Entity interface, we only get id + boolean fields
         assert_eq!(schema.columns.len(), 2); // id + is_active
-        
+
         // Check id column (assumed)
         let id_col = schema.get_column("id").unwrap();
         assert!(id_col.primary_key);
         assert!(id_col.auto_increment);
         assert_eq!(id_col.column_type, "INTEGER");
         assert!(!id_col.nullable);
-        
+
         // Check boolean column
         let active_col = schema.get_column("is_active").unwrap();
         assert_eq!(active_col.column_type, "BOOLEAN");
@@ -859,15 +928,15 @@ mod tests {
     #[tokio::test]
     async fn test_analyze_multiple_entities() {
         let mut analyzer = EntityAnalyzer::new();
-        
+
         let entities = (PhantomData::<TestUser>, PhantomData::<TestPost>);
         let database_schema = analyzer.analyze_entities(entities).unwrap();
-        
+
         assert_eq!(database_schema.tables.len(), 2);
-        
+
         let user_table = database_schema.get_table("test_users").unwrap();
         assert_eq!(user_table.columns.len(), 2); // id + is_active
-        
+
         let post_table = database_schema.get_table("test_posts").unwrap();
         assert_eq!(post_table.columns.len(), 2); // id + published
     }
@@ -875,22 +944,53 @@ mod tests {
     #[tokio::test]
     async fn test_rust_type_conversion() {
         let analyzer = EntityAnalyzer::new();
-        
-        assert_eq!(analyzer.rust_type_to_sql_type("i32", false).unwrap(), "INTEGER");
-        assert_eq!(analyzer.rust_type_to_sql_type("i32", true).unwrap(), "BOOLEAN");
-        assert_eq!(analyzer.rust_type_to_sql_type("f64", false).unwrap(), "REAL");
-        assert_eq!(analyzer.rust_type_to_sql_type("String", false).unwrap(), "TEXT");
-        assert_eq!(analyzer.rust_type_to_sql_type("bool", false).unwrap(), "BOOLEAN");
-        assert_eq!(analyzer.rust_type_to_sql_type("Vec<u8>", false).unwrap(), "BLOB");
-        assert_eq!(analyzer.rust_type_to_sql_type("Option<String>", false).unwrap(), "TEXT");
-        assert_eq!(analyzer.rust_type_to_sql_type("CustomId", false).unwrap(), "INTEGER"); // ID suffix
-        assert_eq!(analyzer.rust_type_to_sql_type("UnknownType", false).unwrap(), "TEXT"); // Default
+
+        assert_eq!(
+            analyzer.rust_type_to_sql_type("i32", false).unwrap(),
+            "INTEGER"
+        );
+        assert_eq!(
+            analyzer.rust_type_to_sql_type("i32", true).unwrap(),
+            "BOOLEAN"
+        );
+        assert_eq!(
+            analyzer.rust_type_to_sql_type("f64", false).unwrap(),
+            "REAL"
+        );
+        assert_eq!(
+            analyzer.rust_type_to_sql_type("String", false).unwrap(),
+            "TEXT"
+        );
+        assert_eq!(
+            analyzer.rust_type_to_sql_type("bool", false).unwrap(),
+            "BOOLEAN"
+        );
+        assert_eq!(
+            analyzer.rust_type_to_sql_type("Vec<u8>", false).unwrap(),
+            "BLOB"
+        );
+        assert_eq!(
+            analyzer
+                .rust_type_to_sql_type("Option<String>", false)
+                .unwrap(),
+            "TEXT"
+        );
+        assert_eq!(
+            analyzer.rust_type_to_sql_type("CustomId", false).unwrap(),
+            "INTEGER"
+        ); // ID suffix
+        assert_eq!(
+            analyzer
+                .rust_type_to_sql_type("UnknownType", false)
+                .unwrap(),
+            "TEXT"
+        ); // Default
     }
 
-    #[tokio::test] 
+    #[tokio::test]
     async fn test_entity_schema_caching() {
         let mut analyzer = EntityAnalyzer::new();
-        
+
         // Analyze same entity twice
         let schema1 = analyzer.analyze_entity::<TestUser>().unwrap();
         // Can't test cache directly due to mutable borrowing, but the implementation is there
@@ -900,12 +1000,12 @@ mod tests {
     #[tokio::test]
     async fn test_generate_database_schema() {
         let mut analyzer = EntityAnalyzer::new();
-        
+
         analyzer.analyze_entity::<TestUser>().unwrap();
         analyzer.analyze_entity::<TestPost>().unwrap();
-        
+
         let db_schema = analyzer.generate_database_schema();
-        
+
         assert_eq!(db_schema.tables.len(), 2);
         assert!(db_schema.get_table("test_users").is_some());
         assert!(db_schema.get_table("test_posts").is_some());
@@ -914,11 +1014,12 @@ mod tests {
     #[tokio::test]
     async fn test_table_name_extraction() {
         let mut analyzer = EntityAnalyzer::new();
-        
+
         let user_schema = analyzer.analyze_entity::<TestUser>().unwrap();
         assert_eq!(user_schema.name, "test_users");
-        
+
         let post_schema = analyzer.analyze_entity::<TestPost>().unwrap();
         assert_eq!(post_schema.name, "test_posts");
     }
 }
+

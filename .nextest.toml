@@ -1,0 +1,72 @@
+[profile.default]
+# Use all available CPU cores for maximum parallelism (0 = auto-detect)
+test-threads = "num-cpus"
+
+# Reasonable timeout for ORM tests (database operations can be slower)
+slow-timeout = { period = "120s", terminate-after = 2 }
+
+# Retry failed tests once (helps with flaky database tests)
+retries = 1
+
+# Show test failures immediately (don't wait for all tests to finish)
+failure-output = "immediate"
+
+# Show successful test output only for failed tests
+success-output = "never"
+
+# Display test timing information
+status-level = "pass"
+
+# Don't capture stdout/stderr by default (faster)
+no-capture = false
+
+[profile.ci]
+# Stricter configuration for CI environments
+test-threads = "num-cpus"
+slow-timeout = { period = "300s", terminate-after = 3 }
+retries = 2
+failure-output = "immediate"
+success-output = "never"
+status-level = "pass"
+
+[profile.slow-timeout]
+# For debugging slow tests - longer timeouts, more verbose output
+test-threads = 1
+slow-timeout = { period = "600s", terminate-after = 1 }
+retries = 0
+failure-output = "immediate"
+success-output = "immediate"
+status-level = "all"
+
+[profile.fast]
+# For ultra-fast iteration - aggressive timeouts
+test-threads = "num-cpus"
+slow-timeout = { period = "30s", terminate-after = 1 }
+retries = 0
+failure-output = "immediate"
+success-output = "never"
+status-level = "fail"
+
+[profile.single]
+# For running single tests with maximum detail
+test-threads = 1
+slow-timeout = { period = "120s", terminate-after = 1 }
+retries = 0
+failure-output = "immediate"
+success-output = "immediate"
+status-level = "all"
+no-capture = true
+
+# Test-specific overrides for known slow tests
+[[profile.default.overrides]]
+filter = 'test(migration) or test(introspector) or test(data_migration)'
+slow-timeout = { period = "240s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = 'test(performance) or test(comprehensive)'
+slow-timeout = { period = "300s", terminate-after = 3 }
+
+# Fast tests that should never take long
+[[profile.default.overrides]]
+filter = 'test(basic) or test(simple) or test(crud) and not test(migration)'
+slow-timeout = { period = "30s", terminate-after = 1 }

@@ -6,7 +6,7 @@
 
 use super::types::{RollbackOperation, RollbackConfig, RollbackColumnChanges, DataPreservationRequirement, DataPreservationStrategy, DataExportFormat};
 use super::plan::{RollbackPlan, PreExecutionCheck, PostExecutionValidation, CheckType, ValidationType, CheckFailureAction, ValidationFailureAction};
-use crate::auto_migration::{MigrationPlan, MigrationOperation, DatabaseSchema, TableSchema, ColumnSchema, IndexSchema, ForeignKeySchema, ColumnChanges};
+use crate::auto_migration::{MigrationPlan, MigrationOperation, DatabaseSchema, TableSchema, ColumnSchema, ForeignKeySchema};
 use crate::Result;
 use std::time::{Duration, SystemTime};
 use std::collections::{HashMap, HashSet};
@@ -99,28 +99,27 @@ pub struct RollbackOperationGenerator {
 #[derive(Debug, Clone)]
 enum CachedSchemaElement {
     Table(TableSchema),
-    Column { table: String, column: ColumnSchema },
-    Index { table: String, index: IndexSchema },
-    ForeignKey { table: String, foreign_key: ForeignKeySchema },
+    Column { column: ColumnSchema },
+    ForeignKey { foreign_key: ForeignKeySchema },
 }
 
 /// Weights for calculating operation complexity and duration
 #[derive(Debug, Clone)]
-struct OperationComplexityWeights {
+pub struct OperationComplexityWeights {
     /// Base time per operation in seconds
-    base_operation_time: u64,
+    pub base_operation_time: u64,
     
     /// Multiplier for operations involving data
-    data_operation_multiplier: f64,
+    pub data_operation_multiplier: f64,
     
     /// Multiplier for operations requiring schema reconstruction
-    schema_reconstruction_multiplier: f64,
+    pub schema_reconstruction_multiplier: f64,
     
     /// Multiplier for operations with foreign key dependencies
-    foreign_key_multiplier: f64,
+    pub foreign_key_multiplier: f64,
     
     /// Time per estimated row affected (in microseconds)
-    per_row_time_microseconds: u64,
+    pub per_row_time_microseconds: u64,
 }
 
 impl Default for OperationComplexityWeights {
@@ -140,15 +139,6 @@ impl Default for OperationComplexityWeights {
 struct DataPreservationAnalysis {
     /// Tables requiring data preservation
     required_preservations: Vec<DataPreservationRequirement>,
-    
-    /// Estimated storage overhead for preservation
-    estimated_storage_overhead_mb: Option<f64>,
-    
-    /// Recommended preservation strategies per table
-    strategy_recommendations: HashMap<String, DataPreservationStrategy>,
-    
-    /// Warnings about potential data loss
-    data_loss_warnings: Vec<String>,
 }
 
 /// Result of dependency analysis for operation ordering
@@ -157,14 +147,8 @@ struct DependencyAnalysis {
     /// Operations in execution order (reverse of dependency order)
     execution_order: Vec<usize>,
     
-    /// Dependencies between operations (operation_index -> depends_on_indices)
-    dependencies: HashMap<usize, Vec<usize>>,
-    
     /// Operations that can be executed in parallel
     parallel_groups: Vec<Vec<usize>>,
-    
-    /// Critical path operations that affect total duration
-    critical_path: Vec<usize>,
 }
 
 impl RollbackOperationGenerator {
@@ -323,7 +307,12 @@ impl RollbackOperationGenerator {
             
             MigrationOperation::ModifyColumn { table, column, changes, .. } => {
                 // ModifyColumn → ModifyColumn with reverse changes
-                let reverse_changes = self.generate_reverse_column_changes_from_migration_changes(changes)?;
+                let reverse_changes = RollbackColumnChanges {
+                    type_change: changes.type_change.as_ref().map(|(old, new)| (new.clone(), old.clone())),
+                    null_change: changes.null_change.map(|(old, new)| (new, old)),
+                    default_change: changes.default_change.as_ref().map(|(old, new)| (new.clone(), old.clone())),
+                    constraint_changes: Vec::new(), // TODO: Convert constraint changes
+                };
                 Ok(RollbackOperation::ModifyColumn {
                     table: table.clone(),
                     column: column.clone(),
@@ -383,12 +372,6 @@ impl RollbackOperationGenerator {
                     new_name: old_name.clone(),
                 })
             }
-            
-            _ => {
-                Err(crate::D1RsError::ValidationError(
-                    "Migration operation type not supported for rollback generation".to_string()
-                ))
-            }
         }
     }
     
@@ -421,7 +404,7 @@ impl RollbackOperationGenerator {
     /// Find column schema from table definition
     fn find_column_schema(&self, table_name: &str, column_name: &str, current_schema: &DatabaseSchema) -> Result<ColumnSchema> {
         let cache_key = format!("column:{}:{}", table_name, column_name);
-        if let Some(CachedSchemaElement::Column { column, .. }) = self.schema_cache.borrow().get(&cache_key) {
+        if let Some(CachedSchemaElement::Column { column }) = self.schema_cache.borrow().get(&cache_key) {
             return Ok(column.clone());
         }
         
@@ -431,7 +414,6 @@ impl RollbackOperationGenerator {
                 self.schema_cache.borrow_mut().insert(
                     cache_key,
                     CachedSchemaElement::Column {
-                        table: table_name.to_string(),
                         column: column.clone(),
                     }
                 );
@@ -445,32 +427,6 @@ impl RollbackOperationGenerator {
         )))
     }
     
-    /// Find index schema from table definition
-    fn find_index_schema(&self, table_name: &str, index_name: &str, current_schema: &DatabaseSchema) -> Result<IndexSchema> {
-        let cache_key = format!("index:{}:{}", table_name, index_name);
-        if let Some(CachedSchemaElement::Index { index, .. }) = self.schema_cache.borrow().get(&cache_key) {
-            return Ok(index.clone());
-        }
-        
-        let table_schema = self.find_table_schema(table_name, current_schema)?;
-        for index in &table_schema.indexes {
-            if index.name == index_name {
-                self.schema_cache.borrow_mut().insert(
-                    cache_key,
-                    CachedSchemaElement::Index {
-                        table: table_name.to_string(),
-                        index: index.clone(),
-                    }
-                );
-                return Ok(index.clone());
-            }
-        }
-        
-        Err(crate::D1RsError::ValidationError(format!(
-            "Missing schema element: index '{}.{}' not found during rollback generation",
-            table_name, index_name
-        )))
-    }
     
     /// Find which table contains the specified foreign key columns
     fn find_table_for_foreign_key_columns(&self, columns: &[String], current_schema: &DatabaseSchema) -> Result<String> {
@@ -496,7 +452,7 @@ impl RollbackOperationGenerator {
     /// Find foreign key schema from table definition
     fn find_foreign_key_schema(&self, table_name: &str, constraint_name: &str, current_schema: &DatabaseSchema) -> Result<ForeignKeySchema> {
         let cache_key = format!("fk:{}:{}", table_name, constraint_name);
-        if let Some(CachedSchemaElement::ForeignKey { foreign_key, .. }) = self.schema_cache.borrow().get(&cache_key) {
+        if let Some(CachedSchemaElement::ForeignKey { foreign_key }) = self.schema_cache.borrow().get(&cache_key) {
             return Ok(foreign_key.clone());
         }
         
@@ -506,7 +462,6 @@ impl RollbackOperationGenerator {
                 self.schema_cache.borrow_mut().insert(
                     cache_key,
                     CachedSchemaElement::ForeignKey {
-                        table: table_name.to_string(),
                         foreign_key: fk.clone(),
                     }
                 );
@@ -520,59 +475,6 @@ impl RollbackOperationGenerator {
         )))
     }
     
-    /// Generate reverse column changes from migration column changes
-    fn generate_reverse_column_changes_from_migration_changes(&self, changes: &ColumnChanges) -> Result<RollbackColumnChanges> {
-        let mut rollback_changes = RollbackColumnChanges {
-            type_change: None,
-            null_change: None,
-            default_change: None,
-            constraint_changes: Vec::new(),
-        };
-        
-        // Reverse type change
-        if let Some((old_type, new_type)) = &changes.type_change {
-            rollback_changes.type_change = Some((new_type.clone(), old_type.clone()));
-        }
-        
-        // Reverse nullability change
-        if let Some((old_nullable, new_nullable)) = &changes.null_change {
-            rollback_changes.null_change = Some((*new_nullable, *old_nullable));
-        }
-        
-        // Reverse default value change
-        if let Some((old_default, new_default)) = &changes.default_change {
-            rollback_changes.default_change = Some((new_default.clone(), old_default.clone()));
-        }
-        
-        Ok(rollback_changes)
-    }
-    
-    /// Generate reverse column changes for modify operations
-    fn generate_reverse_column_changes(&self, old_definition: &ColumnSchema, new_definition: &ColumnSchema) -> Result<RollbackColumnChanges> {
-        let mut changes = RollbackColumnChanges {
-            type_change: None,
-            null_change: None,
-            default_change: None,
-            constraint_changes: Vec::new(),
-        };
-        
-        // Reverse type change
-        if old_definition.column_type != new_definition.column_type {
-            changes.type_change = Some((new_definition.column_type.clone(), old_definition.column_type.clone()));
-        }
-        
-        // Reverse nullability change
-        if old_definition.nullable != new_definition.nullable {
-            changes.null_change = Some((new_definition.nullable, old_definition.nullable));
-        }
-        
-        // Reverse default value change
-        if old_definition.default_value != new_definition.default_value {
-            changes.default_change = Some((new_definition.default_value.clone(), old_definition.default_value.clone()));
-        }
-        
-        Ok(changes)
-    }
     
     /// Validate inputs for rollback generation
     fn validate_generation_inputs(&self, forward_plan: &MigrationPlan, current_schema: &DatabaseSchema) -> Result<()> {
@@ -653,14 +555,9 @@ impl RollbackOperationGenerator {
         // Create parallel groups (operations with no dependencies between them)
         let parallel_groups = self.create_parallel_groups(&execution_order, &dependencies);
         
-        // Identify critical path
-        let critical_path = self.identify_critical_path(&execution_order, &dependencies);
-        
         Ok(DependencyAnalysis {
             execution_order,
-            dependencies,
             parallel_groups,
-            critical_path,
         })
     }
     
@@ -747,37 +644,6 @@ impl RollbackOperationGenerator {
         groups
     }
     
-    /// Identify critical path operations
-    fn identify_critical_path(&self, execution_order: &[usize], dependencies: &HashMap<usize, Vec<usize>>) -> Vec<usize> {
-        // For simplicity, return the longest dependency chain
-        let mut max_chain = Vec::new();
-        
-        for &start_op in execution_order {
-            let chain = self.find_dependency_chain(start_op, dependencies);
-            if chain.len() > max_chain.len() {
-                max_chain = chain;
-            }
-        }
-        
-        max_chain
-    }
-    
-    /// Find dependency chain starting from an operation
-    fn find_dependency_chain(&self, start_op: usize, dependencies: &HashMap<usize, Vec<usize>>) -> Vec<usize> {
-        let mut chain = vec![start_op];
-        let mut current = start_op;
-        
-        while let Some(deps) = dependencies.get(&current) {
-            if let Some(&next) = deps.first() {
-                chain.push(next);
-                current = next;
-            } else {
-                break;
-            }
-        }
-        
-        chain
-    }
     
     /// Apply dependency ordering to operations
     fn apply_dependency_ordering(&self, operations: Vec<RollbackOperation>, analysis: &DependencyAnalysis) -> Vec<RollbackOperation> {
@@ -802,8 +668,6 @@ impl RollbackOperationGenerator {
     /// Analyze data preservation requirements for operations
     fn analyze_data_preservation(&self, operations: &[RollbackOperation], _current_schema: &DatabaseSchema) -> Result<DataPreservationAnalysis> {
         let mut required_preservations = Vec::new();
-        let mut strategy_recommendations = HashMap::new();
-        let mut data_loss_warnings = Vec::new();
         
         for operation in operations {
             match operation {
@@ -818,12 +682,7 @@ impl RollbackOperationGenerator {
                             },
                         );
                         required_preservations.push(requirement);
-                        strategy_recommendations.insert(name.clone(), DataPreservationStrategy::BackupTable {
-                            backup_name: format!("{}_backup", name),
-                            drop_after_restore: true,
-                        });
                     } else {
-                        data_loss_warnings.push(format!("Table '{}' will be dropped without data preservation", name));
                     }
                 }
                 
@@ -839,7 +698,6 @@ impl RollbackOperationGenerator {
                         );
                         required_preservations.push(requirement);
                     } else {
-                        data_loss_warnings.push(format!("Column '{}.{}' will be dropped without data preservation", table, column));
                     }
                 }
                 
@@ -855,7 +713,6 @@ impl RollbackOperationGenerator {
                         );
                         required_preservations.push(requirement);
                     } else if changes.is_lossy() {
-                        data_loss_warnings.push(format!("Potentially lossy column modification for '{}.{}' without data preservation", table, column));
                     }
                 }
                 
@@ -867,9 +724,6 @@ impl RollbackOperationGenerator {
         
         Ok(DataPreservationAnalysis {
             required_preservations,
-            estimated_storage_overhead_mb: None, // TODO: Implement storage estimation
-            strategy_recommendations,
-            data_loss_warnings,
         })
     }
     
@@ -1206,38 +1060,6 @@ mod tests {
         assert!(groups[1].contains(&2) && groups[1].contains(&3));
     }
     
-    #[test]
-    fn test_reverse_column_changes() {
-        let generator = RollbackOperationGenerator::new();
-        
-        let old_column = ColumnSchema {
-            name: "test_col".to_string(),
-            column_type: "INTEGER".to_string(),
-            nullable: false,
-            primary_key: false,
-            unique: false,
-            auto_increment: false,
-            default_value: Some("0".to_string()),
-            constraints: vec![],
-        };
-        
-        let new_column = ColumnSchema {
-            name: "test_col".to_string(),
-            column_type: "TEXT".to_string(),
-            nullable: true,
-            primary_key: false,
-            unique: false,
-            auto_increment: false,
-            default_value: Some("''".to_string()),
-            constraints: vec![],
-        };
-        
-        let changes = generator.generate_reverse_column_changes(&old_column, &new_column).unwrap();
-        
-        assert_eq!(changes.type_change, Some(("TEXT".to_string(), "INTEGER".to_string())));
-        assert_eq!(changes.null_change, Some((true, false)));
-        assert_eq!(changes.default_change, Some((Some("''".to_string()), Some("0".to_string()))));
-    }
     
     #[test]
     fn test_data_preservation_analysis() {
@@ -1263,8 +1085,6 @@ mod tests {
         let analysis = generator.analyze_data_preservation(&operations, &schema).unwrap();
         
         assert_eq!(analysis.required_preservations.len(), 1);
-        assert_eq!(analysis.data_loss_warnings.len(), 1);
-        assert!(analysis.data_loss_warnings[0].contains("temp_col"));
     }
     
     #[test]
