@@ -10,6 +10,7 @@ pub mod plan;
 pub mod generator;
 pub mod sql_generator;
 pub mod safety;
+pub mod executor;
 
 // Re-export all public types for convenient access
 pub use types::*;
@@ -17,3 +18,4 @@ pub use plan::*;
 pub use generator::*;
 pub use sql_generator::*;
 pub use safety::*;
+pub use executor::*;
