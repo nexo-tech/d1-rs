@@ -51,14 +51,251 @@ impl<'a> SchemaIntrospector<'a> {
         let columns = self.introspect_columns(table_name).await?;
         let indexes = self.introspect_indexes(table_name).await?;
         let foreign_keys = self.introspect_foreign_keys(table_name).await?;
+        let constraints = self.introspect_table_constraints(table_name).await?;
 
         Ok(TableSchema {
             name: table_name.to_string(),
             columns,
             indexes,
             foreign_keys,
-            constraints: vec![], // TODO: introspect other constraints
+            constraints,
         })
+    }
+
+    /// Introspect table-level constraints from CREATE TABLE statement
+    /// Extracts CHECK, UNIQUE, and PRIMARY KEY constraints not covered by column/FK introspection
+    pub async fn introspect_table_constraints(&self, table_name: &str) -> Result<Vec<ConstraintSchema>> {
+        // Get the CREATE TABLE statement from sqlite_master
+        let sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name=?";
+        let params = vec![serde_json::json!(table_name)];
+        let result = self.db.execute(sql, &params).await?;
+
+        let create_sql = match result.rows.first() {
+            Some(Value::Object(obj)) => {
+                obj.get("sql")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| D1RsError::Database(format!("No CREATE statement found for table '{}'", table_name)))?
+            }
+            _ => return Ok(vec![]), // Table not found or no SQL
+        };
+
+        self.parse_table_constraints(create_sql, table_name)
+    }
+
+    /// Parse table-level constraints from CREATE TABLE SQL statement
+    fn parse_table_constraints(&self, create_sql: &str, table_name: &str) -> Result<Vec<ConstraintSchema>> {
+        let mut constraints = Vec::new();
+        
+        // Normalize the SQL for easier parsing
+        let normalized_sql = create_sql
+            .replace('\n', " ")
+            .replace('\r', " ")
+            .replace('\t', " ");
+        
+        // Find the content between the parentheses
+        let table_def = self.extract_table_definition(&normalized_sql)?;
+        
+        // Split by commas but be careful of nested parentheses
+        let parts = self.split_table_definition(&table_def);
+        
+        for (i, part) in parts.iter().enumerate() {
+            let trimmed = part.trim();
+            
+            // Skip column definitions (they don't start with constraint keywords)
+            if self.is_column_definition(trimmed) {
+                continue;
+            }
+            
+            // Parse different constraint types
+            if let Some(constraint) = self.parse_check_constraint(trimmed, table_name, i)? {
+                constraints.push(constraint);
+            } else if let Some(constraint) = self.parse_unique_constraint(trimmed, table_name, i)? {
+                constraints.push(constraint);
+            } else if let Some(constraint) = self.parse_primary_key_constraint(trimmed, table_name, i)? {
+                constraints.push(constraint);
+            }
+        }
+        
+        Ok(constraints)
+    }
+
+    /// Extract the table definition content between parentheses
+    fn extract_table_definition(&self, create_sql: &str) -> Result<String> {
+        // Find the opening parenthesis after CREATE TABLE
+        let start = create_sql
+            .find('(')
+            .ok_or_else(|| D1RsError::Database("Invalid CREATE TABLE syntax: no opening parenthesis".to_string()))?;
+        
+        // Find the matching closing parenthesis
+        let mut paren_count = 0;
+        let mut end = start;
+        
+        for (i, ch) in create_sql.chars().enumerate().skip(start) {
+            match ch {
+                '(' => paren_count += 1,
+                ')' => {
+                    paren_count -= 1;
+                    if paren_count == 0 {
+                        end = i;
+                        break;
+                    }
+                },
+                _ => {}
+            }
+        }
+        
+        if paren_count != 0 {
+            return Err(D1RsError::Database("Invalid CREATE TABLE syntax: unmatched parentheses".to_string()));
+        }
+        
+        Ok(create_sql[start + 1..end].to_string())
+    }
+
+    /// Split table definition by commas while respecting nested parentheses
+    fn split_table_definition(&self, table_def: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut current = String::new();
+        let mut paren_count = 0;
+        let mut in_quotes = false;
+        let mut quote_char = ' ';
+        
+        for ch in table_def.chars() {
+            match ch {
+                '\'' | '"' if !in_quotes => {
+                    in_quotes = true;
+                    quote_char = ch;
+                    current.push(ch);
+                },
+                c if in_quotes && c == quote_char => {
+                    in_quotes = false;
+                    current.push(ch);
+                },
+                '(' if !in_quotes => {
+                    paren_count += 1;
+                    current.push(ch);
+                },
+                ')' if !in_quotes => {
+                    paren_count -= 1;
+                    current.push(ch);
+                },
+                ',' if !in_quotes && paren_count == 0 => {
+                    parts.push(current.trim().to_string());
+                    current.clear();
+                },
+                _ => {
+                    current.push(ch);
+                }
+            }
+        }
+        
+        if !current.trim().is_empty() {
+            parts.push(current.trim().to_string());
+        }
+        
+        parts
+    }
+
+    /// Check if a definition part is a column definition (vs constraint)
+    fn is_column_definition(&self, part: &str) -> bool {
+        let part_upper = part.to_uppercase();
+        
+        // If it starts with constraint keywords, it's a constraint
+        if part_upper.starts_with("CONSTRAINT ") ||
+           part_upper.starts_with("PRIMARY KEY") ||
+           part_upper.starts_with("UNIQUE") ||
+           part_upper.starts_with("CHECK") ||
+           part_upper.starts_with("FOREIGN KEY") {
+            return false;
+        }
+        
+        // If it contains common column type keywords, it's likely a column
+        let column_keywords = ["INTEGER", "TEXT", "REAL", "BLOB", "BOOLEAN", "VARCHAR", "CHAR", "DECIMAL", "DATETIME"];
+        for keyword in &column_keywords {
+            if part_upper.contains(keyword) {
+                return true;
+            }
+        }
+        
+        // Default: assume it's a column if we can't determine otherwise
+        true
+    }
+
+    /// Parse CHECK constraint from table definition part
+    fn parse_check_constraint(&self, part: &str, table_name: &str, index: usize) -> Result<Option<ConstraintSchema>> {
+        let part_upper = part.to_uppercase();
+        
+        if part_upper.contains("CHECK") {
+            let constraint_name = if part_upper.starts_with("CONSTRAINT ") {
+                // Named constraint: CONSTRAINT name CHECK (expression)
+                part.split_whitespace()
+                    .nth(1)
+                    .unwrap_or(&format!("check_constraint_{}", index))
+                    .to_string()
+            } else {
+                // Unnamed constraint: CHECK (expression)
+                format!("{}_check_{}", table_name, index)
+            };
+            
+            Ok(Some(ConstraintSchema {
+                name: constraint_name,
+                constraint_type: ConstraintType::Check,
+                definition: part.to_string(),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Parse UNIQUE constraint from table definition part
+    fn parse_unique_constraint(&self, part: &str, table_name: &str, index: usize) -> Result<Option<ConstraintSchema>> {
+        let part_upper = part.to_uppercase();
+        
+        if part_upper.starts_with("UNIQUE") || (part_upper.starts_with("CONSTRAINT ") && part_upper.contains("UNIQUE")) {
+            let constraint_name = if part_upper.starts_with("CONSTRAINT ") {
+                // Named constraint: CONSTRAINT name UNIQUE (columns)
+                part.split_whitespace()
+                    .nth(1)
+                    .unwrap_or(&format!("unique_constraint_{}", index))
+                    .to_string()
+            } else {
+                // Unnamed constraint: UNIQUE (columns)
+                format!("{}_unique_{}", table_name, index)
+            };
+            
+            Ok(Some(ConstraintSchema {
+                name: constraint_name,
+                constraint_type: ConstraintType::Unique,
+                definition: part.to_string(),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Parse PRIMARY KEY constraint from table definition part
+    fn parse_primary_key_constraint(&self, part: &str, table_name: &str, index: usize) -> Result<Option<ConstraintSchema>> {
+        let part_upper = part.to_uppercase();
+        
+        if part_upper.starts_with("PRIMARY KEY") || (part_upper.starts_with("CONSTRAINT ") && part_upper.contains("PRIMARY KEY")) {
+            let constraint_name = if part_upper.starts_with("CONSTRAINT ") {
+                // Named constraint: CONSTRAINT name PRIMARY KEY (columns)
+                part.split_whitespace()
+                    .nth(1)
+                    .unwrap_or(&format!("pk_constraint_{}", index))
+                    .to_string()
+            } else {
+                // Unnamed constraint: PRIMARY KEY (columns)
+                format!("{}_pk_{}", table_name, index)
+            };
+            
+            Ok(Some(ConstraintSchema {
+                name: constraint_name,
+                constraint_type: ConstraintType::PrimaryKey,
+                definition: part.to_string(),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Get column details with constraints using pragma_table_info function
@@ -692,5 +929,317 @@ mod tests {
         println!("🚀 REVOLUTIONARY SUCCESS: Entity-aware detection uses trait information!");
         println!("🚀 Generic introspection eliminated heuristics completely!");
         println!("✅ Boolean detection now requires explicit entity context!");
+    }
+
+    #[tokio::test]
+    async fn test_introspect_check_constraints() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create table with various table-level CHECK constraints
+        // Note: Column-level CHECK constraints (like in column definitions) are handled by column introspection
+        let sql = r#"
+            CREATE TABLE test_constraints (
+                id INTEGER PRIMARY KEY,
+                email TEXT,
+                status TEXT,
+                age INTEGER,
+                CONSTRAINT valid_email CHECK (email LIKE '%@%.%'),
+                CHECK (status IN ('active', 'inactive', 'pending')),
+                CHECK (age >= 0 AND age <= 150)
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        let constraints = introspector.introspect_table_constraints("test_constraints").await.unwrap();
+        
+        // Should find the 3 table-level CHECK constraints
+        let check_constraints: Vec<_> = constraints.iter()
+            .filter(|c| matches!(c.constraint_type, ConstraintType::Check))
+            .collect();
+        
+        assert_eq!(check_constraints.len(), 3, "Should find 3 table-level CHECK constraints");
+        
+        // Verify named constraint
+        let named_check = check_constraints.iter()
+            .find(|c| c.name == "valid_email")
+            .expect("Should find named CHECK constraint 'valid_email'");
+        assert!(named_check.definition.contains("email LIKE '%@%.%'"));
+        
+        // Verify unnamed constraints get generated names
+        let unnamed_checks: Vec<_> = check_constraints.iter()
+            .filter(|c| c.name.contains("test_constraints_check_"))
+            .collect();
+        assert_eq!(unnamed_checks.len(), 2, "Should find 2 unnamed CHECK constraints with generated names");
+    }
+
+    #[tokio::test]
+    async fn test_introspect_unique_constraints() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create table with table-level UNIQUE constraints
+        let sql = r#"
+            CREATE TABLE test_unique (
+                id INTEGER PRIMARY KEY,
+                first_name TEXT,
+                last_name TEXT,
+                email TEXT,
+                phone TEXT,
+                UNIQUE (first_name, last_name),
+                CONSTRAINT unique_contact UNIQUE (email, phone)
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        let constraints = introspector.introspect_table_constraints("test_unique").await.unwrap();
+        
+        // Should find the 2 UNIQUE constraints
+        let unique_constraints: Vec<_> = constraints.iter()
+            .filter(|c| matches!(c.constraint_type, ConstraintType::Unique))
+            .collect();
+        
+        assert_eq!(unique_constraints.len(), 2, "Should find 2 UNIQUE constraints");
+        
+        // Verify named constraint
+        let named_unique = unique_constraints.iter()
+            .find(|c| c.name == "unique_contact")
+            .expect("Should find named UNIQUE constraint 'unique_contact'");
+        assert!(named_unique.definition.contains("email, phone"));
+        
+        // Verify unnamed constraint gets generated name
+        let unnamed_unique = unique_constraints.iter()
+            .find(|c| c.name.contains("test_unique_unique_"))
+            .expect("Should find unnamed UNIQUE constraint with generated name");
+        assert!(unnamed_unique.definition.contains("first_name, last_name"));
+    }
+
+    #[tokio::test]
+    async fn test_introspect_primary_key_constraints() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create table with composite primary key
+        let sql = r#"
+            CREATE TABLE test_composite_pk (
+                tenant_id INTEGER,
+                user_id INTEGER,
+                name TEXT,
+                PRIMARY KEY (tenant_id, user_id)
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        let constraints = introspector.introspect_table_constraints("test_composite_pk").await.unwrap();
+        
+        // Should find the composite PRIMARY KEY constraint
+        let pk_constraints: Vec<_> = constraints.iter()
+            .filter(|c| matches!(c.constraint_type, ConstraintType::PrimaryKey))
+            .collect();
+        
+        assert_eq!(pk_constraints.len(), 1, "Should find 1 PRIMARY KEY constraint");
+        
+        let pk = &pk_constraints[0];
+        assert!(pk.name.contains("test_composite_pk_pk_"));
+        assert!(pk.definition.contains("tenant_id, user_id"));
+    }
+
+    #[tokio::test]
+    async fn test_introspect_named_primary_key_constraint() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create table with named composite primary key
+        let sql = r#"
+            CREATE TABLE test_named_pk (
+                region_id INTEGER,
+                location_id INTEGER,
+                name TEXT,
+                CONSTRAINT pk_region_location PRIMARY KEY (region_id, location_id)
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        let constraints = introspector.introspect_table_constraints("test_named_pk").await.unwrap();
+        
+        // Should find the named PRIMARY KEY constraint
+        let pk_constraints: Vec<_> = constraints.iter()
+            .filter(|c| matches!(c.constraint_type, ConstraintType::PrimaryKey))
+            .collect();
+        
+        assert_eq!(pk_constraints.len(), 1, "Should find 1 PRIMARY KEY constraint");
+        
+        let pk = &pk_constraints[0];
+        assert_eq!(pk.name, "pk_region_location");
+        assert!(pk.definition.contains("PRIMARY KEY (region_id, location_id)"));
+    }
+
+    #[tokio::test]
+    async fn test_introspect_mixed_constraints() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create table with multiple table-level constraint types
+        let sql = r#"
+            CREATE TABLE test_mixed (
+                id INTEGER,
+                category_id INTEGER,
+                name TEXT NOT NULL,
+                price REAL,
+                status TEXT DEFAULT 'active',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id, category_id),
+                UNIQUE (name, category_id),
+                CHECK (price > 0),
+                CONSTRAINT valid_status CHECK (status IN ('active', 'inactive')),
+                CONSTRAINT unique_name_per_category UNIQUE (name, category_id)
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        let constraints = introspector.introspect_table_constraints("test_mixed").await.unwrap();
+        
+        // Count constraint types
+        let check_count = constraints.iter().filter(|c| matches!(c.constraint_type, ConstraintType::Check)).count();
+        let unique_count = constraints.iter().filter(|c| matches!(c.constraint_type, ConstraintType::Unique)).count();
+        let pk_count = constraints.iter().filter(|c| matches!(c.constraint_type, ConstraintType::PrimaryKey)).count();
+        
+        assert_eq!(check_count, 2, "Should find 2 CHECK constraints");
+        assert_eq!(unique_count, 2, "Should find 2 UNIQUE constraints (note: duplicate definition should still be parsed)");
+        assert_eq!(pk_count, 1, "Should find 1 PRIMARY KEY constraint");
+        
+        // Verify named constraints are found
+        let constraint_names: Vec<&String> = constraints.iter().map(|c| &c.name).collect();
+        assert!(constraint_names.contains(&&"valid_status".to_string()));
+        assert!(constraint_names.contains(&&"unique_name_per_category".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_introspect_constraints_integration() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create table with table-level constraints
+        let sql = r#"
+            CREATE TABLE test_integration (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                age INTEGER,
+                email TEXT,
+                CHECK (age >= 0),
+                UNIQUE (name, email)
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        
+        // Test that introspect_table includes constraints
+        let table_schema = introspector.introspect_table("test_integration").await.unwrap();
+        
+        assert!(!table_schema.constraints.is_empty(), "Table schema should include constraints");
+        
+        // Should have CHECK and UNIQUE constraints
+        let has_check = table_schema.constraints.iter()
+            .any(|c| matches!(c.constraint_type, ConstraintType::Check));
+        let has_unique = table_schema.constraints.iter()
+            .any(|c| matches!(c.constraint_type, ConstraintType::Unique));
+        
+        assert!(has_check, "Should find CHECK constraint in table schema");
+        assert!(has_unique, "Should find UNIQUE constraint in table schema");
+    }
+
+    #[tokio::test]
+    async fn test_introspect_constraints_empty_table() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create simple table with no table-level constraints
+        let sql = r#"
+            CREATE TABLE test_no_constraints (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        let constraints = introspector.introspect_table_constraints("test_no_constraints").await.unwrap();
+        
+        assert!(constraints.is_empty(), "Should find no table-level constraints");
+    }
+
+    #[tokio::test]
+    async fn test_introspect_constraints_nonexistent_table() {
+        let db = D1Client::new_in_memory().await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        let constraints = introspector.introspect_table_constraints("nonexistent_table").await.unwrap();
+        
+        assert!(constraints.is_empty(), "Should return empty vector for nonexistent table");
+    }
+
+    #[tokio::test]
+    async fn test_constraint_sql_parsing_edge_cases() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create table with complex constraint expressions
+        let sql = r#"
+            CREATE TABLE test_complex (
+                id INTEGER PRIMARY KEY,
+                data TEXT,
+                metadata TEXT,
+                CHECK (json_valid(data) AND length(data) > 0),
+                CONSTRAINT meta_check CHECK (metadata IS NULL OR (json_valid(metadata) AND json_extract(metadata, '$.version') IS NOT NULL))
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        let constraints = introspector.introspect_table_constraints("test_complex").await.unwrap();
+        
+        let check_constraints: Vec<_> = constraints.iter()
+            .filter(|c| matches!(c.constraint_type, ConstraintType::Check))
+            .collect();
+        
+        assert_eq!(check_constraints.len(), 2, "Should parse complex CHECK constraints");
+        
+        // Verify complex expressions are preserved
+        let complex_check = check_constraints.iter()
+            .find(|c| c.definition.contains("json_extract"))
+            .expect("Should find constraint with json_extract");
+        assert_eq!(complex_check.name, "meta_check");
+    }
+
+    #[tokio::test]
+    async fn test_constraint_parsing_with_quoted_identifiers() {
+        let db = D1Client::new_in_memory().await.unwrap();
+        
+        // Create table with quoted identifiers in constraints
+        let sql = r#"
+            CREATE TABLE "test quoted" (
+                "user id" INTEGER PRIMARY KEY,
+                "user name" TEXT,
+                "user email" TEXT,
+                CHECK ("user name" IS NOT NULL AND length("user name") > 0),
+                UNIQUE ("user name", "user email")
+            )
+        "#;
+        db.execute(sql, &[]).await.unwrap();
+
+        let introspector = SchemaIntrospector::new(&db);
+        let constraints = introspector.introspect_table_constraints("test quoted").await.unwrap();
+        
+        assert!(!constraints.is_empty(), "Should parse constraints with quoted identifiers");
+        
+        // Verify quoted identifiers are preserved in constraint definitions
+        let check_constraint = constraints.iter()
+            .find(|c| matches!(c.constraint_type, ConstraintType::Check))
+            .expect("Should find CHECK constraint");
+        assert!(check_constraint.definition.contains("\"user name\""));
+        
+        let unique_constraint = constraints.iter()
+            .find(|c| matches!(c.constraint_type, ConstraintType::Unique))
+            .expect("Should find UNIQUE constraint");
+        assert!(unique_constraint.definition.contains("\"user name\""));
+        assert!(unique_constraint.definition.contains("\"user email\""));
     }
 }
