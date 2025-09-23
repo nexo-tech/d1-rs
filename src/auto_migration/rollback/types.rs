@@ -418,6 +418,19 @@ impl RollbackColumnChanges {
             parts.join(", ")
         }
     }
+    
+    /// Check if this represents a complex change that might need special handling
+    pub fn is_complex_change(&self) -> bool {
+        let change_count = [
+            self.type_change.is_some(),
+            self.null_change.is_some(),
+            self.default_change.is_some(),
+            !self.constraint_changes.is_empty(),
+        ].iter().filter(|&&x| x).count();
+        
+        // Consider it complex if multiple aspects are changing
+        change_count > 1 || (self.type_change.is_some() && self.is_lossy())
+    }
 }
 
 impl Default for RollbackColumnChanges {
@@ -511,36 +524,40 @@ impl Ord for RollbackRiskLevel {
 }
 
 /// Severity level for individual rollback validation issues
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 pub enum RollbackRiskSeverity {
-    /// Informational issue that doesn't affect safety
-    Low,
-    /// Minor issue that should be noted but doesn't prevent execution
-    Medium,
-    /// Significant issue that increases risk but may be acceptable
+    /// Informational notices
+    Info,
+    /// Warnings that should be reviewed
+    Warning,
+    /// High risk operations requiring careful consideration
     High,
-    /// Critical issue that should prevent execution
+    /// Critical issues that may cause data loss
     Critical,
+    /// Blocking issues that prevent execution
+    Blocking,
 }
 
 impl RollbackRiskSeverity {
     /// Convert to risk level for overall assessment
     pub fn to_risk_level(&self) -> RollbackRiskLevel {
         match self {
-            RollbackRiskSeverity::Low => RollbackRiskLevel::Low,
-            RollbackRiskSeverity::Medium => RollbackRiskLevel::Medium,
+            RollbackRiskSeverity::Info => RollbackRiskLevel::Low,
+            RollbackRiskSeverity::Warning => RollbackRiskLevel::Low,
             RollbackRiskSeverity::High => RollbackRiskLevel::High,
             RollbackRiskSeverity::Critical => RollbackRiskLevel::Critical,
+            RollbackRiskSeverity::Blocking => RollbackRiskLevel::Critical,
         }
     }
     
     /// Get numeric value for comparison
     pub fn numeric_value(&self) -> u8 {
         match self {
-            RollbackRiskSeverity::Low => 0,
-            RollbackRiskSeverity::Medium => 1,
+            RollbackRiskSeverity::Info => 0,
+            RollbackRiskSeverity::Warning => 1,
             RollbackRiskSeverity::High => 2,
             RollbackRiskSeverity::Critical => 3,
+            RollbackRiskSeverity::Blocking => 4,
         }
     }
 }
@@ -548,10 +565,11 @@ impl RollbackRiskSeverity {
 impl fmt::Display for RollbackRiskSeverity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
-            RollbackRiskSeverity::Low => "Low",
-            RollbackRiskSeverity::Medium => "Medium",
+            RollbackRiskSeverity::Info => "Info",
+            RollbackRiskSeverity::Warning => "Warning",
             RollbackRiskSeverity::High => "High",
             RollbackRiskSeverity::Critical => "Critical",
+            RollbackRiskSeverity::Blocking => "Blocking",
         };
         write!(f, "{}", name)
     }
