@@ -179,30 +179,207 @@ impl<T: Entity> TypeSafeSchema<T> {
         self.columns.iter().find(|col| col.name == name)
     }
     
-    /// Convert to runtime DatabaseSchema for backward compatibility
+    /// Convert to runtime DatabaseSchema for backward compatibility with full constraint extraction
     pub fn to_database_schema(&self) -> DatabaseSchema {
         let mut tables = Vec::new();
         
-        let table_schema = TableSchema {
-            name: self.table_name.to_string(),
-            columns: self.columns.iter().map(|col| ColumnSchema {
+        // Extract foreign keys from column constraints for table-level foreign keys
+        let mut table_foreign_keys = Vec::new();
+        let mut table_indexes = Vec::new();
+        let mut table_constraints = Vec::new();
+        
+        let columns: Vec<ColumnSchema> = self.columns.iter().map(|col| {
+            // Extract default value from constraints
+            let default_value = col.constraints.iter()
+                .find_map(|c| match c {
+                    ColumnConstraint::Default(value) => Some(value.clone()),
+                    _ => None,
+                });
+            
+            // Extract auto_increment from field definitions
+            let auto_increment = self.extract_auto_increment_for_column(col.name);
+            
+            // Extract foreign keys and add to table-level collection
+            for constraint in &col.constraints {
+                if let ColumnConstraint::ForeignKey { table, column } = constraint {
+                    let fk_name = format!("fk_{}_{}", col.name, table);
+                    table_foreign_keys.push(crate::auto_migration::introspector::ForeignKeySchema {
+                        name: fk_name,
+                        columns: vec![col.name.to_string()],
+                        referenced_table: table.clone(),
+                        referenced_columns: vec![column.clone()],
+                        on_delete: None, // Could be enhanced to extract from constraint definition
+                        on_update: None, // Could be enhanced to extract from constraint definition
+                    });
+                }
+            }
+            
+            // Generate index for unique constraints
+            if col.constraints.iter().any(|c| matches!(c, ColumnConstraint::Unique)) {
+                let idx_name = format!("idx_unique_{}", col.name);
+                table_indexes.push(crate::auto_migration::introspector::IndexSchema {
+                    name: idx_name,
+                    columns: vec![col.name.to_string()],
+                    unique: true,
+                    table_name: Some(self.table_name.to_string()),
+                });
+            }
+            
+            // Generate index for primary key
+            if col.constraints.iter().any(|c| matches!(c, ColumnConstraint::PrimaryKey)) {
+                let idx_name = format!("idx_pk_{}", col.name);
+                table_indexes.push(crate::auto_migration::introspector::IndexSchema {
+                    name: idx_name,
+                    columns: vec![col.name.to_string()],
+                    unique: true,
+                    table_name: Some(self.table_name.to_string()),
+                });
+            }
+            
+            // Convert column constraints to introspector ColumnConstraint format
+            let introspector_constraints = self.convert_to_introspector_constraints(&col.constraints);
+            
+            ColumnSchema {
                 name: col.name.to_string(),
                 column_type: col.sql_type.to_string(),
                 nullable: col.is_nullable,
-                default_value: None, // TODO: Extract from constraints
+                default_value,
                 primary_key: col.constraints.iter().any(|c| matches!(c, ColumnConstraint::PrimaryKey)),
-                auto_increment: false, // TODO: Extract from constraints
+                auto_increment,
                 unique: col.constraints.iter().any(|c| matches!(c, ColumnConstraint::Unique)),
-                constraints: Vec::new(), // TODO: Extract constraints
-            }).collect(),
-            indexes: Vec::new(), // TODO: Support indexes
-            foreign_keys: Vec::new(), // TODO: Extract foreign keys
-            constraints: Vec::new(), // TODO: Support table constraints
+                constraints: introspector_constraints,
+            }
+        }).collect();
+        
+        // Generate table-level constraints for comprehensive constraint management
+        for col in &self.columns {
+            for constraint in &col.constraints {
+                match constraint {
+                    ColumnConstraint::NotNull => {
+                        table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
+                            name: format!("nn_{}", col.name),
+                            constraint_type: crate::auto_migration::introspector::ConstraintType::NotNull,
+                            definition: format!("{} NOT NULL", col.name),
+                        });
+                    },
+                    ColumnConstraint::PrimaryKey => {
+                        table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
+                            name: format!("pk_{}", col.name),
+                            constraint_type: crate::auto_migration::introspector::ConstraintType::PrimaryKey,
+                            definition: format!("PRIMARY KEY ({})", col.name),
+                        });
+                    },
+                    ColumnConstraint::Unique => {
+                        table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
+                            name: format!("uq_{}", col.name),
+                            constraint_type: crate::auto_migration::introspector::ConstraintType::Unique,
+                            definition: format!("UNIQUE ({})", col.name),
+                        });
+                    },
+                    ColumnConstraint::Default(value) => {
+                        // Default constraints are handled at column level, not table level
+                        // but we include them for completeness
+                        table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
+                            name: format!("df_{}", col.name),
+                            constraint_type: crate::auto_migration::introspector::ConstraintType::Check,
+                            definition: format!("{} DEFAULT {}", col.name, value),
+                        });
+                    },
+                    ColumnConstraint::ForeignKey { table, column } => {
+                        table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
+                            name: format!("fk_{}_{}", col.name, table),
+                            constraint_type: crate::auto_migration::introspector::ConstraintType::ForeignKey,
+                            definition: format!("FOREIGN KEY ({}) REFERENCES {} ({})", col.name, table, column),
+                        });
+                    },
+                }
+            }
+        }
+        
+        let table_schema = TableSchema {
+            name: self.table_name.to_string(),
+            columns,
+            indexes: table_indexes,
+            foreign_keys: table_foreign_keys,
+            constraints: table_constraints,
         };
         
         tables.push(table_schema);
         
         DatabaseSchema { tables }
+    }
+    
+    /// Extract auto_increment flag for a specific column from Entity field definitions
+    fn extract_auto_increment_for_column(&self, column_name: &str) -> bool {
+        // Get field definitions from Entity and find matching column
+        let field_definitions = T::field_definitions();
+        field_definitions
+            .iter()
+            .find(|field| field.name == column_name)
+            .map(|field| field.auto_increment)
+            .unwrap_or(false)
+    }
+    
+    /// Convert ColumnConstraint enums to string representations for backward compatibility
+    pub fn extract_constraint_strings(&self, constraints: &[ColumnConstraint]) -> Vec<String> {
+        constraints
+            .iter()
+            .map(|constraint| match constraint {
+                ColumnConstraint::NotNull => "NOT NULL".to_string(),
+                ColumnConstraint::PrimaryKey => "PRIMARY KEY".to_string(),
+                ColumnConstraint::Unique => "UNIQUE".to_string(),
+                ColumnConstraint::Default(value) => format!("DEFAULT {}", value),
+                ColumnConstraint::ForeignKey { table, column } => {
+                    format!("REFERENCES {} ({})", table, column)
+                },
+            })
+            .collect()
+    }
+    
+    /// Convert type_safe_migrations ColumnConstraint to introspector ColumnConstraint format
+    fn convert_to_introspector_constraints(&self, constraints: &[ColumnConstraint]) -> Vec<crate::auto_migration::introspector::ColumnConstraint> {
+        constraints
+            .iter()
+            .filter_map(|constraint| match constraint {
+                // Convert ForeignKey constraints to References format
+                ColumnConstraint::ForeignKey { table, column } => {
+                    Some(crate::auto_migration::introspector::ColumnConstraint::References {
+                        table: table.clone(),
+                        column: column.clone(),
+                    })
+                },
+                // Convert Default constraints with conditions to Check format
+                ColumnConstraint::Default(value) if value.contains(">=") || value.contains("<=") || value.contains("IN") => {
+                    Some(crate::auto_migration::introspector::ColumnConstraint::Check {
+                        expression: format!("DEFAULT {}", value),
+                    })
+                },
+                // Convert simple Default constraints
+                ColumnConstraint::Default(value) => {
+                    Some(crate::auto_migration::introspector::ColumnConstraint::Check {
+                        expression: format!("DEFAULT {}", value),
+                    })
+                },
+                // Convert PrimaryKey constraints
+                ColumnConstraint::PrimaryKey => {
+                    Some(crate::auto_migration::introspector::ColumnConstraint::Check {
+                        expression: "PRIMARY KEY".to_string(),
+                    })
+                },
+                // Convert NotNull constraints  
+                ColumnConstraint::NotNull => {
+                    Some(crate::auto_migration::introspector::ColumnConstraint::Check {
+                        expression: "NOT NULL".to_string(),
+                    })
+                },
+                // Convert Unique constraints
+                ColumnConstraint::Unique => {
+                    Some(crate::auto_migration::introspector::ColumnConstraint::Check {
+                        expression: "UNIQUE".to_string(),
+                    })
+                },
+            })
+            .collect()
     }
 }
 
@@ -252,11 +429,19 @@ impl TypeSafeColumnSchema {
         }
     }
     
-    /// Check if type is Option<T> at compile time
+    /// Check if type is Option<T> at compile time using trait-based detection
     fn is_option_type<R>() -> bool {
-        // This would be implemented via macro or const trait system
-        // For now, we'll use a simpler heuristic
-        false // TODO: Implement proper Option<T> detection
+        // Use type name analysis for Option<T> detection - this is compile-time safe
+        let type_name = std::any::type_name::<R>();
+        
+        // Check for Option<T> patterns with comprehensive matching
+        type_name.starts_with("core::option::Option<") ||
+        type_name.starts_with("std::option::Option<") ||
+        type_name.starts_with("option::Option<") ||
+        type_name.starts_with("Option<") ||
+        // Handle fully qualified Option types
+        type_name.contains("::Option<") && 
+            (type_name.contains("core::") || type_name.contains("std::"))
     }
     
     /// Check if type is floating point at compile time
@@ -1353,6 +1538,326 @@ mod tests {
         // Should be very fast - creating 100 planners in under 10ms
         assert!(duration.as_millis() < 10, 
             "Creating 100 migration planners took {}ms, should be under 10ms", 
+            duration.as_millis());
+    }
+    
+    // =======================================================================
+    // PHASE 1.6.1 COMPREHENSIVE TESTS: Schema Evolution Placeholder Replacement
+    // =======================================================================
+    
+    #[test]
+    fn test_default_value_extraction_from_constraints() {
+        // Test that default values are properly extracted from ColumnConstraint::Default
+        let schema = TypeSafeSchema::<TestUser>::from_entity();
+        let db_schema = schema.to_database_schema();
+        
+        let table = db_schema.get_table("test_users").unwrap();
+        
+        // Find columns with default values
+        let is_active_col = table.columns.iter().find(|c| c.name == "is_active").unwrap();
+        let score_col = table.columns.iter().find(|c| c.name == "score").unwrap();
+        
+        // Verify default values are extracted correctly
+        assert_eq!(is_active_col.default_value, Some("true".to_string()));
+        assert_eq!(score_col.default_value, Some("0.0".to_string()));
+        
+        // Verify columns without defaults have None
+        let name_col = table.columns.iter().find(|c| c.name == "name").unwrap();
+        assert_eq!(name_col.default_value, None);
+    }
+    
+    #[test]
+    fn test_auto_increment_extraction_from_field_definitions() {
+        // Test that auto_increment is properly extracted from FieldDefinition
+        let schema = TypeSafeSchema::<TestUser>::from_entity();
+        let db_schema = schema.to_database_schema();
+        
+        let table = db_schema.get_table("test_users").unwrap();
+        
+        // ID field should have auto_increment = true
+        let id_col = table.columns.iter().find(|c| c.name == "id").unwrap();
+        assert!(id_col.auto_increment, "ID column should have auto_increment enabled");
+        
+        // Other fields should have auto_increment = false
+        let name_col = table.columns.iter().find(|c| c.name == "name").unwrap();
+        assert!(!name_col.auto_increment, "Name column should not have auto_increment");
+        
+        let email_col = table.columns.iter().find(|c| c.name == "email").unwrap();
+        assert!(!email_col.auto_increment, "Email column should not have auto_increment");
+    }
+    
+    #[test]
+    fn test_constraint_string_extraction() {
+        // Test that ColumnConstraint enums are properly converted to string representations
+        let schema = TypeSafeSchema::<TestUser>::from_entity();
+        
+        // Test the extract_constraint_strings method directly
+        let test_constraints = vec![
+            ColumnConstraint::NotNull,
+            ColumnConstraint::PrimaryKey,
+            ColumnConstraint::Unique,
+            ColumnConstraint::Default("'default_value'".to_string()),
+            ColumnConstraint::ForeignKey { 
+                table: "other_table".to_string(), 
+                column: "other_id".to_string() 
+            },
+        ];
+        
+        let constraint_strings = schema.extract_constraint_strings(&test_constraints);
+        
+        assert_eq!(constraint_strings.len(), 5);
+        assert!(constraint_strings.contains(&"NOT NULL".to_string()));
+        assert!(constraint_strings.contains(&"PRIMARY KEY".to_string()));
+        assert!(constraint_strings.contains(&"UNIQUE".to_string()));
+        assert!(constraint_strings.contains(&"DEFAULT 'default_value'".to_string()));
+        assert!(constraint_strings.contains(&"REFERENCES other_table (other_id)".to_string()));
+    }
+    
+    #[test]
+    fn test_index_generation_for_constraints() {
+        // Test that indexes are properly generated for unique and primary key constraints
+        let schema = TypeSafeSchema::<TestUser>::from_entity();
+        let db_schema = schema.to_database_schema();
+        
+        let table = db_schema.get_table("test_users").unwrap();
+        
+        // Should have indexes for primary key and unique constraints
+        assert!(!table.indexes.is_empty(), "Table should have generated indexes");
+        
+        // Should have primary key index for id column
+        let pk_index = table.indexes.iter().find(|idx| 
+            idx.name.starts_with("idx_pk_") && idx.columns.contains(&"id".to_string())
+        );
+        assert!(pk_index.is_some(), "Should have primary key index for id column");
+        
+        if let Some(idx) = pk_index {
+            assert!(idx.unique, "Primary key index should be unique");
+            assert_eq!(idx.table_name, Some("test_users".to_string()));
+        }
+        
+        // Verify index names follow the expected pattern
+        for index in &table.indexes {
+            assert!(index.name.starts_with("idx_"), "Index names should start with 'idx_'");
+            assert!(!index.columns.is_empty(), "Indexes should have at least one column");
+        }
+    }
+    
+    #[test]
+    fn test_foreign_key_extraction_from_constraints() {
+        // Test that foreign keys are properly extracted from ColumnConstraint::ForeignKey
+        let schema = TypeSafeSchema::<TestPost>::from_entity();
+        let db_schema = schema.to_database_schema();
+        
+        let table = db_schema.get_table("test_posts").unwrap();
+        
+        // Should have foreign key for user_id
+        assert!(!table.foreign_keys.is_empty(), "Table should have foreign keys extracted");
+        
+        let user_fk = table.foreign_keys.iter().find(|fk| 
+            fk.columns.contains(&"user_id".to_string())
+        );
+        
+        assert!(user_fk.is_some(), "Should have foreign key for user_id");
+        
+        if let Some(fk) = user_fk {
+            assert_eq!(fk.referenced_table, "test_users");
+            assert!(fk.referenced_columns.contains(&"id".to_string()));
+            assert!(fk.name.contains("user_id"), "Foreign key name should contain column name");
+            assert!(fk.name.contains("test_users"), "Foreign key name should contain referenced table");
+        }
+    }
+    
+    #[test]
+    fn test_table_constraint_generation() {
+        // Test that table-level constraints are properly generated
+        let schema = TypeSafeSchema::<TestUser>::from_entity();
+        let db_schema = schema.to_database_schema();
+        
+        let table = db_schema.get_table("test_users").unwrap();
+        
+        // Should have table-level constraints
+        assert!(!table.constraints.is_empty(), "Table should have constraints generated");
+        
+        // Check for specific constraint types
+        let has_not_null = table.constraints.iter().any(|c| 
+            c.constraint_type == crate::auto_migration::introspector::ConstraintType::NotNull
+        );
+        let has_primary_key = table.constraints.iter().any(|c| 
+            c.constraint_type == crate::auto_migration::introspector::ConstraintType::PrimaryKey
+        );
+        
+        assert!(has_not_null, "Should have NOT NULL constraints");
+        assert!(has_primary_key, "Should have PRIMARY KEY constraint");
+        
+        // Verify constraint definitions are properly formatted
+        for constraint in &table.constraints {
+            assert!(!constraint.name.is_empty(), "Constraint should have a name");
+            assert!(!constraint.definition.is_empty(), "Constraint should have a definition");
+        }
+    }
+    
+    #[test]
+    fn test_proper_option_type_detection() {
+        // Test that Option<T> types are properly detected using the new implementation
+        
+        // Test basic Option types
+        assert!(TypeSafeColumnSchema::is_option_type::<Option<i32>>(), 
+            "Should detect Option<i32> as optional");
+        assert!(TypeSafeColumnSchema::is_option_type::<Option<String>>(), 
+            "Should detect Option<String> as optional");
+        assert!(TypeSafeColumnSchema::is_option_type::<Option<bool>>(), 
+            "Should detect Option<bool> as optional");
+        
+        // Test non-Option types
+        assert!(!TypeSafeColumnSchema::is_option_type::<i32>(), 
+            "Should not detect i32 as optional");
+        assert!(!TypeSafeColumnSchema::is_option_type::<String>(), 
+            "Should not detect String as optional");
+        assert!(!TypeSafeColumnSchema::is_option_type::<bool>(), 
+            "Should not detect bool as optional");
+        
+        // Test nested Option types
+        assert!(TypeSafeColumnSchema::is_option_type::<Option<Option<i32>>>(), 
+            "Should detect nested Option types");
+        
+        // Test complex Option types
+        assert!(TypeSafeColumnSchema::is_option_type::<Option<Vec<String>>>(), 
+            "Should detect Option<Vec<String>> as optional");
+    }
+    
+    #[test]
+    fn test_comprehensive_database_schema_conversion() {
+        // Test complete conversion from TypeSafeSchema to DatabaseSchema with all features
+        let schema = TypeSafeSchema::<TestUser>::from_entity();
+        let db_schema = schema.to_database_schema();
+        
+        // Verify table exists
+        let table = db_schema.get_table("test_users").unwrap();
+        assert_eq!(table.name, "test_users");
+        
+        // Verify all expected columns exist
+        let expected_columns = ["id", "name", "email", "is_active", "age", "score"];
+        for col_name in &expected_columns {
+            assert!(table.columns.iter().any(|c| c.name == *col_name), 
+                "Should have column: {}", col_name);
+        }
+        
+        // Verify column properties are properly set
+        let id_col = table.columns.iter().find(|c| c.name == "id").unwrap();
+        assert!(id_col.primary_key, "ID should be primary key");
+        assert!(id_col.auto_increment, "ID should be auto increment");
+        assert!(!id_col.nullable, "ID should not be nullable");
+        
+        let age_col = table.columns.iter().find(|c| c.name == "age").unwrap();
+        assert!(age_col.nullable, "Age should be nullable (Option<i32>)");
+        assert!(!age_col.primary_key, "Age should not be primary key");
+        
+        // Verify constraints are comprehensive
+        assert!(!table.constraints.is_empty(), "Should have table constraints");
+        assert!(!table.indexes.is_empty(), "Should have table indexes");
+        
+        // Verify all constraint strings are populated
+        for column in &table.columns {
+            if column.primary_key || !column.nullable || column.unique || column.default_value.is_some() {
+                assert!(!column.constraints.is_empty(), 
+                    "Column '{}' should have constraint strings", column.name);
+            }
+        }
+    }
+    
+    #[test]
+    fn test_foreign_key_schema_with_test_post() {
+        // Test foreign key generation with TestPost entity that has foreign key relationships
+        let schema = TypeSafeSchema::<TestPost>::from_entity();
+        let db_schema = schema.to_database_schema();
+        
+        let table = db_schema.get_table("test_posts").unwrap();
+        
+        // Verify foreign key is properly generated
+        assert_eq!(table.foreign_keys.len(), 1, "Should have exactly one foreign key");
+        
+        let fk = &table.foreign_keys[0];
+        assert_eq!(fk.referenced_table, "test_users");
+        assert_eq!(fk.columns, vec!["user_id"]);
+        assert_eq!(fk.referenced_columns, vec!["id"]);
+        assert!(fk.name.contains("fk_user_id"), "Foreign key name should include column name");
+        
+        // Verify foreign key constraint is also in table constraints
+        let fk_constraint = table.constraints.iter().find(|c| 
+            c.constraint_type == crate::auto_migration::introspector::ConstraintType::ForeignKey
+        );
+        assert!(fk_constraint.is_some(), "Should have foreign key table constraint");
+        
+        if let Some(constraint) = fk_constraint {
+            assert!(constraint.definition.contains("FOREIGN KEY"));
+            assert!(constraint.definition.contains("user_id"));
+            assert!(constraint.definition.contains("test_users"));
+        }
+    }
+    
+    #[test]
+    fn test_edge_cases_and_boundary_conditions() {
+        // Test edge cases and boundary conditions for Phase 1.6.1 implementations
+        
+        // Test empty constraint list
+        let schema = TypeSafeSchema::<TestUser>::from_entity();
+        let empty_constraints: Vec<ColumnConstraint> = vec![];
+        let constraint_strings = schema.extract_constraint_strings(&empty_constraints);
+        assert!(constraint_strings.is_empty(), "Empty constraints should result in empty strings");
+        
+        // Test column that doesn't exist in field definitions
+        let nonexistent_auto_increment = schema.extract_auto_increment_for_column("nonexistent_column");
+        assert!(!nonexistent_auto_increment, "Nonexistent column should not have auto_increment");
+        
+        // Test constraint with special characters in values
+        let special_constraints = vec![
+            ColumnConstraint::Default("'test''quote'".to_string()),
+            ColumnConstraint::ForeignKey { 
+                table: "table_with_underscore".to_string(), 
+                column: "column_with_number_123".to_string() 
+            },
+        ];
+        let special_strings = schema.extract_constraint_strings(&special_constraints);
+        assert_eq!(special_strings.len(), 2);
+        assert!(special_strings[0].contains("'test''quote'"));
+        assert!(special_strings[1].contains("table_with_underscore"));
+        assert!(special_strings[1].contains("column_with_number_123"));
+    }
+    
+    #[test]
+    fn test_performance_of_new_implementations() {
+        // Test performance of new Phase 1.6.1 implementations
+        use std::time::Instant;
+        
+        let start = Instant::now();
+        
+        // Test performance of schema conversion with full constraint extraction
+        for _ in 0..100 {
+            let schema = TypeSafeSchema::<TestUser>::from_entity();
+            let _db_schema = schema.to_database_schema();
+        }
+        
+        let duration = start.elapsed();
+        
+        // Should be reasonably fast - 100 conversions in under 200ms
+        assert!(duration.as_millis() < 200, 
+            "100 schema conversions took {}ms, should be under 200ms", 
+            duration.as_millis());
+        
+        // Test Option<T> detection performance
+        let start = Instant::now();
+        
+        for _ in 0..1000 {
+            let _is_option_i32 = TypeSafeColumnSchema::is_option_type::<Option<i32>>();
+            let _is_option_string = TypeSafeColumnSchema::is_option_type::<Option<String>>();
+            let _is_not_option = TypeSafeColumnSchema::is_option_type::<i32>();
+        }
+        
+        let duration = start.elapsed();
+        
+        // Option detection should be very fast
+        assert!(duration.as_millis() < 50, 
+            "1000 Option<T> detections took {}ms, should be under 50ms", 
             duration.as_millis());
     }
 }

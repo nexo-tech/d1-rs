@@ -139,7 +139,7 @@ pub struct PerformanceImpactResult {
 }
 
 /// Individual validation issue
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RollbackValidationIssue {
     /// Type of operation causing the issue
     pub operation_type: String,
@@ -367,8 +367,8 @@ impl RollbackRiskAssessor {
         
         // Perform operation-specific validation
         match operation {
-            RollbackOperation::RecreateTable { definition, restore_data, .. } => {
-                self.validate_recreate_table_safety(&definition.name, definition, *restore_data, schema, &mut issues);
+            RollbackOperation::RecreateTable { definition, restore_data, data_source } => {
+                self.validate_recreate_table_safety(&definition.name, definition, *restore_data, data_source.as_ref(), schema, &mut issues);
             }
             RollbackOperation::DropTable { name, .. } => {
                 self.validate_drop_table_safety(name, schema, &mut issues);
@@ -747,7 +747,7 @@ impl RollbackRiskAssessor {
     // Validation helper methods that would be implemented for each operation type
     // These are placeholder implementations for the comprehensive functionality
     
-    fn validate_recreate_table_safety(&self, name: &str, definition: &TableSchema, restore_data: bool, schema: &DatabaseSchema, issues: &mut Vec<RollbackValidationIssue>) {
+    fn validate_recreate_table_safety(&self, name: &str, definition: &TableSchema, restore_data: bool, data_source: Option<&String>, schema: &DatabaseSchema, issues: &mut Vec<RollbackValidationIssue>) {
         // Check if table exists in current schema
         if !self.table_exists(name, schema) {
             issues.push(RollbackValidationIssue {
@@ -803,6 +803,93 @@ impl RollbackRiskAssessor {
                 affected_table: Some(name.to_string()),
                 affected_column: None,
             });
+        }
+        
+        // Validate backup data source compatibility if restore_data is enabled
+        if restore_data {
+            if let Some(backup_table_name) = data_source {
+                // Check if backup table exists
+                if let Some(backup_table) = schema.tables.iter().find(|t| &t.name == backup_table_name) {
+                    // Validate schema compatibility between target and backup tables
+                    for target_column in &definition.columns {
+                        match backup_table.columns.iter().find(|c| c.name == target_column.name) {
+                            Some(backup_column) => {
+                                // Check type compatibility
+                                if self.is_type_conversion_incompatible(&backup_column.column_type, &target_column.column_type) {
+                                    issues.push(RollbackValidationIssue {
+                                        operation_type: "recreate_table".to_string(),
+                                        description: format!(
+                                            "Backup table '{}' column '{}' type '{}' is incompatible with target type '{}'",
+                                            backup_table_name, target_column.name, backup_column.column_type, target_column.column_type
+                                        ),
+                                        severity: RollbackRiskSeverity::Critical,
+                                        mitigation: "Fix backup table schema or use data transformation during restoration".to_string(),
+                                        affected_table: Some(name.to_string()),
+                                        affected_column: Some(target_column.name.clone()),
+                                    });
+                                }
+                            }
+                            None => {
+                                // Missing column in backup table
+                                issues.push(RollbackValidationIssue {
+                                    operation_type: "recreate_table".to_string(),
+                                    description: format!(
+                                        "Backup table '{}' is missing required column '{}' for data restoration",
+                                        backup_table_name, target_column.name
+                                    ),
+                                    severity: RollbackRiskSeverity::Critical,
+                                    mitigation: "Update backup table to include all required columns or disable data restoration".to_string(),
+                                    affected_table: Some(name.to_string()),
+                                    affected_column: Some(target_column.name.clone()),
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Check for extra columns in backup table that might indicate corruption
+                    for backup_column in &backup_table.columns {
+                        if !definition.columns.iter().any(|c| c.name == backup_column.name) {
+                            issues.push(RollbackValidationIssue {
+                                operation_type: "recreate_table".to_string(),
+                                description: format!(
+                                    "Backup table '{}' contains unexpected column '{}' not present in target schema",
+                                    backup_table_name, backup_column.name
+                                ),
+                                severity: RollbackRiskSeverity::High,
+                                mitigation: "Verify backup integrity and ensure backup matches expected schema".to_string(),
+                                affected_table: Some(name.to_string()),
+                                affected_column: Some(backup_column.name.clone()),
+                            });
+                        }
+                    }
+                } else {
+                    // Backup table doesn't exist
+                    issues.push(RollbackValidationIssue {
+                        operation_type: "recreate_table".to_string(),
+                        description: format!(
+                            "Backup table '{}' specified for data restoration does not exist",
+                            backup_table_name
+                        ),
+                        severity: RollbackRiskSeverity::Blocking,
+                        mitigation: "Create backup table or disable data restoration".to_string(),
+                        affected_table: Some(name.to_string()),
+                        affected_column: None,
+                    });
+                }
+            } else {
+                // No data source specified but restore_data is true
+                issues.push(RollbackValidationIssue {
+                    operation_type: "recreate_table".to_string(),
+                    description: format!(
+                        "Data restoration enabled for table '{}' but no backup data source specified",
+                        name
+                    ),
+                    severity: RollbackRiskSeverity::High,
+                    mitigation: "Specify backup data source or disable data restoration".to_string(),
+                    affected_table: Some(name.to_string()),
+                    affected_column: None,
+                });
+            }
         }
         
         // Check for dependent foreign key constraints
@@ -1228,6 +1315,41 @@ impl RollbackRiskAssessor {
         }
         
         
+        // Check for type incompatibility issues
+        if let Some((from_type, to_type)) = &changes.type_change {
+            // Detect potentially problematic type conversions
+            let is_incompatible_conversion = self.is_type_conversion_incompatible(from_type, to_type);
+            
+            if is_incompatible_conversion {
+                issues.push(RollbackValidationIssue {
+                    operation_type: "modify_column".to_string(),
+                    description: format!(
+                        "Type conversion from '{}' to '{}' for column '{}' may cause data loss or conversion errors",
+                        from_type, to_type, column
+                    ),
+                    severity: RollbackRiskSeverity::High,
+                    mitigation: "Validate data compatibility before conversion or use safe conversion methods".to_string(),
+                    affected_table: Some(table.to_string()),
+                    affected_column: Some(column.to_string()),
+                });
+            }
+            
+            // Check for data preservation risks when type changes and preserve_data is true
+            if preserve_data {
+                issues.push(RollbackValidationIssue {
+                    operation_type: "modify_column".to_string(),
+                    description: format!(
+                        "Data preservation requested with type change from '{}' to '{}' - conversion may alter data",
+                        from_type, to_type
+                    ),
+                    severity: RollbackRiskSeverity::Warning,
+                    mitigation: "Review data conversion results to ensure accuracy".to_string(),
+                    affected_table: Some(table.to_string()),
+                    affected_column: Some(column.to_string()),
+                });
+            }
+        }
+        
         // Check if column is involved in relationships when making major changes
         if changes.type_change.is_some() {
             let current_column = column_schema.unwrap();
@@ -1264,6 +1386,63 @@ impl RollbackRiskAssessor {
                         });
                     }
                 }
+            }
+        }
+        
+        // Check for unique constraint violations
+        if column_schema.unwrap().unique {
+            issues.push(RollbackValidationIssue {
+                operation_type: "modify_column".to_string(),
+                description: format!(
+                    "Modifying unique column '{}' may cause constraint violations if duplicate values exist",
+                    column
+                ),
+                severity: RollbackRiskSeverity::High,
+                mitigation: "Ensure data uniqueness is maintained after column modification".to_string(),
+                affected_table: Some(table.to_string()),
+                affected_column: Some(column.to_string()),
+            });
+        }
+        
+        // Check if column is part of unique indexes
+        for index in &table_schema.indexes {
+            if index.unique && index.columns.contains(&column.to_string()) {
+                issues.push(RollbackValidationIssue {
+                    operation_type: "modify_column".to_string(),
+                    description: format!(
+                        "Column '{}' is part of unique index '{}' - modification may cause constraint violations",
+                        column, index.name
+                    ),
+                    severity: RollbackRiskSeverity::High,
+                    mitigation: "Verify unique constraint compatibility after column modification".to_string(),
+                    affected_table: Some(table.to_string()),
+                    affected_column: Some(column.to_string()),
+                });
+            }
+        }
+        
+        // Check for check constraints on the column
+        let current_column = column_schema.unwrap();
+        for constraint in &current_column.constraints {
+            if let crate::auto_migration::introspector::ColumnConstraint::Check { expression } = constraint {
+                // Any modification to a column with check constraints poses risks
+                let severity = if changes.type_change.is_some() { 
+                    RollbackRiskSeverity::High 
+                } else { 
+                    RollbackRiskSeverity::Warning 
+                };
+                
+                issues.push(RollbackValidationIssue {
+                    operation_type: "modify_column".to_string(),
+                    description: format!(
+                        "Column '{}' has check constraint '{}' that may be affected by modification",
+                        column, expression
+                    ),
+                    severity,
+                    mitigation: "Verify that existing data and future values will satisfy the check constraint after modification".to_string(),
+                    affected_table: Some(table.to_string()),
+                    affected_column: Some(column.to_string()),
+                });
             }
         }
         

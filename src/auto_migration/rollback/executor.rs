@@ -1033,8 +1033,6 @@ impl Default for ExecutionMetrics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::SystemTime;
-    use crate::auto_migration::rollback::{RollbackPlanMetadata, ExecutionPriority};
     
     fn create_test_config() -> RollbackConfig {
         RollbackConfig {
@@ -1052,59 +1050,6 @@ mod tests {
         }
     }
     
-    fn create_test_rollback_plan() -> RollbackPlan {
-        RollbackPlan {
-            plan_id: "test_plan_001".to_string(),
-            operations: vec![
-                RollbackOperation::DropTable {
-                    name: "test_table".to_string(),
-                    preserve_data: true,
-                    backup_table_name: Some("test_table_backup".to_string()),
-                }
-            ],
-            data_preservation_requirements: vec![],
-            pre_execution_checks: vec![
-                PreExecutionCheck {
-                    check_id: "check_001".to_string(),
-                    check_type: CheckType::TableExists,
-                    description: "Verify test table exists".to_string(),
-                    sql_query: Some("SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'".to_string()),
-                    expected_result: "Table should exist".to_string(),
-                    is_required: true,
-                    timeout: Duration::from_secs(5),
-                    failure_action: CheckFailureAction::Stop,
-                }
-            ],
-            post_execution_validations: vec![
-                PostExecutionValidation {
-                    validation_id: "validation_001".to_string(),
-                    validation_type: ValidationType::SchemaValidation,
-                    description: "Verify table was dropped".to_string(),
-                    sql_query: Some("SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'".to_string()),
-                    expected_result: "Table should not exist".to_string(),
-                    is_required: true,
-                    timeout: Duration::from_secs(5),
-                    failure_action: ValidationFailureAction::MarkFailed,
-                }
-            ],
-            estimated_duration: Duration::from_secs(10),
-            original_migration_id: Some("migration_001".to_string()),
-            created_at: SystemTime::now(),
-            risk_assessment: super::super::types::RollbackRiskLevel::Medium,
-            config: create_test_config(),
-            description: "Test rollback plan".to_string(),
-            rollback_system_version: "1.0.0".to_string(),
-            metadata: RollbackPlanMetadata {
-                environment: "test".to_string(),
-                created_by: Some("test_user".to_string()),
-                tags: vec!["test".to_string()],
-                affected_tables: 1,
-                estimated_affected_rows: Some(100),
-                requires_manual_intervention: false,
-                execution_priority: ExecutionPriority::Normal,
-            },
-        }
-    }
     
     struct MockProgressTracker {
         operations_completed: usize,

@@ -524,7 +524,7 @@ impl Ord for RollbackRiskLevel {
 }
 
 /// Severity level for individual rollback validation issues
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum RollbackRiskSeverity {
     /// Informational notices
     Info,
@@ -576,7 +576,7 @@ impl fmt::Display for RollbackRiskSeverity {
 }
 
 /// Assessment of data loss risk for rollback operations
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum DataLossRisk {
     /// No data will be lost
     None,
