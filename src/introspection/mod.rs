@@ -341,9 +341,17 @@ pub mod schema;
 /// Schema conversion utilities for cross-database compatibility
 pub mod converter;
 
+/// Cross-database type mapping system
+pub mod type_mapping;
+
 // Re-export unified schema types for convenience
 pub use schema::*;
 pub use converter::{SchemaConverter, TypeMapper, TableQueryResults};
+pub use type_mapping::{
+    CrossDatabaseTypeMapper, TypeMappingAnalyzer, CompatibilityLevel, FeatureSupportMatrix,
+    JsonSupportLevel, ValidationResult, MappingAnalysis, TypeMapping, PrecisionInfo,
+    TypeConstraint, DefaultMapping, ConstraintMappings
+};
 
 /// Utility functions for schema introspection
 pub mod utils {
