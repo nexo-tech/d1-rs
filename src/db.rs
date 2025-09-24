@@ -1,4 +1,6 @@
 use crate::{Result, D1RsError};
+use crate::backends::{DatabaseBackend, QueryResult};
+use crate::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -38,6 +40,7 @@ impl D1Client {
             .map_err(|e| D1RsError::Database(e.to_string()))?;
         Ok(Self::new_sqlite(conn))
     }
+    
 
     pub async fn execute(&self, sql: &str, params: &[Value]) -> Result<D1QueryResult> {
         #[cfg(target_arch = "wasm32")]
@@ -231,6 +234,66 @@ impl D1Client {
     }
 }
 
+// Generic DatabaseClient that works with any backend
+#[derive(Clone)]
+pub struct DatabaseClient<B: DatabaseBackend> {
+    backend: B,
+    dialect: DatabaseDialect,
+}
+
+impl<B: DatabaseBackend> DatabaseClient<B> {
+    pub fn new(backend: B) -> Self {
+        let dialect = backend.dialect();
+        Self { backend, dialect }
+    }
+    
+    pub fn dialect(&self) -> DatabaseDialect {
+        self.dialect
+    }
+    
+    // Direct query execution (for raw SQL during migration period)
+    pub async fn execute(&self, sql: &str, params: &[Value]) -> std::result::Result<B::QueryResult, B::Error> {
+        self.backend.execute_query(sql, params).await
+    }
+    
+    pub async fn execute_returning_one(&self, sql: &str, params: &[Value]) -> std::result::Result<Option<HashMap<String, Value>>, B::Error> {
+        let result = self.execute(sql, params).await?;
+        
+        // Convert first row to HashMap
+        if let Some(row) = result.rows().first() {
+            if let Value::Object(obj) = row {
+                let hashmap: HashMap<String, Value> = obj.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                return Ok(Some(hashmap));
+            }
+        }
+        Ok(None)
+    }
+    
+    pub async fn execute_returning_count(&self, sql: &str, params: &[Value]) -> std::result::Result<i64, B::Error> 
+    where
+        B::Error: From<<<B as DatabaseBackend>::QueryResult as QueryResult>::Error>,
+    {
+        let result = self.execute(sql, params).await?;
+        // Convert QueryResult error to Backend error using From trait
+        result.extract_count().map_err(B::Error::from)
+    }
+    
+    // Schema operations
+    pub async fn execute_schema(&self, sql: &str) -> std::result::Result<(), B::Error> {
+        self.backend.execute_schema(sql).await
+    }
+    
+    // Health check
+    pub async fn ping(&self) -> std::result::Result<(), B::Error> {
+        self.backend.ping().await
+    }
+}
+
+// Type alias for SQLite backend (most common case)
+pub type SQLiteClient = DatabaseClient<crate::backends::SQLiteBackend>;
+
 #[derive(Debug)]
 pub struct D1QueryResult {
     pub rows: Vec<Value>,
@@ -292,5 +355,168 @@ impl D1QueryResult {
         serde_json::from_value(converted_value)
             .map_err(|e| D1RsError::SerializationError(e.to_string()))
     }
+}
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backends::SQLiteBackend;
+    
+    #[tokio::test]
+    async fn test_database_client_creation() {
+        let backend = SQLiteBackend::new_in_memory().await.expect("Failed to create backend");
+        let client = DatabaseClient::new(backend);
+        
+        assert_eq!(client.dialect(), DatabaseDialect::SQLite);
+    }
+    
+    #[tokio::test]
+    async fn test_database_client_execute() {
+        let backend = SQLiteBackend::new_in_memory().await.expect("Failed to create backend");
+        let client = DatabaseClient::new(backend);
+        
+        // Create a test table
+        let create_sql = "CREATE TABLE test_users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)";
+        client.execute_schema(create_sql).await.expect("Failed to create table");
+        
+        // Insert test data
+        let insert_sql = "INSERT INTO test_users (name, email) VALUES (?, ?) RETURNING *";
+        let params = vec![
+            serde_json::json!("John Doe"),
+            serde_json::json!("john@example.com"),
+        ];
+        
+        let result = client.execute(insert_sql, &params).await.expect("Failed to insert");
+        assert_eq!(result.len(), 1);
+        assert!(!result.is_empty());
+    }
+    
+    #[tokio::test]
+    async fn test_database_client_execute_returning_one() {
+        let backend = SQLiteBackend::new_in_memory().await.expect("Failed to create backend");
+        let client = DatabaseClient::new(backend);
+        
+        // Create a test table
+        let create_sql = "CREATE TABLE test_users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)";
+        client.execute_schema(create_sql).await.expect("Failed to create table");
+        
+        // Insert test data
+        let insert_sql = "INSERT INTO test_users (name, email) VALUES (?, ?) RETURNING *";
+        let params = vec![
+            serde_json::json!("Jane Smith"),
+            serde_json::json!("jane@example.com"),
+        ];
+        
+        let result = client.execute_returning_one(insert_sql, &params).await.expect("Failed to insert");
+        assert!(result.is_some());
+        
+        let user = result.unwrap();
+        assert_eq!(user.get("name"), Some(&serde_json::json!("Jane Smith")));
+        assert_eq!(user.get("email"), Some(&serde_json::json!("jane@example.com")));
+        assert!(user.contains_key("id"));
+    }
+    
+    #[tokio::test]
+    async fn test_database_client_execute_returning_count() {
+        let backend = SQLiteBackend::new_in_memory().await.expect("Failed to create backend");
+        let client = DatabaseClient::new(backend);
+        
+        // Create a test table
+        let create_sql = "CREATE TABLE test_users (id INTEGER PRIMARY KEY, name TEXT, active BOOLEAN DEFAULT 1)";
+        client.execute_schema(create_sql).await.expect("Failed to create table");
+        
+        // Insert test data
+        let insert_sql = "INSERT INTO test_users (name) VALUES (?), (?), (?)";
+        let params = vec![
+            serde_json::json!("User 1"),
+            serde_json::json!("User 2"),
+            serde_json::json!("User 3"),
+        ];
+        client.execute(insert_sql, &params).await.expect("Failed to insert");
+        
+        // Count active users
+        let count_sql = "SELECT COUNT(*) as count FROM test_users WHERE active = ?";
+        let count_params = vec![serde_json::json!(true)];
+        
+        let count = client.execute_returning_count(count_sql, &count_params).await.expect("Failed to count");
+        assert_eq!(count, 3);
+    }
+    
+    #[tokio::test]
+    async fn test_database_client_ping() {
+        let backend = SQLiteBackend::new_in_memory().await.expect("Failed to create backend");
+        let client = DatabaseClient::new(backend);
+        
+        // Ping should work for SQLite
+        client.ping().await.expect("Failed to ping database");
+    }
+    
+    #[tokio::test]
+    async fn test_database_client_complex_queries() {
+        let backend = SQLiteBackend::new_in_memory().await.expect("Failed to create backend");
+        let client = DatabaseClient::new(backend);
+        
+        // Create test tables
+        let create_users = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT UNIQUE)";
+        let create_posts = "CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER, title TEXT, content TEXT, FOREIGN KEY(user_id) REFERENCES users(id))";
+        
+        client.execute_schema(create_users).await.expect("Failed to create users table");
+        client.execute_schema(create_posts).await.expect("Failed to create posts table");
+        
+        // Insert test user
+        let insert_user = "INSERT INTO users (name, email) VALUES (?, ?) RETURNING id";
+        let user_params = vec![
+            serde_json::json!("Alice"),
+            serde_json::json!("alice@example.com"),
+        ];
+        
+        let user_result = client.execute_returning_one(insert_user, &user_params).await.expect("Failed to insert user");
+        let user_id = user_result.unwrap().get("id").unwrap().as_i64().unwrap();
+        
+        // Insert test posts
+        let insert_post = "INSERT INTO posts (user_id, title, content) VALUES (?, ?, ?), (?, ?, ?)";
+        let post_params = vec![
+            serde_json::json!(user_id),
+            serde_json::json!("First Post"),
+            serde_json::json!("This is the first post"),
+            serde_json::json!(user_id),
+            serde_json::json!("Second Post"),
+            serde_json::json!("This is the second post"),
+        ];
+        
+        client.execute(insert_post, &post_params).await.expect("Failed to insert posts");
+        
+        // Query with JOIN
+        let join_query = "SELECT u.name, u.email, p.title, p.content FROM users u JOIN posts p ON u.id = p.user_id WHERE u.id = ?";
+        let join_params = vec![serde_json::json!(user_id)];
+        
+        let join_result = client.execute(join_query, &join_params).await.expect("Failed to execute join query");
+        assert_eq!(join_result.len(), 2); // Should return 2 posts for Alice
+        
+        // Verify the joined data
+        let rows = join_result.rows();
+        assert_eq!(rows[0].get("name"), Some(&serde_json::json!("Alice")));
+        assert_eq!(rows[1].get("name"), Some(&serde_json::json!("Alice")));
+    }
+    
+    #[tokio::test]
+    async fn test_sqlite_client_type_alias() {
+        let backend = SQLiteBackend::new_in_memory().await.expect("Failed to create backend");
+        let client: SQLiteClient = DatabaseClient::new(backend);
+        
+        assert_eq!(client.dialect(), DatabaseDialect::SQLite);
+        
+        // Test basic functionality through type alias
+        let create_sql = "CREATE TABLE alias_test (id INTEGER PRIMARY KEY, value TEXT)";
+        client.execute_schema(create_sql).await.expect("Failed to create table");
+        
+        let insert_sql = "INSERT INTO alias_test (value) VALUES (?) RETURNING *";
+        let params = vec![serde_json::json!("test value")];
+        
+        let result = client.execute_returning_one(insert_sql, &params).await.expect("Failed to insert");
+        assert!(result.is_some());
+        
+        let record = result.unwrap();
+        assert_eq!(record.get("value"), Some(&serde_json::json!("test value")));
+    }
 }
