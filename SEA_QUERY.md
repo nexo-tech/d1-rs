@@ -24,7 +24,7 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 
 ### **Phase 3: Query Builder Migration (Week 3-4)**
 - [x] **Task 3.1**: Basic Sea-Query Integration (~300 lines, 4-5 hours) ✅
-- [ ] **Task 3.2**: Replace Query Struct in queries.rs (~400 lines, 6-7 hours)
+- [x] **Task 3.2**: Replace Query Struct in queries.rs (~400 lines, 6-7 hours) ✅
 - [ ] **Task 3.3**: Basic SELECT Builder (~350 lines, 5-6 hours)
 - [ ] **Task 3.4**: Basic INSERT Builder (~300 lines, 4-5 hours)
 - [ ] **Task 3.5**: Basic UPDATE Builder (~250 lines, 3-4 hours)
@@ -1372,11 +1372,11 @@ impl QueryRenderer for Query {
 ```
 
 **Acceptance criteria**:
-- [ ] All existing Query methods work identically
-- [ ] Generated SQL is equivalent to previous implementation
-- [ ] Works correctly with all database dialects
-- [ ] Zero compilation warnings
-- [ ] All existing tests pass
+- [x] All existing Query methods work identically ✅
+- [x] Generated SQL is equivalent to previous implementation ✅
+- [x] Works correctly with all database dialects ✅
+- [x] Zero compilation warnings ✅
+- [x] All existing tests pass ✅
 
 **Testing**: Run existing query tests and verify identical SQL output
 

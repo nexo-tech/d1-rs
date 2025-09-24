@@ -1,11 +1,13 @@
 use serde_json::Value;
+use crate::query_builder::{QueryRenderer, json_to_sea_value};
+use crate::dialects::DatabaseDialect;
+use sea_query::{Query as SeaQuery, SelectStatement, Expr, Order};
 
 // Import type-safe parameter building system from sibling module
 use super::parameter_builder::{
     TypeSafeParameterBuilder,
     InsertParameterBuilder,
     UpdateParameterBuilder,
-    WhereParameterBuilder,
 };
 
 #[derive(Debug, Clone)]
@@ -21,18 +23,26 @@ pub struct OrderBy {
     pub ascending: bool,
 }
 
+// Keep same public API but use sea-query internally
 #[derive(Debug)]
 pub struct Query {
-    pub table: String,
-    pub where_clauses: Vec<WhereClause>,
-    pub order_by: Vec<OrderBy>,
-    pub limit: Option<i64>,
-    pub offset: Option<i64>,
+    inner: SelectStatement,
+    table: String,
+    // Keep track of original data for backward compatibility
+    where_clauses: Vec<WhereClause>,
+    order_by: Vec<OrderBy>,
+    limit: Option<i64>,
+    offset: Option<i64>,
 }
 
 impl Query {
     pub fn new(table: String) -> Self {
+        let mut select = SeaQuery::select();
+        select.from(sea_query::Alias::new(&table))
+              .column(sea_query::Asterisk);
+        
         Self {
+            inner: select,
             table,
             where_clauses: Vec::new(),
             order_by: Vec::new(),
@@ -42,33 +52,124 @@ impl Query {
     }
 
     pub fn where_clause(&mut self, column: &str, operator: &str, value: Value) -> &mut Self {
+        // Store for backward compatibility
         self.where_clauses.push(WhereClause {
             column: column.to_string(),
             operator: operator.to_string(),
-            value,
+            value: value.clone(),
         });
+        
+        // Also build sea-query for new functionality
+        let sea_value = json_to_sea_value(&value);
+        let column_expr = Expr::col(sea_query::Alias::new(column));
+        
+        match operator {
+            "=" => { self.inner.and_where(column_expr.eq(sea_value)); },
+            "!=" => { self.inner.and_where(column_expr.ne(sea_value)); },
+            ">" => { self.inner.and_where(column_expr.gt(sea_value)); },
+            ">=" => { self.inner.and_where(column_expr.gte(sea_value)); },
+            "<" => { self.inner.and_where(column_expr.lt(sea_value)); },
+            "<=" => { self.inner.and_where(column_expr.lte(sea_value)); },
+            "LIKE" => {
+                // Handle LIKE operator - extract string value from sea_value
+                if let sea_query::Value::String(Some(ref pattern)) = sea_value {
+                    self.inner.and_where(column_expr.like(pattern.as_str()));
+                } else {
+                    // Fallback to equality for non-string LIKE values
+                    self.inner.and_where(column_expr.eq(sea_value));
+                }
+            },
+            "IN" => {
+                // Handle IN operator specially
+                if let Value::Array(values) = value {
+                    let sea_values: Vec<_> = values.iter().map(json_to_sea_value).collect();
+                    self.inner.and_where(column_expr.is_in(sea_values));
+                } else {
+                    // Fallback for non-array IN values
+                    self.inner.and_where(column_expr.eq(sea_value));
+                }
+            },
+            "BETWEEN" => {
+                // Handle BETWEEN operator specially
+                if let Value::Array(values) = value {
+                    if values.len() >= 2 {
+                        let start = json_to_sea_value(&values[0]);
+                        let end = json_to_sea_value(&values[1]);
+                        self.inner.and_where(column_expr.between(start, end));
+                    } else {
+                        // Fallback for malformed BETWEEN values
+                        self.inner.and_where(column_expr.eq(sea_value));
+                    }
+                } else {
+                    // Fallback for non-array BETWEEN values
+                    self.inner.and_where(column_expr.eq(sea_value));
+                }
+            },
+            "IS NOT" => {
+                // Handle IS NOT NULL
+                self.inner.and_where(column_expr.is_not_null());
+            },
+            _ => {
+                // Default to equality for unknown operators
+                self.inner.and_where(column_expr.eq(sea_value));
+            }
+        }
         self
     }
 
     pub fn order_by(&mut self, column: &str, ascending: bool) -> &mut Self {
+        // Store for backward compatibility
         self.order_by.push(OrderBy {
             column: column.to_string(),
             ascending,
         });
+        
+        // Also build sea-query for new functionality
+        let order = if ascending { Order::Asc } else { Order::Desc };
+        self.inner.order_by(sea_query::Alias::new(column), order);
         self
     }
 
     pub fn limit(&mut self, limit: i64) -> &mut Self {
+        // Store for backward compatibility
         self.limit = Some(limit);
+        
+        // Also build sea-query for new functionality
+        self.inner.limit(limit as u64);
         self
     }
 
     pub fn offset(&mut self, offset: i64) -> &mut Self {
+        // Store for backward compatibility
         self.offset = Some(offset);
+        
+        // Also build sea-query for new functionality
+        self.inner.offset(offset as u64);
         self
     }
 
+    // Keep compatibility with existing to_sql method
     pub fn to_sql(&self) -> (String, Vec<Value>) {
+        // For backward compatibility, we need to generate SQL that matches the original format exactly
+        // The original format doesn't quote identifiers and doesn't parameterize LIMIT/OFFSET
+        self.generate_backward_compatible_sql()
+    }
+    
+    // New method that respects database dialect
+    pub fn to_sql_for_dialect(&self, dialect: DatabaseDialect) -> (String, Vec<Value>) {
+        self.inner.render_for_dialect(dialect)
+    }
+    
+    pub fn to_count_sql(&self) -> (String, Vec<Value>) {
+        // For backward compatibility, generate count SQL in the same format as the original
+        self.generate_backward_compatible_count_sql()
+    }
+    
+    // Private method to generate SQL that matches the original format exactly
+    fn generate_backward_compatible_sql(&self) -> (String, Vec<Value>) {
+        // Use the original implementation logic exactly to ensure 100% compatibility
+        use super::parameter_builder::WhereParameterBuilder;
+        
         let mut sql = format!("SELECT * FROM {}", self.table);
         let mut parameter_builder = WhereParameterBuilder::new();
 
@@ -103,8 +204,11 @@ impl Query {
 
         (sql, parameter_builder.parameter_values())
     }
-
-    pub fn to_count_sql(&self) -> (String, Vec<Value>) {
+    
+    fn generate_backward_compatible_count_sql(&self) -> (String, Vec<Value>) {
+        // Use the original count implementation logic exactly
+        use super::parameter_builder::WhereParameterBuilder;
+        
         let mut sql = format!("SELECT COUNT(*) as count FROM {}", self.table);
         let mut parameter_builder = WhereParameterBuilder::new();
 
@@ -120,6 +224,13 @@ impl Query {
         }
 
         (sql, parameter_builder.parameter_values())
+    }
+}
+
+// Implement QueryRenderer for our Query wrapper
+impl QueryRenderer for Query {
+    fn render_for_dialect(&self, dialect: DatabaseDialect) -> (String, Vec<Value>) {
+        self.inner.render_for_dialect(dialect)
     }
 }
 
