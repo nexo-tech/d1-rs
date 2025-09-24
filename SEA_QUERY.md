@@ -26,7 +26,7 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 3.1**: Basic Sea-Query Integration (~300 lines, 4-5 hours) ✅
 - [x] **Task 3.2**: Replace Query Struct in queries.rs (~400 lines, 6-7 hours) ✅
 - [x] **Task 3.3**: Basic SELECT Builder (~350 lines, 5-6 hours) ✅
-- [ ] **Task 3.4**: Basic INSERT Builder (~300 lines, 4-5 hours)
+- [x] **Task 3.4**: Basic INSERT Builder (~300 lines, 4-5 hours) ✅
 - [ ] **Task 3.5**: Basic UPDATE Builder (~250 lines, 3-4 hours)
 - [ ] **Task 3.6**: Basic DELETE Builder (~200 lines, 2-3 hours)
 
@@ -1644,11 +1644,11 @@ impl<T: Entity> QueryRenderer for TypeSafeInsert<T> {
 ```
 
 **Acceptance criteria**:
-- [ ] INSERT builder compiles and works with all databases
-- [ ] RETURNING clause handling works correctly per database
-- [ ] Value insertion and type conversion work properly
-- [ ] Error handling for missing IDs works
-- [ ] Zero compilation warnings
+- [x] INSERT builder compiles and works with all databases ✅
+- [x] RETURNING clause handling works correctly per database ✅
+- [x] Value insertion and type conversion work properly ✅
+- [x] Error handling for missing IDs works ✅
+- [x] Zero compilation warnings ✅
 
 **Testing**: Test INSERT operations on all supported databases
 
