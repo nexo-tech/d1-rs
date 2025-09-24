@@ -1,7 +1,8 @@
 use std::fmt;
+use serde::{Serialize, Deserialize};
 
 /// Database dialect enum for handling database-specific SQL generation and features
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DatabaseDialect {
     /// SQLite database dialect (always available)
     SQLite,

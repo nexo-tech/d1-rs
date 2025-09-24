@@ -335,6 +335,16 @@ pub mod postgres;
 #[cfg(feature = "mysql")]
 pub mod mysql;
 
+/// Unified schema representation structures
+pub mod schema;
+
+/// Schema conversion utilities for cross-database compatibility
+pub mod converter;
+
+// Re-export unified schema types for convenience
+pub use schema::*;
+pub use converter::{SchemaConverter, TypeMapper, TableQueryResults};
+
 /// Utility functions for schema introspection
 pub mod utils {
     use super::*;

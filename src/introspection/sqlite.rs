@@ -658,7 +658,7 @@ impl<'a> SQLiteIntrospector<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // Tests are minimal for now - focused on compilation verification
     
     #[tokio::test]
     async fn test_sqlite_introspector_basic_functionality() {
