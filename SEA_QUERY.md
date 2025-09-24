@@ -27,7 +27,7 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 3.2**: Replace Query Struct in queries.rs (~400 lines, 6-7 hours) ✅
 - [x] **Task 3.3**: Basic SELECT Builder (~350 lines, 5-6 hours) ✅
 - [x] **Task 3.4**: Basic INSERT Builder (~300 lines, 4-5 hours) ✅
-- [ ] **Task 3.5**: Basic UPDATE Builder (~250 lines, 3-4 hours)
+- [x] **Task 3.5**: Basic UPDATE Builder (~250 lines, 3-4 hours) ✅
 - [ ] **Task 3.6**: Basic DELETE Builder (~200 lines, 2-3 hours)
 
 ### **Phase 4: Schema Introspection (Week 5)**
@@ -1749,11 +1749,11 @@ impl<T: Entity> QueryRenderer for TypeSafeUpdate<T> {
 ```
 
 **Acceptance criteria**:
-- [ ] UPDATE builder compiles and works
-- [ ] SET and WHERE clauses work correctly
-- [ ] RETURNING handling per database works
-- [ ] Affected rows counting works
-- [ ] Zero compilation warnings
+- [x] UPDATE builder compiles and works ✅
+- [x] SET and WHERE clauses work correctly ✅
+- [x] RETURNING handling per database works ✅
+- [x] Affected rows counting works ✅
+- [x] Zero compilation warnings ✅
 
 **Testing**: Test UPDATE operations on all databases
 
