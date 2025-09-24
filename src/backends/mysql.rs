@@ -372,9 +372,9 @@ mod mysql_impl {
                     // Handle MySQL JSON type
                     if let Ok(val) = row.try_get::<Option<String>, _>(i) {
                         val.and_then(|json_str| {
-                            serde_json::from_str(&json_str).unwrap_or_else(|_| {
+                            Some(serde_json::from_str(&json_str).unwrap_or_else(|_| {
                                 Value::String(json_str)
-                            })
+                            }))
                         })
                         .unwrap_or(Value::Null)
                     } else {
