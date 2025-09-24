@@ -442,14 +442,7 @@ mod tests {
         active: bool,
     }
     
-    // Simple test entity constants 
-    impl TestUser {
-        const TABLE_NAME_CONST: &'static str = "users";
-        
-        fn boolean_fields_static() -> &'static [&'static str] {
-            &["active"]
-        }
-    }
+    // Test entity - no additional constants needed
     
     // Helper function to create a basic update statement for testing
     fn create_basic_update() -> UpdateStatement {
