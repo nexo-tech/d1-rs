@@ -12,6 +12,7 @@ pub mod schema_evolution;
 pub mod auto_migration;
 pub mod type_safe_migrations;
 pub mod dialects;
+pub mod backends;
 
 pub use db::*;
 pub use query::*;
@@ -20,6 +21,7 @@ pub use migrations::{MigrationRunner, CreateTableMigration, Migration};
 pub use types::*;
 pub use schema::*;
 pub use dialects::DatabaseDialect;
+pub use backends::{QueryResult, BackendError};
 // pub use relations::*; // Unused module
 pub use edges::*;
 // Phase 4.3C: Revolutionary schema evolution exports
