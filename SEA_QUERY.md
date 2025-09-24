@@ -28,7 +28,7 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 3.3**: Basic SELECT Builder (~350 lines, 5-6 hours) ✅
 - [x] **Task 3.4**: Basic INSERT Builder (~300 lines, 4-5 hours) ✅
 - [x] **Task 3.5**: Basic UPDATE Builder (~250 lines, 3-4 hours) ✅
-- [ ] **Task 3.6**: Basic DELETE Builder (~200 lines, 2-3 hours)
+- [x] **Task 3.6**: Basic DELETE Builder (~200 lines, 2-3 hours) ✅
 
 ### **Phase 4: Schema Introspection (Week 5)**
 - [ ] **Task 4.1**: SchemaIntrospector Trait Definition (~200 lines, 3-4 hours)
@@ -1816,10 +1816,10 @@ impl<T: Entity> QueryRenderer for TypeSafeDelete<T> {
 ```
 
 **Acceptance criteria**:
-- [ ] DELETE builder compiles and works
-- [ ] WHERE clauses work correctly  
-- [ ] Affected rows counting works
-- [ ] Zero compilation warnings
+- [x] DELETE builder compiles and works ✅
+- [x] WHERE clauses work correctly ✅  
+- [x] Affected rows counting works ✅
+- [x] Zero compilation warnings ✅
 
 **Testing**: Test DELETE operations on all databases
 
