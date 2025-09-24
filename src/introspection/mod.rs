@@ -329,6 +329,9 @@ impl From<serde_json::Error> for IntrospectionError {
 /// SQLite schema introspector implementation
 pub mod sqlite;
 
+#[cfg(feature = "postgres")]
+pub mod postgres;
+
 /// Utility functions for schema introspection
 pub mod utils {
     use super::*;
