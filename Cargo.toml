@@ -5,7 +5,7 @@ members = [".", "d1-rs_derive"]
 name = "d1-rs"
 version = "0.1.0"
 edition = "2021"
-description = "Type-safe D1-first ORM for Cloudflare Workers"
+description = "Database-agnostic, type-safe ORM for SQLite, PostgreSQL, and MySQL"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -16,6 +16,9 @@ d1-rs_derive = { path = "./d1-rs_derive" }
 paste = "1.0"
 base64 = "0.22"
 regex = "1.0"
+sea-query = "0.31"
+sqlx = { version = "0.7", optional = true, default-features = false }
+thiserror = "1.0"
 
 # D1/WASM dependencies (only on wasm32 targets)
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -32,9 +35,26 @@ tokio = { version = "1.32", features = ["full", "test-util"] }
 rusqlite = { version = "0.32", features = ["chrono", "bundled"] }
 tempfile = "3"
 
+# Feature Matrix:
+# 
+# Database Backend Support:
+# - sqlite: Native SQLite support via rusqlite (default for testing)
+# - postgres: PostgreSQL support via sqlx (production ready)  
+# - mysql: MySQL support via sqlx (enterprise compatibility)
+# - d1: Cloudflare D1 support for WASM targets (WebAssembly Workers)
+#
+# Usage Examples:
+# - Default SQLite: cargo build
+# - PostgreSQL only: cargo build --no-default-features --features postgres
+# - MySQL only: cargo build --no-default-features --features mysql
+# - All databases: cargo build --features postgres,mysql
+# - D1 + SQLite: cargo build --features d1
+
 [features]
 default = ["sqlite"]
 sqlite = ["rusqlite", "tokio"]
+postgres = ["sqlx", "sqlx/postgres", "sqlx/runtime-tokio-rustls"]
+mysql = ["sqlx", "sqlx/mysql", "sqlx/runtime-tokio-rustls"] 
 d1 = []
 
 # Ensure tests run on native target by default
