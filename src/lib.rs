@@ -14,6 +14,7 @@ pub mod auto_migration;
 pub mod type_safe_migrations;
 pub mod dialects;
 pub mod backends;
+pub mod introspection;
 
 pub use db::*;
 pub use query::*;
@@ -24,6 +25,8 @@ pub use types::*;
 pub use schema::*;
 pub use dialects::DatabaseDialect;
 pub use backends::{QueryResult, BackendError, DatabaseBackend};
+// Introspection module for internal use - exported in Tasks 4.2-4.4 when implementations are ready
+// pub use introspection::{SchemaIntrospector, IntrospectionError, IntrospectionErrorKind};
 
 // Convenient type aliases for common database clients
 pub type SQLiteClient = crate::db::DatabaseClient<crate::backends::SQLiteBackend>;

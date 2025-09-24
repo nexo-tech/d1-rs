@@ -31,7 +31,17 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 3.6**: Basic DELETE Builder (~200 lines, 2-3 hours) ✅
 
 ### **Phase 4: Schema Introspection (Week 5)**
-- [ ] **Task 4.1**: SchemaIntrospector Trait Definition (~200 lines, 3-4 hours)
+- [x] **Task 4.1**: SchemaIntrospector Trait Definition (~200 lines, 3-4 hours) ✅
+
+**Acceptance criteria**:
+- [x] Trait compiles with comprehensive documentation ✅
+- [x] Error types are comprehensive and well-structured ✅
+- [x] Trait design supports all database introspection operations ✅
+- [x] Database-agnostic design with conditional compilation for dialects ✅
+- [x] Utility functions for type normalization and system table detection ✅
+- [x] Entity-aware boolean field detection support ✅
+- [x] Zero compilation warnings ✅
+- [x] Comprehensive test suite with 9 test functions ✅
 - [ ] **Task 4.2**: SQLite Schema Introspector (~400 lines, 6-8 hours)
 - [ ] **Task 4.3**: PostgreSQL Schema Introspector (~450 lines, 7-9 hours)
 - [ ] **Task 4.4**: MySQL Schema Introspector (~450 lines, 7-9 hours)
