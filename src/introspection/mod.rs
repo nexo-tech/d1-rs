@@ -326,6 +326,9 @@ impl From<serde_json::Error> for IntrospectionError {
     }
 }
 
+/// SQLite schema introspector implementation
+pub mod sqlite;
+
 /// Utility functions for schema introspection
 pub mod utils {
     use super::*;
