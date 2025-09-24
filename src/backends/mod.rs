@@ -4,6 +4,10 @@ use async_trait::async_trait;
 use crate::Entity;
 use crate::dialects::DatabaseDialect;
 
+// Database configuration structs
+pub mod config;
+pub use config::{DatabaseConfig, PoolConfig, SslConfig, SslMode, TimeoutConfig, ConfigError};
+
 // SQLite backend implementation
 pub mod sqlite;
 pub use sqlite::{SQLiteBackend, SQLiteQueryResult};
