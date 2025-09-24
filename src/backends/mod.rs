@@ -1,6 +1,8 @@
 use serde_json::Value;
 use std::collections::HashMap;
-use crate::{Entity, D1RsError};
+use async_trait::async_trait;
+use crate::Entity;
+use crate::dialects::DatabaseDialect;
 
 /// Core trait for database query results
 /// 
@@ -216,6 +218,72 @@ pub enum BackendError {
     InvalidData(String),
 }
 
+/// Core trait for database backend implementations
+/// 
+/// This trait defines the interface that all database backends must implement,
+/// providing a unified API for query execution, schema operations, and metadata access.
+/// It supports multiple databases (SQLite, PostgreSQL, MySQL) through feature flags
+/// and conditional compilation.
+#[async_trait]
+pub trait DatabaseBackend: Send + Sync + Clone {
+    /// Associated query result type that implements QueryResult
+    type QueryResult: QueryResult;
+    
+    /// Associated error type for backend operations
+    type Error: std::error::Error + Send + Sync + 'static;
+    
+    /// Execute a parameterized query and return results
+    /// 
+    /// This method handles SELECT, INSERT, UPDATE, and DELETE operations
+    /// with proper parameter binding to prevent SQL injection.
+    /// 
+    /// # Arguments
+    /// * `sql` - The SQL query string with parameter placeholders
+    /// * `params` - Parameter values to bind to the query
+    /// 
+    /// # Returns
+    /// Query results wrapped in the backend-specific QueryResult type
+    async fn execute_query(
+        &self, 
+        sql: &str, 
+        params: &[Value]
+    ) -> std::result::Result<Self::QueryResult, Self::Error>;
+    
+    /// Execute schema operations (DDL statements)
+    /// 
+    /// This method handles CREATE, ALTER, DROP, and other schema modification
+    /// operations that don't return result sets. It's separated from execute_query
+    /// for clear distinction between data and schema operations.
+    /// 
+    /// # Arguments
+    /// * `sql` - The DDL statement to execute
+    /// 
+    /// # Returns
+    /// Success or error indication
+    async fn execute_schema(&self, sql: &str) -> std::result::Result<(), Self::Error>;
+    
+    /// Get the database dialect for this backend
+    /// 
+    /// Returns the DatabaseDialect enum value indicating which database
+    /// this backend connects to (SQLite, PostgreSQL, or MySQL).
+    /// This is used for dialect-specific SQL generation and feature detection.
+    fn dialect(&self) -> DatabaseDialect;
+    
+    /// Get connection information for debugging and monitoring
+    /// 
+    /// Returns a human-readable string describing the connection,
+    /// such as database path for SQLite or connection string details
+    /// for PostgreSQL/MySQL (without sensitive credentials).
+    fn connection_info(&self) -> String;
+    
+    /// Perform a health check on the database connection
+    /// 
+    /// Executes a simple query to verify the connection is alive
+    /// and the database is responding. This is useful for connection
+    /// pooling and service health monitoring.
+    async fn ping(&self) -> std::result::Result<(), Self::Error>;
+}
+
 // Implement QueryResult for the existing D1QueryResult to maintain full compatibility
 impl QueryResult for crate::db::D1QueryResult {
     type Error = crate::D1RsError;
@@ -298,12 +366,13 @@ mod tests {
     use serde_json::json;
 
     // Create a test implementation of QueryResult for testing
+    #[derive(Debug)]
     struct TestQueryResult {
         rows: Vec<Value>,
     }
 
     impl QueryResult for TestQueryResult {
-        type Error = D1RsError;
+        type Error = crate::D1RsError;
 
         fn rows(&self) -> &[Value] {
             &self.rows
@@ -583,5 +652,310 @@ mod tests {
 
         let error = BackendError::Serialization("invalid JSON".to_string());
         assert_eq!(error.to_string(), "Serialization error: invalid JSON");
+    }
+
+    #[test]
+    fn test_backend_error_all_variants() {
+        let errors = vec![
+            BackendError::Database("db error".to_string()),
+            BackendError::Connection("conn error".to_string()),
+            BackendError::Query("query error".to_string()),
+            BackendError::Serialization("serde error".to_string()),
+            BackendError::TypeConversion("type error".to_string()),
+            BackendError::InvalidData("invalid data".to_string()),
+        ];
+
+        let expected = vec![
+            "Database error: db error",
+            "Connection error: conn error",
+            "Query error: query error",
+            "Serialization error: serde error",
+            "Type conversion error: type error",
+            "Invalid data: invalid data",
+        ];
+
+        for (error, expected_msg) in errors.iter().zip(expected.iter()) {
+            assert_eq!(&error.to_string(), expected_msg);
+        }
+    }
+
+    // Mock DatabaseBackend implementation for testing
+    #[derive(Clone)]
+    struct MockDatabaseBackend {
+        pub dialect: DatabaseDialect,
+        pub connection_info: String,
+        pub should_fail_query: bool,
+        pub should_fail_schema: bool,
+        pub should_fail_ping: bool,
+        pub mock_rows: Vec<Value>,
+    }
+
+    impl MockDatabaseBackend {
+        fn new() -> Self {
+            Self {
+                dialect: DatabaseDialect::SQLite,
+                connection_info: "mock://test-database".to_string(),
+                should_fail_query: false,
+                should_fail_schema: false,
+                should_fail_ping: false,
+                mock_rows: vec![],
+            }
+        }
+
+        fn with_dialect(mut self, dialect: DatabaseDialect) -> Self {
+            self.dialect = dialect;
+            self
+        }
+
+        fn with_mock_data(mut self, rows: Vec<Value>) -> Self {
+            self.mock_rows = rows;
+            self
+        }
+
+        fn with_query_failure(mut self) -> Self {
+            self.should_fail_query = true;
+            self
+        }
+
+        fn with_schema_failure(mut self) -> Self {
+            self.should_fail_schema = true;
+            self
+        }
+
+        fn with_ping_failure(mut self) -> Self {
+            self.should_fail_ping = true;
+            self
+        }
+    }
+
+    #[async_trait]
+    impl DatabaseBackend for MockDatabaseBackend {
+        type QueryResult = TestQueryResult;
+        type Error = BackendError;
+
+        async fn execute_query(
+            &self, 
+            sql: &str, 
+            params: &[Value]
+        ) -> std::result::Result<Self::QueryResult, Self::Error> {
+            if self.should_fail_query {
+                return Err(BackendError::Query("Mock query failure".to_string()));
+            }
+
+            // Simple mock: return different data based on SQL content
+            let rows = if sql.contains("SELECT COUNT") {
+                vec![json!({"count": params.len()})]
+            } else if sql.contains("SELECT") {
+                self.mock_rows.clone()
+            } else if sql.contains("INSERT") || sql.contains("UPDATE") || sql.contains("DELETE") {
+                vec![json!({"changes": 1, "last_insert_rowid": 42})]
+            } else {
+                vec![]
+            };
+
+            Ok(TestQueryResult { rows })
+        }
+
+        async fn execute_schema(&self, _sql: &str) -> std::result::Result<(), Self::Error> {
+            if self.should_fail_schema {
+                Err(BackendError::Database("Mock schema failure".to_string()))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn dialect(&self) -> DatabaseDialect {
+            self.dialect
+        }
+
+        fn connection_info(&self) -> String {
+            self.connection_info.clone()
+        }
+
+        async fn ping(&self) -> std::result::Result<(), Self::Error> {
+            if self.should_fail_ping {
+                Err(BackendError::Connection("Mock ping failure".to_string()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_database_backend_trait_compilation() {
+        // This test ensures the trait can be compiled and used
+        let backend = MockDatabaseBackend::new();
+        
+        // Test dialect
+        assert_eq!(backend.dialect(), DatabaseDialect::SQLite);
+        
+        // Test connection info
+        assert_eq!(backend.connection_info(), "mock://test-database");
+        
+        // Test successful ping
+        let result = backend.ping().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_database_backend_query_execution() {
+        let backend = MockDatabaseBackend::new()
+            .with_mock_data(vec![
+                json!({"id": 1, "name": "Alice"}),
+                json!({"id": 2, "name": "Bob"}),
+            ]);
+
+        // Test SELECT query
+        let result = backend.execute_query("SELECT * FROM users", &[]).await;
+        assert!(result.is_ok());
+        let query_result = result.unwrap();
+        assert_eq!(query_result.len(), 2);
+        
+        // Test INSERT query
+        let result = backend.execute_query(
+            "INSERT INTO users (name) VALUES (?)", 
+            &[json!("Charlie")]
+        ).await;
+        assert!(result.is_ok());
+        
+        // Test COUNT query with parameters
+        let result = backend.execute_query(
+            "SELECT COUNT(*) FROM users WHERE active = ?", 
+            &[json!(true), json!(false)]
+        ).await;
+        assert!(result.is_ok());
+        let query_result = result.unwrap();
+        let count = query_result.extract_count().unwrap();
+        assert_eq!(count, 2); // Should equal params.len()
+    }
+
+    #[tokio::test]
+    async fn test_database_backend_query_failure() {
+        let backend = MockDatabaseBackend::new().with_query_failure();
+
+        let result = backend.execute_query("SELECT * FROM users", &[]).await;
+        assert!(result.is_err());
+        
+        let error = result.unwrap_err();
+        assert_eq!(error.to_string(), "Query error: Mock query failure");
+    }
+
+    #[tokio::test]
+    async fn test_database_backend_schema_operations() {
+        let backend = MockDatabaseBackend::new();
+
+        // Test successful schema operation
+        let result = backend.execute_schema("CREATE TABLE test (id INTEGER)").await;
+        assert!(result.is_ok());
+
+        // Test schema failure
+        let failing_backend = backend.with_schema_failure();
+        let result = failing_backend.execute_schema("DROP TABLE test").await;
+        assert!(result.is_err());
+        
+        let error = result.unwrap_err();
+        assert_eq!(error.to_string(), "Database error: Mock schema failure");
+    }
+
+    #[tokio::test]
+    async fn test_database_backend_ping_health_check() {
+        let backend = MockDatabaseBackend::new();
+
+        // Test successful ping
+        let result = backend.ping().await;
+        assert!(result.is_ok());
+
+        // Test ping failure
+        let failing_backend = backend.with_ping_failure();
+        let result = failing_backend.ping().await;
+        assert!(result.is_err());
+        
+        let error = result.unwrap_err();
+        assert_eq!(error.to_string(), "Connection error: Mock ping failure");
+    }
+
+    #[tokio::test]
+    async fn test_database_backend_different_dialects() {
+        let sqlite_backend = MockDatabaseBackend::new()
+            .with_dialect(DatabaseDialect::SQLite);
+        assert_eq!(sqlite_backend.dialect(), DatabaseDialect::SQLite);
+
+        #[cfg(feature = "postgres")]
+        {
+            let postgres_backend = MockDatabaseBackend::new()
+                .with_dialect(DatabaseDialect::PostgreSQL);
+            assert_eq!(postgres_backend.dialect(), DatabaseDialect::PostgreSQL);
+        }
+
+        #[cfg(feature = "mysql")]
+        {
+            let mysql_backend = MockDatabaseBackend::new()
+                .with_dialect(DatabaseDialect::MySQL);
+            assert_eq!(mysql_backend.dialect(), DatabaseDialect::MySQL);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_database_backend_clone_and_send_sync() {
+        let backend = MockDatabaseBackend::new();
+        
+        // Test Clone
+        let cloned = backend.clone();
+        assert_eq!(backend.dialect(), cloned.dialect());
+        assert_eq!(backend.connection_info(), cloned.connection_info());
+
+        // Test Send + Sync by spawning a task
+        let handle = tokio::spawn(async move {
+            cloned.ping().await.unwrap();
+        });
+        
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_database_backend_parameter_binding() {
+        let backend = MockDatabaseBackend::new();
+
+        // Test with various parameter types
+        let params = vec![
+            json!("string_value"),
+            json!(42),
+            json!(true),
+            json!(null),
+            json!({"nested": "object"}),
+            json!([1, 2, 3]),
+        ];
+
+        let result = backend.execute_query(
+            "SELECT * FROM test WHERE col1 = ? AND col2 = ? AND col3 = ? AND col4 = ? AND col5 = ? AND col6 = ?", 
+            &params
+        ).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_database_backend_integration_with_query_result() {
+        let backend = MockDatabaseBackend::new()
+            .with_mock_data(vec![
+                json!({"id": 1, "name": "Integration Test", "active": true}),
+            ]);
+
+        let result = backend.execute_query("SELECT * FROM users", &[]).await;
+        assert!(result.is_ok());
+
+        let query_result = result.unwrap();
+        
+        // Test QueryResult integration
+        assert!(!query_result.is_empty());
+        assert_eq!(query_result.len(), 1);
+        assert!(query_result.has_column("id"));
+        assert!(query_result.has_column("name"));
+        assert!(query_result.has_column("active"));
+        
+        let column_names = query_result.column_names();
+        assert!(column_names.contains(&"id".to_string()));
+        assert!(column_names.contains(&"name".to_string()));
+        assert!(column_names.contains(&"active".to_string()));
     }
 }

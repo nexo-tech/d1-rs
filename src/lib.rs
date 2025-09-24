@@ -21,7 +21,7 @@ pub use migrations::{MigrationRunner, CreateTableMigration, Migration};
 pub use types::*;
 pub use schema::*;
 pub use dialects::DatabaseDialect;
-pub use backends::{QueryResult, BackendError};
+pub use backends::{QueryResult, BackendError, DatabaseBackend};
 // pub use relations::*; // Unused module
 pub use edges::*;
 // Phase 4.3C: Revolutionary schema evolution exports
