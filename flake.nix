@@ -60,6 +60,10 @@
             export CPPFLAGS="-I${pkgs.bzip2}/include -I${pkgs.sqlite.dev}/include -I${pkgs.libiconv}/include $CPPFLAGS"
             export PKG_CONFIG_PATH="${pkgs.sqlite.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
             
+            # Claude Code timeout settings
+            export BASH_DEFAULT_TIMEOUT_MS="1800000"  # 30 minutes
+            export BASH_MAX_TIMEOUT_MS="7200000"      # 2 hours
+            
             # macOS framework paths
             ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
               export LDFLAGS="-F${pkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks -F${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks -F${pkgs.darwin.apple_sdk.frameworks.SystemConfiguration}/Library/Frameworks $LDFLAGS"
@@ -143,10 +147,6 @@ EOF
           
           RUST_BACKTRACE = 1;
           RUST_LOG = "debug";
-          
-          # Claude Code timeout settings
-          BASH_DEFAULT_TIMEOUT_MS = "1800000";  # 30 minutes
-          BASH_MAX_TIMEOUT_MS = "7200000";      # 2 hours
           
           # Expose framework paths to Rust linker  
           RUSTFLAGS = pkgs.lib.optionalString pkgs.stdenv.isDarwin 
