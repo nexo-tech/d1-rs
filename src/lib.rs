@@ -2,6 +2,7 @@ pub use d1_rs_derive::*;
 
 pub mod db;
 pub mod query;
+pub mod query_builder;
 pub mod entity;
 pub mod migrations;
 pub mod types;
@@ -16,6 +17,7 @@ pub mod backends;
 
 pub use db::*;
 pub use query::*;
+pub use query_builder::{QueryRenderer, SeaQueryExecutor, json_to_sea_value, sea_value_to_json};
 // Specific exports from migrations to avoid conflicts
 pub use migrations::{MigrationRunner, CreateTableMigration, Migration};
 pub use types::*;

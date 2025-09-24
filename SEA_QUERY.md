@@ -23,7 +23,7 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 2.6**: MySQL Backend Stub (~350 lines, 5-6 hours) ✅
 
 ### **Phase 3: Query Builder Migration (Week 3-4)**
-- [ ] **Task 3.1**: Basic Sea-Query Integration (~300 lines, 4-5 hours)
+- [x] **Task 3.1**: Basic Sea-Query Integration (~300 lines, 4-5 hours) ✅
 - [ ] **Task 3.2**: Replace Query Struct in queries.rs (~400 lines, 6-7 hours)
 - [ ] **Task 3.3**: Basic SELECT Builder (~350 lines, 5-6 hours)
 - [ ] **Task 3.4**: Basic INSERT Builder (~300 lines, 4-5 hours)
@@ -1270,10 +1270,10 @@ impl QueryRenderer for InsertStatement {
 ```
 
 **Acceptance criteria**:
-- [ ] Basic sea-query integration compiles with all feature combinations
-- [ ] Value conversion functions work correctly
-- [ ] QueryRenderer trait works for all database dialects
-- [ ] Zero compilation warnings
+- [x] Basic sea-query integration compiles with all feature combinations ✅
+- [x] Value conversion functions work correctly ✅
+- [x] QueryRenderer trait works for all database dialects ✅
+- [x] Zero compilation warnings ✅
 
 **Testing**: Unit tests for value conversion and query rendering
 
