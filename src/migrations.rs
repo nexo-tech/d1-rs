@@ -1,4 +1,5 @@
 use crate::{D1Client, Result};
+use crate::backends::QueryResult;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -183,7 +184,7 @@ impl MigrationRunner {
         let check_sql = "SELECT locked FROM _migration_lock WHERE id = 1";
         let lock_result = db.execute(check_sql, &[]).await?;
         
-        if let Some(row) = lock_result.rows.first() {
+        if let Some(row) = lock_result.rows().first() {
             if let serde_json::Value::Object(obj) = row {
                 if let Some(serde_json::Value::Number(locked)) = obj.get("locked") {
                     return Ok(locked.as_i64() == Some(1));
@@ -218,7 +219,7 @@ impl MigrationRunner {
         let result = db.execute(sql, &[]).await?;
 
         let versions = result
-            .rows
+            .into_rows()
             .into_iter()
             .filter_map(|row| {
                 if let Value::Object(obj) = row {

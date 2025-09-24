@@ -1,5 +1,6 @@
 use d1_rs::auto_migration::{DataMigrationConfig, DataMigrator, FailureStrategy};
 use d1_rs::*;
+use d1_rs::backends::QueryResult;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -350,11 +351,11 @@ async fn test_execute_denormalized_column_population_successful_operation() {
     // Article 2: database, sql, patterns (3 tags)
     // Article 3: web, javascript, frontend (3 tags)
     // Article 4: migration, database, automation (3 tags)
-    assert_eq!(junction_result.rows.len(), 12); // Total tag entries
+    assert_eq!(junction_result.rows().len(), 12); // Total tag entries
 
     // Check specific tag entries
     let tags_for_article_1: Vec<String> = junction_result
-        .rows
+        .rows()
         .iter()
         .filter_map(|row| {
             if let Value::Object(row_map) = row {
@@ -524,10 +525,10 @@ async fn test_execute_denormalized_column_population_empty_values() {
         .expect("Failed to query junction table");
 
     // Should have only valid tags: "another", "empty", "valid"
-    assert_eq!(junction_result.rows.len(), 3);
+    assert_eq!(junction_result.rows().len(), 3);
 
     let tag_names: Vec<String> = junction_result
-        .rows
+        .rows()
         .iter()
         .filter_map(|row| {
             if let Value::Object(row_map) = row {
@@ -918,10 +919,10 @@ async fn test_execute_existing_junction_table_population_successful_operation() 
     let new_records_result = db.execute("SELECT person_id, permission_id, state FROM new_user_permissions ORDER BY person_id, permission_id", &[])
         .await.expect("Failed to query new junction table");
 
-    assert_eq!(new_records_result.rows.len(), 5);
+    assert_eq!(new_records_result.rows().len(), 5);
 
     // Check specific records were mapped correctly
-    if let Value::Object(row) = &new_records_result.rows[0] {
+    if let Value::Object(row) = &new_records_result.rows()[0] {
         if let (
             Some(Value::Number(person_id)),
             Some(Value::Number(permission_id)),
@@ -1043,7 +1044,7 @@ async fn test_execute_existing_junction_table_population_partial_column_mapping(
     let new_records_result = db.execute("SELECT person_id, permission_id FROM new_user_permissions ORDER BY person_id, permission_id", &[])
         .await.expect("Failed to query new junction table");
 
-    assert_eq!(new_records_result.rows.len(), 5);
+    assert_eq!(new_records_result.rows().len(), 5);
 }
 
 #[tokio::test]
@@ -1123,7 +1124,7 @@ async fn test_execute_existing_junction_table_population_batch_processing() {
         .await
         .expect("Failed to count new records");
 
-    if let Value::Object(row) = &count_result.rows[0] {
+    if let Value::Object(row) = &count_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 30);
         }

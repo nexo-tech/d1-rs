@@ -1,5 +1,6 @@
 use d1_rs::auto_migration::{DataMigrationConfig, DataMigrator, FailureStrategy};
 use d1_rs::*;
+use d1_rs::backends::QueryResult;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -227,7 +228,7 @@ async fn test_execute_format_transformation_batch_processing() {
         .await
         .expect("Failed to count results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         assert_eq!(row.get("count"), Some(&Value::Number(5.into())));
     }
 }
@@ -297,7 +298,7 @@ async fn test_execute_format_transformation_trim_functions() {
         .await
         .expect("Failed to query results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         assert_eq!(
             row.get("padded_text"),
             Some(&Value::String("  hello world  ".to_string()))
@@ -511,10 +512,10 @@ async fn test_execute_direct_fk_copy_successful_operation() {
         .await
         .expect("Failed to query results");
 
-    assert_eq!(rows.rows.len(), 5);
+    assert_eq!(rows.rows().len(), 5);
 
     for (i, expected_product_id) in [201, 202, 203, 204, 205].iter().enumerate() {
-        if let Value::Object(row) = &rows.rows[i] {
+        if let Value::Object(row) = &rows.rows()[i] {
             assert_eq!(
                 row.get("old_product_id"),
                 Some(&Value::Number((*expected_product_id).into()))
@@ -589,7 +590,7 @@ async fn test_execute_direct_fk_copy_batch_processing() {
         .await
         .expect("Failed to count results");
 
-    if let Value::Object(row) = &count_result.rows[0] {
+    if let Value::Object(row) = &count_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 25);
         }
@@ -604,7 +605,7 @@ async fn test_execute_direct_fk_copy_batch_processing() {
         .await
         .expect("Failed to query sample");
 
-    if let Value::Object(row) = &sample_result.rows[0] {
+    if let Value::Object(row) = &sample_result.rows()[0] {
         assert_eq!(row.get("old_supplier_id"), row.get("new_supplier_id"));
     }
 }
@@ -965,7 +966,7 @@ async fn test_execute_id_mapping_migration_successful_operation() {
         .await
         .expect("Failed to query results");
 
-    assert_eq!(rows.rows.len(), 5);
+    assert_eq!(rows.rows().len(), 5);
 
     // Check mapped users (Alice, Bob, Charlie, Diana)
     let expected_mappings = vec![
@@ -979,7 +980,7 @@ async fn test_execute_id_mapping_migration_successful_operation() {
     for (i, (expected_name, expected_old_id, expected_new_id)) in
         expected_mappings.iter().enumerate()
     {
-        if let Value::Object(row) = &rows.rows[i] {
+        if let Value::Object(row) = &rows.rows()[i] {
             assert_eq!(
                 row.get("name"),
                 Some(&Value::String(expected_name.to_string()))
@@ -1112,7 +1113,7 @@ async fn test_execute_id_mapping_migration_batch_processing() {
         .await
         .expect("Failed to count mapped records");
 
-    if let Value::Object(row) = &mapped_count.rows[0] {
+    if let Value::Object(row) = &mapped_count.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 12); // 15 products - 3 with unmapped category 5
         }
@@ -1126,7 +1127,7 @@ async fn test_execute_id_mapping_migration_batch_processing() {
         .await
         .expect("Failed to count unmapped records");
 
-    if let Value::Object(row) = &unmapped_count.rows[0] {
+    if let Value::Object(row) = &unmapped_count.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 3); // 3 products with unmapped category 5
         }
@@ -1136,7 +1137,7 @@ async fn test_execute_id_mapping_migration_batch_processing() {
     let sample_result = db.execute("SELECT old_category_id, new_category_id FROM test_products WHERE old_category_id = 1 LIMIT 1", &[])
         .await.expect("Failed to query sample");
 
-    if let Value::Object(row) = &sample_result.rows[0] {
+    if let Value::Object(row) = &sample_result.rows()[0] {
         assert_eq!(row.get("old_category_id"), Some(&Value::Number(1.into())));
         assert_eq!(row.get("new_category_id"), Some(&Value::Number(100.into())));
     }

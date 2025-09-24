@@ -1,5 +1,6 @@
 mod common;
 
+use d1_rs::backends::QueryResult;
 use chrono::{DateTime, Utc};
 use d1_rs::*;
 
@@ -54,7 +55,7 @@ async fn test_modern_schema_definition() {
         .await
         .expect("Failed to query tables");
 
-    assert_eq!(tables.rows.len(), 1);
+    assert_eq!(tables.rows().len(), 1);
 
     // Test inserting data with proper boolean handling
     use serde_json::Value;
@@ -83,8 +84,8 @@ async fn test_modern_schema_definition() {
         .await
         .expect("Failed to query users");
 
-    assert_eq!(result.rows.len(), 1);
-    println!("Query result: {:?}", result.rows[0]);
+    assert_eq!(result.rows().len(), 1);
+    println!("Query result: {:?}", result.rows()[0]);
 }
 
 #[tokio::test]
@@ -137,8 +138,8 @@ async fn test_schema_migration_with_booleans() {
         .await
         .expect("Failed to query data");
 
-    assert_eq!(query_result.rows.len(), 1, "Should have one row");
-    println!("Query result: {:?}", query_result.rows[0]);
+    assert_eq!(query_result.rows().len(), 1, "Should have one row");
+    println!("Query result: {:?}", query_result.rows()[0]);
 }
 
 #[tokio::test]

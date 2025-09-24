@@ -22,6 +22,18 @@ pub use types::*;
 pub use schema::*;
 pub use dialects::DatabaseDialect;
 pub use backends::{QueryResult, BackendError, DatabaseBackend};
+
+// Convenient type aliases for common database clients
+pub type SQLiteClient = crate::db::DatabaseClient<crate::backends::SQLiteBackend>;
+
+#[cfg(feature = "postgres")]
+pub type PostgreSQLClient = crate::db::DatabaseClient<crate::backends::PostgreSQLBackend>;
+
+#[cfg(feature = "mysql")]
+pub type MySQLClient = crate::db::DatabaseClient<crate::backends::MySQLBackend>;
+
+// Maintain compatibility during transition - D1Client now points to SQLiteClient
+pub type D1Client = SQLiteClient;
 // pub use relations::*; // Unused module
 pub use edges::*;
 // Phase 4.3C: Revolutionary schema evolution exports
@@ -839,4 +851,101 @@ pub trait CreateBuilder<T: Entity> {
 #[allow(async_fn_in_trait)]
 pub trait UpdateBuilder<T: Entity> {
     async fn save(self, db: &D1Client) -> Result<T>;
+}
+
+#[cfg(test)]
+mod backend_exports_tests {
+    use super::*;
+
+    #[test]
+    fn test_sqlite_client_type_alias() {
+        // Test that SQLiteClient is properly defined as an alias
+        let _type_name = std::any::type_name::<SQLiteClient>();
+        assert_eq!(_type_name, "d1_rs::db::DatabaseClient<d1_rs::backends::sqlite::SQLiteBackend>");
+    }
+
+    #[test]
+    fn test_d1_client_backward_compatibility() {
+        // Test that D1Client is the same as SQLiteClient for backward compatibility
+        let sqlite_type_name = std::any::type_name::<SQLiteClient>();
+        let d1_type_name = std::any::type_name::<D1Client>();
+        assert_eq!(sqlite_type_name, d1_type_name);
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn test_postgresql_client_type_alias() {
+        // Test that PostgreSQLClient is properly defined when postgres feature is enabled
+        let _type_name = std::any::type_name::<PostgreSQLClient>();
+        assert_eq!(_type_name, "d1_rs::db::DatabaseClient<d1_rs::backends::postgres::PostgreSQLBackend>");
+    }
+
+    #[cfg(feature = "mysql")]
+    #[test]
+    fn test_mysql_client_type_alias() {
+        // Test that MySQLClient is properly defined when mysql feature is enabled
+        let _type_name = std::any::type_name::<MySQLClient>();
+        assert_eq!(_type_name, "d1_rs::db::DatabaseClient<d1_rs::backends::mysql::MySQLBackend>");
+    }
+
+    #[test]
+    fn test_backend_module_exports() {
+        // Test that backend module re-exports are accessible
+        use crate::backends::{BackendError, SQLiteBackend};
+        
+        // Test that types can be used (DatabaseBackend is not dyn-compatible due to Clone requirement)
+        let _backend: Option<SQLiteBackend> = None;
+        let _error: Option<BackendError> = None;
+    }
+
+    #[test]
+    fn test_backend_sqlite_exports() {
+        // Test that SQLite backend exports are accessible
+        use crate::backends::sqlite::*;
+        
+        // SQLite backend should always be available
+        let _sqlite_backend: Option<SQLiteBackend> = None;
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn test_backend_postgres_exports() {
+        // Test that PostgreSQL backend exports are accessible when feature is enabled
+        use crate::backends::postgres::*;
+        
+        let _postgres_backend: Option<PostgreSQLBackend> = None;
+    }
+
+    #[cfg(feature = "mysql")]
+    #[test]
+    fn test_backend_mysql_exports() {
+        // Test that MySQL backend exports are accessible when feature is enabled
+        use crate::backends::mysql::*;
+        
+        let _mysql_backend: Option<MySQLBackend> = None;
+    }
+
+    #[test]
+    fn test_backend_config_exports() {
+        // Test that config exports are accessible
+        use crate::backends::{DatabaseConfig, BackendError};
+        
+        // Config types should be available
+        let _config: Option<DatabaseConfig> = None;
+        let _error: Option<BackendError> = None;
+    }
+
+    #[test]
+    fn test_all_client_types_implement_send_sync() {
+        // Ensure all client types are Send + Sync for async usage
+        fn assert_send_sync<T: Send + Sync>() {}
+        
+        assert_send_sync::<SQLiteClient>();
+        
+        #[cfg(feature = "postgres")]
+        assert_send_sync::<PostgreSQLClient>();
+        
+        #[cfg(feature = "mysql")]
+        assert_send_sync::<MySQLClient>();
+    }
 }

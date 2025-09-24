@@ -1,5 +1,6 @@
 mod common;
 
+use d1_rs::backends::QueryResult;
 use common::*;
 use d1_rs::*;
 use d1_rs::Entity;
@@ -24,8 +25,8 @@ async fn test_boolean_to_integer_conversion_on_insert() {
         Value::String("bool_test@example.com".to_string())
     ]).await.expect("Failed to query raw");
     
-    println!("Raw query result: {:?}", raw_result.rows);
-    assert!(!raw_result.rows.is_empty(), "No user was inserted!");
+    println!("Raw query result: {:?}", raw_result.rows());
+    assert!(!raw_result.rows().is_empty(), "No user was inserted!");
     
     // Debug: Check TestUser boolean metadata  
     println!("TestUser boolean fields: {:?}", TestUser::boolean_fields());

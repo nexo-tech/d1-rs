@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use d1_rs::SchemaMigration;
+use d1_rs::backends::QueryResult;
 use d1_rs::*;
 use serde::{Deserialize, Serialize};
 
@@ -244,7 +245,7 @@ async fn test_new_relations_api_schema_creation() {
         &[]
     ).await.expect("Failed to query tables");
 
-    assert!(tables_result.rows.len() >= 2);
+    assert!(tables_result.rows().len() >= 2);
 }
 
 #[tokio::test]
@@ -723,6 +724,6 @@ async fn test_migration_auto_generation() {
         .await
         .expect("Failed to query tables");
 
-    assert!(tables.rows.len() >= 2);
+    assert!(tables.rows().len() >= 2);
 }
 

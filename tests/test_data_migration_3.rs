@@ -1,5 +1,6 @@
 use d1_rs::*;
 use d1_rs::auto_migration::{DataMigrator, DataMigrationConfig, FailureStrategy};
+use d1_rs::backends::QueryResult;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -366,7 +367,7 @@ async fn test_execute_business_logic_recreation_successful_operation() {
     let analytics_rows = db.execute("SELECT customer_id, tier, lifetime_value, risk_score FROM customer_analytics ORDER BY customer_id", &[])
         .await.expect("Failed to query analytics results");
     
-    assert_eq!(analytics_rows.rows.len(), 4);
+    assert_eq!(analytics_rows.rows().len(), 4);
     
     // Check expected tiers based on order totals:
     // Customer 1: $350 total -> silver
@@ -381,7 +382,7 @@ async fn test_execute_business_logic_recreation_successful_operation() {
     ];
     
     for (i, (expected_customer_id, expected_tier, expected_value, expected_risk)) in expected_analytics.iter().enumerate() {
-        if let Value::Object(row) = &analytics_rows.rows[i] {
+        if let Value::Object(row) = &analytics_rows.rows()[i] {
             assert_eq!(row.get("customer_id"), Some(&Value::Number((*expected_customer_id).into())));
             assert_eq!(row.get("tier"), Some(&Value::String(expected_tier.to_string())));
             assert_eq!(row.get("lifetime_value"), Some(&Value::Number(serde_json::Number::from_f64(*expected_value).unwrap())));
@@ -880,7 +881,7 @@ async fn test_execute_cascade_migration_successful_operation() {
     let companies_result = db.execute("SELECT COUNT(*) as count FROM companies WHERE migration_status = 'completed'", &[])
         .await.expect("Failed to query companies");
     
-    if let Value::Object(row) = &companies_result.rows[0] {
+    if let Value::Object(row) = &companies_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 2);
         }
@@ -889,7 +890,7 @@ async fn test_execute_cascade_migration_successful_operation() {
     let departments_result = db.execute("SELECT COUNT(*) as count FROM departments WHERE migration_status = 'completed'", &[])
         .await.expect("Failed to query departments");
     
-    if let Value::Object(row) = &departments_result.rows[0] {
+    if let Value::Object(row) = &departments_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 3);
         }
@@ -898,7 +899,7 @@ async fn test_execute_cascade_migration_successful_operation() {
     let employees_result = db.execute("SELECT COUNT(*) as count FROM employees WHERE migration_status = 'completed'", &[])
         .await.expect("Failed to query employees");
     
-    if let Value::Object(row) = &employees_result.rows[0] {
+    if let Value::Object(row) = &employees_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 4);
         }
@@ -907,7 +908,7 @@ async fn test_execute_cascade_migration_successful_operation() {
     let projects_result = db.execute("SELECT COUNT(*) as count FROM projects WHERE migration_status = 'completed'", &[])
         .await.expect("Failed to query projects");
     
-    if let Value::Object(row) = &projects_result.rows[0] {
+    if let Value::Object(row) = &projects_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 3);
         }

@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use d1_rs::*;
+use d1_rs::backends::QueryResult;
 use serde::{Deserialize, Serialize};
 
 // Test model definitions
@@ -384,7 +385,7 @@ impl RollbackTestUtilities {
         let tables_query = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
         let result = db.execute(tables_query, &[]).await?;
         
-        let existing_tables: Vec<String> = result.rows
+        let existing_tables: Vec<String> = result.rows()
             .iter()
             .filter_map(|row| {
                 if let Value::Object(obj) = row {
@@ -427,7 +428,7 @@ impl RollbackTestUtilities {
         let pragma_query = format!("PRAGMA table_info({})", table_name);
         let result = db.execute(&pragma_query, &[]).await?;
         
-        let column_exists = result.rows
+        let column_exists = result.rows()
             .iter()
             .any(|row| {
                 if let Value::Object(obj) = row {
@@ -456,7 +457,7 @@ impl RollbackTestUtilities {
             Value::String(index_name.to_string())
         ]).await?;
         
-        Ok(!result.rows.is_empty())
+        Ok(!result.rows().is_empty())
     }
     
     /// Count records in a table (for data preservation verification)
@@ -469,7 +470,7 @@ impl RollbackTestUtilities {
         let count_query = format!("SELECT COUNT(*) as count FROM {}", table_name);
         let result = db.execute(&count_query, &[]).await?;
         
-        if let Some(Value::Object(obj)) = result.rows.first() {
+        if let Some(Value::Object(obj)) = result.rows().first() {
             if let Some(Value::Number(count)) = obj.get("count") {
                 return Ok(count.as_i64().unwrap_or(0));
             }
@@ -638,14 +639,14 @@ impl RollbackTestUtilities {
                 ).await?;
                 
                 // Should have at least some tables but possibly missing others
-                Ok(!tables.rows.is_empty())
+                Ok(!tables.rows().is_empty())
             },
             "rollback_recovery" => {
                 // Check if rollback operations can be recovered
                 let integrity_check = db.execute("PRAGMA integrity_check", &[]).await?;
                 
                 use serde_json::Value;
-                if let Some(Value::Object(obj)) = integrity_check.rows.first() {
+                if let Some(Value::Object(obj)) = integrity_check.rows().first() {
                     if let Some(Value::String(result)) = obj.values().next() {
                         return Ok(result == "ok");
                     }

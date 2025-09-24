@@ -2,6 +2,7 @@
 /// This provides a much cleaner API for defining and querying relationships
 
 use crate::{D1Client, D1RsError, Entity, Result, QueryBuilder};
+use crate::backends::QueryResult;
 use std::marker::PhantomData;
 use serde_json;
 
@@ -241,7 +242,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         let params = vec![self.parent_id.clone()];
         let result = db.execute(&sql, &params).await?;
         
-        self.convert_rows_to_entities(result.rows).await
+        self.convert_rows_to_entities(result.into_rows()).await
     }
     
     /// Handle many-to-one relations (Child belongs to Parent)
@@ -264,7 +265,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             let params = vec![self.parent_id.clone()];
             let current_result = db.execute(&current_entity_sql, &params).await?;
             
-            if let Some(current_row) = current_result.rows.first() {
+            if let Some(current_row) = current_result.rows().first() {
                 if let Some(foreign_key_value) = current_row.get(&edge.foreign_key) {
                     if !foreign_key_value.is_null() {
                         // Now find the related entity where id = foreign_key_value
@@ -276,7 +277,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
                         let related_params = vec![foreign_key_value.clone()];
                         let related_result = db.execute(&related_sql, &related_params).await?;
                         
-                        return self.convert_rows_to_entities(related_result.rows).await;
+                        return self.convert_rows_to_entities(related_result.into_rows()).await;
                     }
                 }
             }
@@ -294,7 +295,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             let params = vec![self.parent_id.clone()];
             let result = db.execute(&sql, &params).await?;
             
-            self.convert_rows_to_entities(result.rows).await
+            self.convert_rows_to_entities(result.into_rows()).await
         }
     }
     
@@ -347,7 +348,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         let params = vec![self.parent_id.clone()];
         let result = db.execute(&sql, &params).await?;
         
-        self.convert_rows_to_entities(result.rows).await
+        self.convert_rows_to_entities(result.into_rows()).await
     }
     
     /// Convert database rows to entities
@@ -378,7 +379,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         let result = db.execute(&sql, &params).await?;
         
         // Parse count result
-        if let Some(row) = result.rows.first() {
+        if let Some(row) = result.rows().first() {
             if let Some(count_value) = row.get("COUNT(*)") {
                 return Ok(count_value.as_i64().unwrap_or(0));
             }
@@ -401,7 +402,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             let params = vec![self.parent_id.clone()];
             let current_result = db.execute(&current_entity_sql, &params).await?;
             
-            if let Some(current_row) = current_result.rows.first() {
+            if let Some(current_row) = current_result.rows().first() {
                 if let Some(foreign_key_value) = current_row.get(&edge.foreign_key) {
                     if !foreign_key_value.is_null() {
                         return Ok(1); // belongs_to can only have 0 or 1 result
@@ -420,7 +421,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             let params = vec![self.parent_id.clone()];
             let result = db.execute(&sql, &params).await?;
             
-            if let Some(row) = result.rows.first() {
+            if let Some(row) = result.rows().first() {
                 if let Some(count_value) = row.get("COUNT(*)") {
                     return Ok(count_value.as_i64().unwrap_or(0));
                 }
@@ -462,7 +463,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         let params = vec![self.parent_id.clone()];
         let result = db.execute(&sql, &params).await?;
         
-        if let Some(row) = result.rows.first() {
+        if let Some(row) = result.rows().first() {
             if let Some(count_value) = row.get("COUNT(*)") {
                 return Ok(count_value.as_i64().unwrap_or(0));
             }
@@ -483,7 +484,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         let params = vec![self.parent_id.clone()];
         let result = db.execute(&sql, &params).await?;
         
-        if let Some(row) = result.rows.first() {
+        if let Some(row) = result.rows().first() {
             let converted = Child::convert_from_sqlite(row.clone());
             let entity: Child = serde_json::from_value(converted)
                 .map_err(|e| D1RsError::SerializationError(e.to_string()))?;
@@ -508,7 +509,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             let params = vec![self.parent_id.clone()];
             let current_result = db.execute(&current_entity_sql, &params).await?;
             
-            if let Some(current_row) = current_result.rows.first() {
+            if let Some(current_row) = current_result.rows().first() {
                 if let Some(foreign_key_value) = current_row.get(&edge.foreign_key) {
                     if !foreign_key_value.is_null() {
                         let related_sql = format!(
@@ -519,7 +520,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
                         let related_params = vec![foreign_key_value.clone()];
                         let related_result = db.execute(&related_sql, &related_params).await?;
                         
-                        if let Some(row) = related_result.rows.first() {
+                        if let Some(row) = related_result.rows().first() {
                             let converted = Child::convert_from_sqlite(row.clone());
                             let entity: Child = serde_json::from_value(converted)
                                 .map_err(|e| D1RsError::SerializationError(e.to_string()))?;
@@ -540,7 +541,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             let params = vec![self.parent_id.clone()];
             let result = db.execute(&sql, &params).await?;
             
-            if let Some(row) = result.rows.first() {
+            if let Some(row) = result.rows().first() {
                 let converted = Child::convert_from_sqlite(row.clone());
                 let entity: Child = serde_json::from_value(converted)
                     .map_err(|e| D1RsError::SerializationError(e.to_string()))?;
@@ -595,7 +596,7 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         let params = vec![self.parent_id.clone()];
         let result = db.execute(&sql, &params).await?;
         
-        if let Some(row) = result.rows.first() {
+        if let Some(row) = result.rows().first() {
             let converted = Child::convert_from_sqlite(row.clone());
             let entity: Child = serde_json::from_value(converted)
                 .map_err(|e| D1RsError::SerializationError(e.to_string()))?;
@@ -1200,7 +1201,10 @@ impl<Parent: Entity, Child: Entity> EagerQueryBuilder<Parent, Child> {
     
     /// Parse joined results and populate eager-loaded relations
     /// 🚀 ENHANCED: Now populates Association caches to prevent duplicate queries!
-    async fn parse_eager_results(&self, result: crate::db::D1QueryResult) -> crate::Result<Vec<Parent>> {
+    async fn parse_eager_results<R>(&self, result: R) -> crate::Result<Vec<Parent>> 
+    where
+        R: QueryResult<Error = crate::D1RsError>,
+    {
         // Parse the basic entities first
         let entities = result.into_entities::<Parent>()?;
         

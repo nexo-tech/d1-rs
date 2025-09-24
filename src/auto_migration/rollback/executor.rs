@@ -10,6 +10,7 @@ use super::plan::{RollbackPlan, PreExecutionCheck, PostExecutionValidation, Chec
                   CheckFailureAction, ValidationFailureAction};
 use super::sql_generator::{RollbackSqlGenerator, SqlGeneratorConfig};
 use crate::{D1Client, Result, D1RsError};
+use crate::backends::QueryResult;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -695,7 +696,7 @@ impl RollbackExecutionEngine {
             CheckType::TableExists => {
                 if let Some(sql) = &check.sql_query {
                     let result = db.execute(sql, &[]).await?;
-                    Ok(!result.rows.is_empty())
+                    Ok(!result.rows().is_empty())
                 } else {
                     Err(D1RsError::ValidationError("TableExists check requires SQL query".to_string()))
                 }
@@ -703,7 +704,7 @@ impl RollbackExecutionEngine {
             CheckType::ColumnExists => {
                 if let Some(sql) = &check.sql_query {
                     let result = db.execute(sql, &[]).await?;
-                    Ok(!result.rows.is_empty())
+                    Ok(!result.rows().is_empty())
                 } else {
                     Err(D1RsError::ValidationError("ColumnExists check requires SQL query".to_string()))
                 }
@@ -721,12 +722,12 @@ impl RollbackExecutionEngine {
                 // Check foreign key constraint status
                 let pragma_sql = "PRAGMA foreign_key_check";
                 let result = db.execute(pragma_sql, &[]).await?;
-                Ok(result.rows.is_empty()) // Empty result means no FK violations
+                Ok(result.rows().is_empty()) // Empty result means no FK violations
             }
             CheckType::IndexExists => {
                 if let Some(sql) = &check.sql_query {
                     let result = db.execute(sql, &[]).await?;
-                    Ok(!result.rows.is_empty())
+                    Ok(!result.rows().is_empty())
                 } else {
                     Ok(true) // Assume index exists if no specific check
                 }
@@ -750,7 +751,7 @@ impl RollbackExecutionEngine {
             CheckType::Custom => {
                 if let Some(sql) = &check.sql_query {
                     let result = db.execute(sql, &[]).await?;
-                    Ok(!result.rows.is_empty())
+                    Ok(!result.rows().is_empty())
                 } else {
                     Ok(true)
                 }
@@ -764,7 +765,7 @@ impl RollbackExecutionEngine {
             ValidationType::SchemaValidation => {
                 if let Some(sql) = &validation.sql_query {
                     let result = db.execute(sql, &[]).await?;
-                    Ok(!result.rows.is_empty())
+                    Ok(!result.rows().is_empty())
                 } else {
                     Ok(true)
                 }
@@ -781,7 +782,7 @@ impl RollbackExecutionEngine {
                 let pragma_sql = "PRAGMA integrity_check";
                 let result = db.execute(pragma_sql, &[]).await?;
                 // Check if result contains "ok"
-                Ok(result.rows.iter().any(|row| {
+                Ok(result.rows().iter().any(|row| {
                     row.as_object()
                         .and_then(|obj| obj.get("integrity_check"))
                         .and_then(|v| v.as_str())
@@ -792,7 +793,7 @@ impl RollbackExecutionEngine {
             ValidationType::IndexValidation => {
                 if let Some(sql) = &validation.sql_query {
                     let result = db.execute(sql, &[]).await?;
-                    Ok(!result.rows.is_empty())
+                    Ok(!result.rows().is_empty())
                 } else {
                     Ok(true)
                 }
@@ -800,12 +801,12 @@ impl RollbackExecutionEngine {
             ValidationType::ForeignKeyValidation => {
                 let pragma_sql = "PRAGMA foreign_key_check";
                 let result = db.execute(pragma_sql, &[]).await?;
-                Ok(result.rows.is_empty())
+                Ok(result.rows().is_empty())
             }
             ValidationType::DataRestoration => {
                 if let Some(sql) = &validation.sql_query {
                     let result = db.execute(sql, &[]).await?;
-                    Ok(!result.rows.is_empty())
+                    Ok(!result.rows().is_empty())
                 } else {
                     Ok(true)
                 }
@@ -813,7 +814,7 @@ impl RollbackExecutionEngine {
             ValidationType::ApplicationConnectivity => {
                 // Test basic connectivity by executing a simple query
                 let result = db.execute("SELECT 1", &[]).await?;
-                Ok(!result.rows.is_empty())
+                Ok(!result.rows().is_empty())
             }
             ValidationType::PerformanceCheck => {
                 // Simple performance check - ensure query executes within reasonable time
@@ -829,7 +830,7 @@ impl RollbackExecutionEngine {
             ValidationType::Custom => {
                 if let Some(sql) = &validation.sql_query {
                     let result = db.execute(sql, &[]).await?;
-                    Ok(!result.rows.is_empty())
+                    Ok(!result.rows().is_empty())
                 } else {
                     Ok(true)
                 }
@@ -844,7 +845,7 @@ impl RollbackExecutionEngine {
         let result = db.execute(sql, &[]).await?;
         
         Ok(SqlExecutionResult {
-            rows_affected: result.rows.len(),
+            rows_affected: result.rows().len(),
             warning: None,
         })
     }

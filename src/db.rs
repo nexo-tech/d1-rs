@@ -291,6 +291,16 @@ impl<B: DatabaseBackend> DatabaseClient<B> {
     }
 }
 
+// Specific implementation for SQLite backend
+impl DatabaseClient<crate::backends::SQLiteBackend> {
+    /// Create an in-memory SQLite DatabaseClient for testing
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn new_in_memory() -> Result<Self> {
+        let backend = crate::backends::SQLiteBackend::new_in_memory().await?;
+        Ok(DatabaseClient::new(backend))
+    }
+}
+
 // Type alias for SQLite backend (most common case)
 pub type SQLiteClient = DatabaseClient<crate::backends::SQLiteBackend>;
 

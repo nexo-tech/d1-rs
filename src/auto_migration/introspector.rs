@@ -1,4 +1,5 @@
 use crate::{D1Client, Result, D1RsError};
+use crate::backends::QueryResult;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -35,7 +36,7 @@ impl<'a> SchemaIntrospector<'a> {
         let result = self.db.execute(sql, &[]).await?;
 
         let mut tables = Vec::new();
-        for row in result.rows {
+        for row in result.rows() {
             if let Value::Object(obj) = row {
                 if let Some(Value::String(name)) = obj.get("name") {
                     tables.push(name.clone());
@@ -70,7 +71,7 @@ impl<'a> SchemaIntrospector<'a> {
         let params = vec![serde_json::json!(table_name)];
         let result = self.db.execute(sql, &params).await?;
 
-        let create_sql = match result.rows.first() {
+        let create_sql = match result.rows().first() {
             Some(Value::Object(obj)) => {
                 obj.get("sql")
                     .and_then(|v| v.as_str())
@@ -305,9 +306,9 @@ impl<'a> SchemaIntrospector<'a> {
         let result = self.db.execute(&sql, &[]).await?;
 
         let mut columns = Vec::new();
-        for row in result.rows {
+        for row in result.rows() {
             if let Value::Object(obj) = row {
-                let column = self.parse_column_info(obj, None)?;
+                let column = self.parse_column_info(obj.clone(), None)?;
                 columns.push(column);
             }
         }
@@ -328,9 +329,9 @@ impl<'a> SchemaIntrospector<'a> {
             .collect();
 
         let mut columns = Vec::new();
-        for row in result.rows {
+        for row in result.rows() {
             if let Value::Object(obj) = row {
-                let column = self.parse_column_info(obj, Some(&boolean_fields))?;
+                let column = self.parse_column_info(obj.clone(), Some(&boolean_fields))?;
                 columns.push(column);
             }
         }
@@ -345,7 +346,7 @@ impl<'a> SchemaIntrospector<'a> {
         let result = self.db.execute(&sql, &[]).await?;
 
         let mut indexes = Vec::new();
-        for row in result.rows {
+        for row in result.rows() {
             if let Value::Object(obj) = row {
                 if let Some(Value::String(index_name)) = obj.get("name") {
                     // Skip auto-created indexes for primary keys and unique constraints
@@ -368,7 +369,7 @@ impl<'a> SchemaIntrospector<'a> {
         let result = self.db.execute(&sql, &[]).await?;
 
         let mut columns = Vec::new();
-        for row in result.rows {
+        for row in result.rows() {
             if let Value::Object(obj) = row {
                 if let Some(Value::String(column_name)) = obj.get("name") {
                     columns.push(column_name.clone());
@@ -393,7 +394,7 @@ impl<'a> SchemaIntrospector<'a> {
         let params = vec![serde_json::json!(index_name)];
         let result = self.db.execute(sql, &params).await?;
 
-        for row in result.rows {
+        for row in result.rows() {
             if let Value::Object(obj) = row {
                 if let Some(Value::String(sql_text)) = obj.get("sql") {
                     // Check if the CREATE INDEX statement contains UNIQUE
@@ -414,11 +415,11 @@ impl<'a> SchemaIntrospector<'a> {
         let mut fk_groups: HashMap<i64, Vec<Value>> = HashMap::new();
 
         // Group foreign key parts by their ID (for composite keys)
-        for row in result.rows {
+        for row in result.rows() {
             if let Value::Object(ref obj) = row {
                 if let Some(Value::Number(id)) = obj.get("id") {
                     if let Some(id) = id.as_i64() {
-                        fk_groups.entry(id).or_insert_with(Vec::new).push(row);
+                        fk_groups.entry(id).or_insert_with(Vec::new).push(row.clone());
                     }
                 }
             }

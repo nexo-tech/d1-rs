@@ -3,6 +3,7 @@ use d1_rs::auto_migration::{
     TransformationFunction,
 };
 use d1_rs::*;
+use d1_rs::backends::QueryResult;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -311,10 +312,10 @@ async fn test_execute_custom_transformation_success() {
         &[]
     ).await.expect("Failed to verify transformed data");
 
-    assert_eq!(verification_result.rows.len(), 3);
+    assert_eq!(verification_result.rows().len(), 3);
 
     // Verify first row transformation
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         assert_eq!(row.get("id").unwrap(), &Value::Number(1.into()));
         assert_eq!(
             row.get("transformed_name").unwrap(),
@@ -382,7 +383,7 @@ async fn test_execute_custom_transformation_failure() {
         .await
         .expect("Failed to verify no data inserted");
 
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 0);
         }
@@ -549,7 +550,7 @@ async fn test_execute_custom_transformation_batch_processing() {
         .await
         .expect("Failed to verify batch processing results");
 
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 15);
         }
@@ -604,9 +605,9 @@ async fn test_execute_custom_transformation_placeholder_replacement() {
         &[]
     ).await.expect("Failed to verify placeholder replacement");
 
-    assert_eq!(verification_result.rows.len(), 1);
+    assert_eq!(verification_result.rows().len(), 1);
 
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         // ID should be unchanged
         assert_eq!(row.get("id").unwrap(), &Value::Number(1.into()));
         // Name should be uppercased
@@ -837,10 +838,10 @@ async fn test_execute_built_in_custom_migration_type_conversion() {
         .await
         .expect("Failed to verify converted data");
 
-    assert_eq!(verification_result.rows.len(), 3);
+    assert_eq!(verification_result.rows().len(), 3);
 
     // Verify first row conversion (TEXT "25" -> INTEGER 25)
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         assert_eq!(row.get("id").unwrap(), &Value::Number(1.into()));
         assert_eq!(row.get("age").unwrap(), &Value::Number(25.into()));
     }
@@ -904,16 +905,16 @@ async fn test_execute_built_in_custom_migration_value_mapping() {
         .await
         .expect("Failed to verify mapped data");
 
-    assert_eq!(verification_result.rows.len(), 3);
+    assert_eq!(verification_result.rows().len(), 3);
 
     // Verify mappings: 1 -> "Active", 2 -> "Inactive"
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         assert_eq!(
             row.get("status_desc").unwrap(),
             &Value::String("Active".to_string())
         );
     }
-    if let Value::Object(row) = &verification_result.rows[1] {
+    if let Value::Object(row) = &verification_result.rows()[1] {
         assert_eq!(
             row.get("status_desc").unwrap(),
             &Value::String("Inactive".to_string())
@@ -974,10 +975,10 @@ async fn test_execute_built_in_custom_migration_normalization() {
         .await
         .expect("Failed to verify normalized data");
 
-    assert_eq!(verification_result.rows.len(), 3);
+    assert_eq!(verification_result.rows().len(), 3);
 
     // Verify normalization: "Alice Johnson" -> first_name="Alice", last_name="Johnson"
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         assert_eq!(
             row.get("first_name").unwrap(),
             &Value::String("Alice".to_string())
@@ -1044,10 +1045,10 @@ async fn test_execute_built_in_custom_migration_aggregation() {
         .await
         .expect("Failed to verify aggregated data");
 
-    assert_eq!(verification_result.rows.len(), 3);
+    assert_eq!(verification_result.rows().len(), 3);
 
     // Verify aggregation: "Alice Johnson" + "ALICE_J" -> "Alice Johnson | ALICE_J"
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         assert_eq!(
             row.get("aggregated_info").unwrap(),
             &Value::String("Alice Johnson | ALICE_J".to_string())
@@ -1111,10 +1112,10 @@ async fn test_execute_built_in_custom_migration_format_transformation() {
         .await
         .expect("Failed to verify format transformed data");
 
-    assert_eq!(verification_result.rows.len(), 3);
+    assert_eq!(verification_result.rows().len(), 3);
 
     // Verify format transformation: "ALICE_J" -> "alice_j"
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         assert_eq!(
             row.get("normalized_name").unwrap(),
             &Value::String("alice_j".to_string())
@@ -1330,7 +1331,7 @@ async fn test_execute_built_in_custom_migration_batch_processing() {
         .await
         .expect("Failed to verify batch processing results");
 
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 15);
         }
@@ -1490,7 +1491,7 @@ async fn test_restore_from_backup_successful_backup_table_restoration() {
         .await
         .expect("Failed to verify restoration");
 
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         if let Some(Value::String(name)) = row.get("name") {
             assert_eq!(name, "Alice Smith Original");
         }
@@ -1574,7 +1575,7 @@ async fn test_restore_from_backup_successful_snapshot_restoration() {
         .await
         .expect("Failed to verify snapshot restoration");
 
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         if let Some(Value::String(name)) = row.get("name") {
             assert_eq!(name, "Original Product");
         }
@@ -1747,7 +1748,7 @@ async fn test_restore_from_backup_mixed_operations() {
         .await
         .expect("Failed to verify users restoration");
 
-    if let Value::Object(row) = &users_result.rows[0] {
+    if let Value::Object(row) = &users_result.rows()[0] {
         if let Some(Value::String(name)) = row.get("name") {
             assert_eq!(name, "Alice Smith Original");
         }
@@ -1758,7 +1759,7 @@ async fn test_restore_from_backup_mixed_operations() {
         .await
         .expect("Failed to verify mixed restoration");
 
-    if let Value::Object(row) = &mixed_result.rows[0] {
+    if let Value::Object(row) = &mixed_result.rows()[0] {
         if let Some(Value::String(data)) = row.get("data") {
             assert_eq!(data, "Original Data");
         }
@@ -1870,7 +1871,7 @@ async fn test_restore_from_backup_batch_processing() {
         .await
         .expect("Failed to verify batch restoration");
 
-    if let Value::Object(row) = &verification_result.rows[0] {
+    if let Value::Object(row) = &verification_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 25);
         }

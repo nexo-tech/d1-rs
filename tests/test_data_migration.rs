@@ -1,5 +1,6 @@
 use d1_rs::auto_migration::{DataMigrationConfig, DataMigrator, FailureStrategy};
 use d1_rs::*;
+use d1_rs::backends::QueryResult;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -102,7 +103,7 @@ async fn test_execute_aggregation_sum() {
     ];
 
     for (i, (expected_name, expected_total)) in expected_totals.iter().enumerate() {
-        if let Value::Object(row) = &rows.rows[i] {
+        if let Value::Object(row) = &rows.rows()[i] {
             assert_eq!(
                 row.get("student_name"),
                 Some(&Value::String(expected_name.to_string()))
@@ -163,7 +164,7 @@ async fn test_execute_aggregation_average() {
     ];
 
     for (i, (expected_name, expected_avg)) in expected_averages.iter().enumerate() {
-        if let Value::Object(row) = &rows.rows[i] {
+        if let Value::Object(row) = &rows.rows()[i] {
             assert_eq!(
                 row.get("student_name"),
                 Some(&Value::String(expected_name.to_string()))
@@ -246,7 +247,7 @@ async fn test_execute_aggregation_max_min() {
     ];
 
     for (i, (expected_name, expected_max, expected_min)) in expected_max_min.iter().enumerate() {
-        if let Value::Object(row) = &rows.rows[i] {
+        if let Value::Object(row) = &rows.rows()[i] {
             assert_eq!(
                 row.get("student_name"),
                 Some(&Value::String(expected_name.to_string()))
@@ -307,7 +308,7 @@ async fn test_execute_aggregation_string_functions() {
         .await
         .expect("Failed to query results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         if let Some(Value::String(summary)) = row.get("score_summary") {
             // Should contain all three scores concatenated with spaces
             assert!(summary.contains("85"));
@@ -442,7 +443,7 @@ async fn test_execute_aggregation_batch_processing() {
         .await
         .expect("Failed to count results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         assert_eq!(row.get("count"), Some(&Value::Number(5.into())));
     }
 }
@@ -547,7 +548,7 @@ async fn test_execute_value_mapping_status_codes() {
 
     for (i, (expected_username, expected_old, expected_new)) in expected_mappings.iter().enumerate()
     {
-        if let Value::Object(row) = &rows.rows[i] {
+        if let Value::Object(row) = &rows.rows()[i] {
             assert_eq!(
                 row.get("username"),
                 Some(&Value::String(expected_username.to_string()))
@@ -620,7 +621,7 @@ async fn test_execute_value_mapping_with_default() {
 
     for (i, (expected_username, expected_old, expected_new)) in expected_mappings.iter().enumerate()
     {
-        if let Value::Object(row) = &rows.rows[i] {
+        if let Value::Object(row) = &rows.rows()[i] {
             assert_eq!(
                 row.get("username"),
                 Some(&Value::String(expected_username.to_string()))
@@ -682,7 +683,7 @@ async fn test_execute_value_mapping_no_default() {
         .await
         .expect("Failed to query results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         assert_eq!(
             row.get("department_code"),
             Some(&Value::String("ENG".to_string()))
@@ -830,7 +831,7 @@ async fn test_execute_value_mapping_batch_processing() {
         .await
         .expect("Failed to count results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         assert_eq!(row.get("count"), Some(&Value::Number(5.into())));
     }
 }
@@ -880,7 +881,7 @@ async fn test_execute_value_mapping_sql_injection_safety() {
         .await
         .expect("Failed to query results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         assert_eq!(
             row.get("new_status"),
             Some(&Value::String("O'Reilly".to_string()))
@@ -1032,7 +1033,7 @@ async fn test_execute_format_transformation_date_formats() {
     for (i, (expected_name, expected_old, expected_new)) in
         expected_transformations.iter().enumerate()
     {
-        if let Value::Object(row) = &rows.rows[i] {
+        if let Value::Object(row) = &rows.rows()[i] {
             assert_eq!(
                 row.get("name"),
                 Some(&Value::String(expected_name.to_string()))
@@ -1102,7 +1103,7 @@ async fn test_execute_format_transformation_number_formats() {
     for (i, (expected_name, expected_old, expected_new)) in
         expected_transformations.iter().enumerate()
     {
-        if let Value::Object(row) = &rows.rows[i] {
+        if let Value::Object(row) = &rows.rows()[i] {
             assert_eq!(
                 row.get("name"),
                 Some(&Value::String(expected_name.to_string()))
@@ -1161,7 +1162,7 @@ async fn test_execute_format_transformation_phone_formats() {
         .await
         .expect("Failed to count results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         assert_eq!(row.get("count"), Some(&Value::Number(5.into())));
     }
 }
@@ -1208,7 +1209,7 @@ async fn test_execute_format_transformation_currency_formats() {
         .await
         .expect("Failed to query results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         assert_eq!(
             row.get("old_currency"),
             Some(&Value::String("$1,234.56".to_string()))
@@ -1262,7 +1263,7 @@ async fn test_execute_format_transformation_case_transformations() {
         .await
         .expect("Failed to query results");
 
-    if let Value::Object(row) = &rows.rows[0] {
+    if let Value::Object(row) = &rows.rows()[0] {
         assert_eq!(
             row.get("mixed_case_text"),
             Some(&Value::String("hello world".to_string()))

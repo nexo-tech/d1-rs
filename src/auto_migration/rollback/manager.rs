@@ -12,7 +12,7 @@ use super::sql_generator::{RollbackSqlGenerator, SqlGeneratorConfig};
 use super::types::{RollbackConfig, RollbackRiskLevel, DataLossRisk};
 use super::plan::{RollbackPlan, PreExecutionCheck, PostExecutionValidation};
 use crate::auto_migration::{MigrationPlan, DatabaseSchema};
-use crate::db::D1Client;
+use crate::D1Client;
 use crate::Result;
 use std::time::Duration;
 

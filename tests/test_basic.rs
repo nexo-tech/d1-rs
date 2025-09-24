@@ -1,5 +1,6 @@
 use d1_rs::*;
 use serde_json::Value;
+use d1_rs::backends::QueryResult;
 
 #[tokio::test]
 async fn test_basic_database_operations() {
@@ -36,9 +37,9 @@ async fn test_basic_database_operations() {
     ]).await.expect("Failed to query");
     
     // Verify we got data
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows().len(), 1);
     
-    let row = &result.rows[0];
+    let row = &result.rows()[0];
     if let Value::Object(obj) = row {
         assert_eq!(obj.get("name"), Some(&Value::String("Test Item".to_string())));
         // SQLite stores booleans as integers
@@ -67,7 +68,7 @@ async fn test_boolean_conversion() {
     let result = db.execute("SELECT * FROM test_bools", &[])
         .await.expect("Failed to query");
     
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows().len(), 1);
     
     // Test the boolean conversion feature
     #[derive(serde::Deserialize, serde::Serialize, Debug, d1_rs::Entity)]
@@ -79,7 +80,7 @@ async fn test_boolean_conversion() {
     }
     
     // First let's debug what we got from the query
-    println!("Raw result rows: {:?}", result.rows);
+    println!("Raw result rows: {:?}", result.rows());
     
     let converted: Vec<TestBool> = result.into_entities()
         .expect("Failed to convert with boolean handling");
@@ -112,5 +113,5 @@ async fn test_migration_runner() {
         &[]
     ).await.expect("Failed to query schema");
     
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows().len(), 1);
 }

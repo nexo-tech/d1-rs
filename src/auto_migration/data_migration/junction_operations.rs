@@ -1,6 +1,7 @@
 // Junction table operations functionality for data migration
 
 use crate::{Result, D1RsError};
+use crate::backends::QueryResult;
 use crate::auto_migration::data_migration::core::{DataMigrator, TransformationResult};
 use std::time::Instant;
 
@@ -156,10 +157,10 @@ impl DataMigrator {
             
             match self.db.execute(&batch_sql, &[]).await {
                 Ok(result) => {
-                    let batch_processed = result.rows.len() as u64;
+                    let batch_processed = result.rows().len() as u64;
                     
                     // Process each record in the batch
-                    for row in &result.rows {
+                    for row in result.rows() {
                         if let serde_json::Value::Object(row_map) = row {
                             let source_id = match row_map.get("id") {
                                 Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(0),
@@ -411,10 +412,10 @@ impl DataMigrator {
             
             match self.db.execute(&batch_sql, &[]).await {
                 Ok(result) => {
-                    let batch_processed = result.rows.len() as u64;
+                    let batch_processed = result.rows().len() as u64;
                     
                     // Process each record in the batch
-                    for row in &result.rows {
+                    for row in result.rows() {
                         if let serde_json::Value::Object(row_map) = row {
                             // Extract values according to column mapping
                             let mut values = Vec::new();
@@ -656,7 +657,7 @@ impl DataMigrator {
                 match self.db.execute(validation_rule, &[]).await {
                     Ok(result) => {
                         // Check if validation rule returned results (depends on the rule type)
-                        if let Some(first_row) = result.rows.first() {
+                        if let Some(first_row) = result.rows().first() {
                             if let serde_json::Value::Object(row_map) = first_row {
                                 // If the validation rule returns a count, check if it's zero (which might indicate failures)
                                 if let Some(serde_json::Value::Number(count)) = row_map.values().next() {
@@ -958,7 +959,7 @@ impl DataMigrator {
                 match self.db.execute(validation_rule, &[]).await {
                     Ok(result) => {
                         // Check if validation rule returned results
-                        if let Some(first_row) = result.rows.first() {
+                        if let Some(first_row) = result.rows().first() {
                             if let serde_json::Value::Object(row_map) = first_row {
                                 // If the validation rule returns a count, check if it's zero
                                 if let Some(serde_json::Value::Number(count)) = row_map.values().next() {

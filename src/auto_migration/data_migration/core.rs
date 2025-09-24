@@ -1,6 +1,7 @@
 // Core data migration functionality and structures
 
 use crate::{D1Client, Result, D1RsError};
+use crate::backends::QueryResult;
 use crate::auto_migration::DatabaseSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -459,12 +460,12 @@ impl DataMigrator {
             }
         };
         
-        warnings.push(format!("Source query returned {} rows", source_result.rows.len()));
+        warnings.push(format!("Source query returned {} rows", source_result.rows().len()));
         
         let batch_size = self.config.batch_size;
         
         // Process source data in batches
-        for (batch_index, chunk) in source_result.rows.chunks(batch_size).enumerate() {
+        for (batch_index, chunk) in source_result.rows().chunks(batch_size).enumerate() {
             warnings.push(format!("Processing batch {} with {} records", batch_index + 1, chunk.len()));
             
             for (row_index, row) in chunk.iter().enumerate() {
@@ -651,24 +652,24 @@ impl DataMigrator {
             }
         };
         
-        warnings.push(format!("Source query returned {} rows", source_result.rows.len()));
+        warnings.push(format!("Source query returned {} rows", source_result.rows().len()));
         
         // Execute built-in transformation based on type
         let transformation_result = match transformation_type {
             "type_conversion" => {
-                self.execute_built_in_type_conversion(&transformation_config, &source_result.rows).await
+                self.execute_built_in_type_conversion(&transformation_config, &source_result.rows()).await
             }
             "value_mapping" => {
-                self.execute_built_in_value_mapping(&transformation_config, &source_result.rows).await
+                self.execute_built_in_value_mapping(&transformation_config, &source_result.rows()).await
             }
             "normalization" => {
-                self.execute_built_in_normalization(&transformation_config, &source_result.rows).await
+                self.execute_built_in_normalization(&transformation_config, &source_result.rows()).await
             }
             "aggregation" => {
-                self.execute_built_in_aggregation(&transformation_config, &source_result.rows).await
+                self.execute_built_in_aggregation(&transformation_config, &source_result.rows()).await
             }
             "format_transformation" => {
-                self.execute_built_in_format_transformation(&transformation_config, &source_result.rows).await
+                self.execute_built_in_format_transformation(&transformation_config, &source_result.rows()).await
             }
             _ => {
                 return Err(D1RsError::ValidationError(

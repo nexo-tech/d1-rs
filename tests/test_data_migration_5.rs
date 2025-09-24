@@ -1,5 +1,6 @@
 use d1_rs::auto_migration::{DataMigrationConfig, DataMigrator, FailureStrategy};
 use d1_rs::*;
+use d1_rs::backends::QueryResult;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -362,7 +363,7 @@ async fn test_execute_business_rules_population_successful_operation() {
     ).await.expect("Failed to query assignments");
 
     // Check that assignment types follow the business rules
-    for row in &assignments_result.rows {
+    for row in assignments_result.rows() {
         if let Value::Object(row_map) = row {
             if let (
                 Some(Value::String(assignment_type)),
@@ -604,7 +605,7 @@ async fn test_execute_business_rules_population_complex_business_logic() {
         .expect("Failed to query complex assignments");
 
     // Verify no junior developers are assigned to high-complexity projects
-    for row in &complex_result.rows {
+    for row in complex_result.rows() {
         if let Value::Object(row_map) = row {
             if let (Some(Value::String(role)), Some(Value::Number(complexity))) =
                 (row_map.get("role"), row_map.get("complexity_level"))
@@ -938,10 +939,10 @@ async fn test_execute_external_source_population_json_success() {
         &[]
     ).await.expect("Failed to query assignments");
 
-    assert_eq!(assignments_result.rows.len(), 3);
+    assert_eq!(assignments_result.rows().len(), 3);
 
     // Check specific record values
-    if let Value::Object(row) = &assignments_result.rows[0] {
+    if let Value::Object(row) = &assignments_result.rows()[0] {
         if let (Some(Value::Number(user_id)), Some(Value::String(role))) =
             (row.get("external_user_id"), row.get("assignment_role"))
         {
@@ -1012,10 +1013,10 @@ async fn test_execute_external_source_population_csv_success() {
         &[]
     ).await.expect("Failed to query permissions");
 
-    assert_eq!(permissions_result.rows.len(), 4);
+    assert_eq!(permissions_result.rows().len(), 4);
 
     // Check specific record values
-    if let Value::Object(row) = &permissions_result.rows[0] {
+    if let Value::Object(row) = &permissions_result.rows()[0] {
         if let (Some(Value::Number(user_ref)), Some(Value::Number(permission_ref))) =
             (row.get("user_ref"), row.get("permission_ref"))
         {
@@ -1087,10 +1088,10 @@ async fn test_execute_external_source_population_array_format() {
         &[]
     ).await.expect("Failed to query array assignments");
 
-    assert_eq!(array_result.rows.len(), 3);
+    assert_eq!(array_result.rows().len(), 3);
 
     // Check specific record values
-    if let Value::Object(row) = &array_result.rows[0] {
+    if let Value::Object(row) = &array_result.rows()[0] {
         if let (Some(Value::Number(user_id)), Some(Value::String(role))) =
             (row.get("external_user_id"), row.get("assignment_role"))
         {
@@ -1239,7 +1240,7 @@ async fn test_execute_external_source_population_missing_columns() {
         .await
         .expect("Failed to count records");
 
-    if let Value::Object(row) = &incomplete_result.rows[0] {
+    if let Value::Object(row) = &incomplete_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert!(count.as_u64().unwrap() >= 2); // At least 2 records from previous tests
         }
@@ -1353,9 +1354,9 @@ async fn test_execute_external_source_population_single_json_object() {
         &[]
     ).await.expect("Failed to query single assignment");
 
-    assert_eq!(single_result.rows.len(), 1);
+    assert_eq!(single_result.rows().len(), 1);
 
-    if let Value::Object(row) = &single_result.rows[0] {
+    if let Value::Object(row) = &single_result.rows()[0] {
         if let Some(Value::String(role)) = row.get("assignment_role") {
             assert_eq!(role, "owner");
         }
@@ -1437,7 +1438,7 @@ async fn test_execute_denormalized_column_population_different_delimiters() {
         .await
         .expect("Failed to query junction table");
 
-    if let Value::Object(row) = &pipe_result.rows[0] {
+    if let Value::Object(row) = &pipe_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 3); // tag1, tag2, tag3
         }
@@ -1470,7 +1471,7 @@ async fn test_execute_denormalized_column_population_different_delimiters() {
         .await
         .expect("Failed to query junction table");
 
-    if let Value::Object(row) = &semi_result.rows[0] {
+    if let Value::Object(row) = &semi_result.rows()[0] {
         if let Some(Value::Number(count)) = row.get("count") {
             assert_eq!(count.as_u64().unwrap(), 3); // tag4, tag5, tag6
         }

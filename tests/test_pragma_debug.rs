@@ -1,5 +1,6 @@
 use d1_rs::*;
 
+use d1_rs::backends::QueryResult;
 #[tokio::test]
 async fn test_pragma_table_info() {
     // Create a test database
@@ -16,7 +17,7 @@ async fn test_pragma_table_info() {
     match result {
         Ok(query_result) => {
             println!("PRAGMA result: {:?}", query_result);
-            for (i, row) in query_result.rows.iter().enumerate() {
+            for (i, row) in query_result.rows().iter().enumerate() {
                 println!("Row {}: {:?}", i, row);
             }
         },

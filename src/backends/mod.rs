@@ -18,6 +18,12 @@ pub mod postgres;
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgreSQLBackend, PostgreSQLQueryResult};
 
+// MySQL backend implementation (feature-gated) - stub for Task 2.6
+#[cfg(feature = "mysql")]
+pub mod mysql;
+#[cfg(feature = "mysql")]
+pub use mysql::{MySQLBackend, MySQLQueryResult};
+
 /// Core trait for database query results
 /// 
 /// This trait abstracts over different database backend query results,

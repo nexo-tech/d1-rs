@@ -1,5 +1,6 @@
 use d1_rs::*;
 
+use d1_rs::backends::QueryResult;
 #[tokio::test]
 async fn test_basic_db_operation() {
     // Test basic database operation first
@@ -30,8 +31,8 @@ async fn test_sqlite_master_query() {
     
     match result {
         Ok(query_result) => {
-            println!("Number of rows: {}", query_result.rows.len());
-            for row in &query_result.rows {
+            println!("Number of rows: {}", query_result.rows().len());
+            for row in query_result.rows() {
                 println!("Row: {:?}", row);
             }
         },

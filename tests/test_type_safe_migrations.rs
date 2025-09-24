@@ -1,5 +1,6 @@
 mod common;
 
+use d1_rs::backends::QueryResult;
 use d1_rs::*;
 use serde::{Serialize, Deserialize};
 
@@ -340,7 +341,7 @@ async fn test_type_safe_migration_integration_with_runner() {
     let result = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
         .await
         .expect("Failed to query tables");
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows().len(), 1);
 
     // Test inserting data into the type-safe created table
     use serde_json::Value;
@@ -355,7 +356,7 @@ async fn test_type_safe_migration_integration_with_runner() {
     let data = db.execute("SELECT * FROM users", &[])
         .await
         .expect("Failed to query users");
-    assert_eq!(data.rows.len(), 1);
+    assert_eq!(data.rows().len(), 1);
 }
 
 #[tokio::test]
@@ -385,7 +386,7 @@ async fn test_multiple_type_safe_migrations() {
         "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'posts') ORDER BY name",
         &[]
     ).await.expect("Failed to query tables");
-    assert_eq!(tables.rows.len(), 2);
+    assert_eq!(tables.rows().len(), 2);
 
     // Verify foreign key relationship works
     use serde_json::Value;
@@ -404,7 +405,7 @@ async fn test_multiple_type_safe_migrations() {
     let posts = db.execute("SELECT * FROM posts", &[])
         .await
         .expect("Failed to query posts");
-    assert_eq!(posts.rows.len(), 1);
+    assert_eq!(posts.rows().len(), 1);
 }
 
 #[test]
@@ -454,7 +455,7 @@ async fn test_type_safe_migration_rollback() {
     let tables = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
         .await
         .expect("Failed to query tables");
-    assert_eq!(tables.rows.len(), 1);
+    assert_eq!(tables.rows().len(), 1);
 
     // Small delay to ensure database consistency
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -472,7 +473,7 @@ async fn test_type_safe_migration_rollback() {
             let tables_after = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
                 .await
                 .expect("Failed to query tables after manual rollback");
-            assert_eq!(tables_after.rows.len(), 0);
+            assert_eq!(tables_after.rows().len(), 0);
             return;
         } else {
             panic!("Failed to rollback migration: {:?}", e);
@@ -483,7 +484,7 @@ async fn test_type_safe_migration_rollback() {
     let tables_after = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
         .await
         .expect("Failed to query tables after rollback");
-    assert_eq!(tables_after.rows.len(), 0);
+    assert_eq!(tables_after.rows().len(), 0);
 }
 
 #[test]

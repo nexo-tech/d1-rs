@@ -1,5 +1,6 @@
 mod common;
 
+use d1_rs::backends::QueryResult;
 use d1_rs::*;
 use serde::{Serialize, Deserialize};
 
@@ -161,14 +162,14 @@ async fn test_revolutionary_type_safe_migration_runner() {
         .await
         .expect("Failed to query tables");
     
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows().len(), 1);
     
     // Verify migration was recorded
     let migrations = db.execute("SELECT * FROM _migrations WHERE name='create_test_users'", &[])
         .await
         .expect("Failed to query migrations");
     
-    assert_eq!(migrations.rows.len(), 1);
+    assert_eq!(migrations.rows().len(), 1);
 }
 
 // 🚀 REVOLUTIONARY: Additional type-safe test entities
@@ -437,7 +438,7 @@ async fn test_revolutionary_multiple_type_safe_migrations() {
         &[]
     ).await.expect("Failed to query tables");
     
-    assert_eq!(tables.rows.len(), 3);
+    assert_eq!(tables.rows().len(), 3);
     
     // Verify all migrations were recorded
     let migrations = db.execute(
@@ -445,7 +446,7 @@ async fn test_revolutionary_multiple_type_safe_migrations() {
         &[]
     ).await.expect("Failed to query migrations");
     
-    assert_eq!(migrations.rows.len(), 3);
+    assert_eq!(migrations.rows().len(), 3);
 }
 
 #[tokio::test]
@@ -475,7 +476,7 @@ async fn test_revolutionary_migration_idempotency() {
         &[]
     ).await.expect("Failed to query migrations");
     
-    assert_eq!(migrations.rows.len(), 1);
+    assert_eq!(migrations.rows().len(), 1);
 }
 
 // 🚀 REVOLUTIONARY: Complex type-safe entity with all field types
@@ -740,7 +741,7 @@ async fn test_revolutionary_complex_type_safe_schema() {
         .await
         .expect("Failed to query complex table");
     
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows().len(), 1);
 }
 
 #[tokio::test]
@@ -869,7 +870,7 @@ async fn test_revolutionary_migration_lock_safety() {
         .await
         .expect("Failed to query lock");
     
-    if let Some(serde_json::Value::Object(row)) = lock_status.rows.first() {
+    if let Some(serde_json::Value::Object(row)) = lock_status.rows().first() {
         if let Some(serde_json::Value::Number(locked)) = row.get("locked") {
             assert_eq!(locked.as_i64(), Some(0), "Lock should be released");
         }

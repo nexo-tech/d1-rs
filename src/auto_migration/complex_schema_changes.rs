@@ -1,6 +1,7 @@
 // Phase 4.2 - Complex Schema Changes - Handle SQLite limitations and relationship evolution
 
 use crate::{D1Client, Result};
+use crate::backends::QueryResult;
 use crate::auto_migration::{TableSchema, ColumnSchema, IndexSchema};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -464,7 +465,7 @@ impl ComplexSchemaChanger {
         let count_sql = format!("SELECT COUNT(*) as count FROM {}", target_table);
         let result = self.db.execute(&count_sql, &[]).await?;
         
-        let row_count = if let Some(first_row) = result.rows.first() {
+        let row_count = if let Some(first_row) = result.rows().first() {
             first_row.get("count")
                 .and_then(|v| v.as_number())
                 .and_then(|n| n.as_u64())
@@ -1004,7 +1005,7 @@ impl ComplexSchemaChanger {
         match self.db.execute(&fk_sql, &[]).await {
             Ok(result) => {
                 // Check if any foreign key references the target table
-                for row in result.rows {
+                for row in result.rows() {
                     if let Some(referenced_table) = row.get("table").and_then(|v| v.as_str()) {
                         if referenced_table == target_table {
                             return Ok(true);
