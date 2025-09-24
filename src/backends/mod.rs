@@ -4,6 +4,10 @@ use async_trait::async_trait;
 use crate::Entity;
 use crate::dialects::DatabaseDialect;
 
+// SQLite backend implementation
+pub mod sqlite;
+pub use sqlite::{SQLiteBackend, SQLiteQueryResult};
+
 /// Core trait for database query results
 /// 
 /// This trait abstracts over different database backend query results,
