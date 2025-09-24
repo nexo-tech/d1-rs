@@ -12,6 +12,12 @@ pub use config::{DatabaseConfig, PoolConfig, SslConfig, SslMode, TimeoutConfig, 
 pub mod sqlite;
 pub use sqlite::{SQLiteBackend, SQLiteQueryResult};
 
+// PostgreSQL backend implementation (feature-gated)
+#[cfg(feature = "postgres")]
+pub mod postgres;
+#[cfg(feature = "postgres")]
+pub use postgres::{PostgreSQLBackend, PostgreSQLQueryResult};
+
 /// Core trait for database query results
 /// 
 /// This trait abstracts over different database backend query results,
