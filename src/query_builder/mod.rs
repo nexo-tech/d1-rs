@@ -517,9 +517,11 @@ mod tests {
         assert!(sql.contains("WHERE"));
         assert!(sql.contains("ORDER BY"));
         assert!(sql.contains("LIMIT"));
-        assert_eq!(params.len(), 3);
+        // The LIMIT clause adds a parameter, so we expect 4 parameters total
+        assert_eq!(params.len(), 4);
         assert_eq!(params[0], Value::Number(Number::from(18)));
         assert_eq!(params[1], Value::Bool(true));
         assert_eq!(params[2], Value::String("%John%".to_string()));
+        assert_eq!(params[3], Value::Number(Number::from(10))); // LIMIT parameter
     }
 }
