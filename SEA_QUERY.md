@@ -12,7 +12,7 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 1.3**: QueryResult Trait (~250 lines, 3-4 hours) ✅
 - [x] **Task 1.4**: Basic DatabaseBackend Trait (~200 lines, 2-3 hours) ✅
 - [x] **Task 1.5**: Raw SQL Audit & Documentation (~300 lines, 4-5 hours) ✅
-- [ ] **Task 1.6**: Update lib.rs Exports (~100 lines, 1 hour)
+- [x] **Task 1.6**: Update lib.rs Exports (~100 lines, 1 hour) ✅
 
 ### **Phase 2: Database Client Refactor (Week 2)**
 - [ ] **Task 2.1**: SQLite Backend Implementation (~400 lines, 6-8 hours)
@@ -442,10 +442,10 @@ pub use backends::sqlx_support;
 ```
 
 **Acceptance criteria**:
-- [ ] New modules exported correctly
-- [ ] Existing exports remain unchanged
-- [ ] Feature flags work correctly
-- [ ] Zero compilation warnings
+- [x] New modules exported correctly ✅
+- [x] Existing exports remain unchanged ✅
+- [x] Feature flags work correctly ✅
+- [x] Zero compilation warnings ✅
 
 **Testing**: Ensure all existing imports still work
 
