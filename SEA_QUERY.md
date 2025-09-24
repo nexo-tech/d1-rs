@@ -25,7 +25,7 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 ### **Phase 3: Query Builder Migration (Week 3-4)**
 - [x] **Task 3.1**: Basic Sea-Query Integration (~300 lines, 4-5 hours) ✅
 - [x] **Task 3.2**: Replace Query Struct in queries.rs (~400 lines, 6-7 hours) ✅
-- [ ] **Task 3.3**: Basic SELECT Builder (~350 lines, 5-6 hours)
+- [x] **Task 3.3**: Basic SELECT Builder (~350 lines, 5-6 hours) ✅
 - [ ] **Task 3.4**: Basic INSERT Builder (~300 lines, 4-5 hours)
 - [ ] **Task 3.5**: Basic UPDATE Builder (~250 lines, 3-4 hours)
 - [ ] **Task 3.6**: Basic DELETE Builder (~200 lines, 2-3 hours)
@@ -1512,11 +1512,11 @@ impl<T: Entity> QueryRenderer for TypeSafeSelect<T> {
 ```
 
 **Acceptance criteria**:
-- [ ] Type-safe SELECT builder compiles and works
-- [ ] Basic WHERE, ORDER BY, LIMIT/OFFSET functionality works
-- [ ] Query execution methods work with all backends
-- [ ] COUNT queries generate optimal SQL
-- [ ] Zero compilation warnings
+- [x] Type-safe SELECT builder compiles and works ✅
+- [x] Basic WHERE, ORDER BY, LIMIT/OFFSET functionality works ✅
+- [x] Query execution methods work with all backends ✅
+- [x] COUNT queries generate optimal SQL ✅
+- [x] Zero compilation warnings ✅
 
 **Testing**: Create comprehensive tests for all SELECT builder methods
 
