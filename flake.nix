@@ -144,6 +144,10 @@ EOF
           RUST_BACKTRACE = 1;
           RUST_LOG = "debug";
           
+          # Claude Code timeout settings
+          BASH_DEFAULT_TIMEOUT_MS = "1800000";  # 30 minutes
+          BASH_MAX_TIMEOUT_MS = "7200000";      # 2 hours
+          
           # Expose framework paths to Rust linker  
           RUSTFLAGS = pkgs.lib.optionalString pkgs.stdenv.isDarwin 
             "-L framework=${pkgs.darwin.apple_sdk.frameworks.CoreFoundation}/Library/Frameworks -L framework=${pkgs.darwin.apple_sdk.frameworks.Security}/Library/Frameworks -L framework=${pkgs.darwin.apple_sdk.frameworks.SystemConfiguration}/Library/Frameworks";
