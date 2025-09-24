@@ -11,7 +11,7 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 1.2**: DatabaseDialect Enum (~150 lines, 1-2 hours) ✅
 - [x] **Task 1.3**: QueryResult Trait (~250 lines, 3-4 hours) ✅
 - [x] **Task 1.4**: Basic DatabaseBackend Trait (~200 lines, 2-3 hours) ✅
-- [ ] **Task 1.5**: Raw SQL Audit & Documentation (~300 lines, 4-5 hours)
+- [x] **Task 1.5**: Raw SQL Audit & Documentation (~300 lines, 4-5 hours) ✅
 - [ ] **Task 1.6**: Update lib.rs Exports (~100 lines, 1 hour)
 
 ### **Phase 2: Database Client Refactor (Week 2)**
@@ -413,11 +413,11 @@ pub enum BackendError {
 ```
 
 **Acceptance criteria**:
-- [ ] All SQL usage documented with file/line numbers
-- [ ] Each usage categorized by type and priority
-- [ ] Sea-query equivalent identified for each usage
-- [ ] Effort estimation provided for replacements
-- [ ] Migration strategy outlined
+- [x] All SQL usage documented with file/line numbers ✅
+- [x] Each usage categorized by type and priority ✅
+- [x] Sea-query equivalent identified for each usage ✅
+- [x] Effort estimation provided for replacements ✅
+- [x] Migration strategy outlined ✅
 
 **Testing**: Grep verification that all SQL patterns are captured
 
