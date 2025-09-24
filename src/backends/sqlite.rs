@@ -264,11 +264,12 @@ impl DatabaseBackend for SQLiteBackend {
                 })
                 .collect();
             
-            // Check if it's a SELECT query to determine how to handle the result
-            let is_select = sql.trim_start().to_uppercase().starts_with("SELECT");
+            // Check if it's a SELECT query or has RETURNING clause to determine how to handle the result
+            let sql_upper = sql.trim_start().to_uppercase();
+            let is_query_with_results = sql_upper.starts_with("SELECT") || sql_upper.contains("RETURNING");
             
-            if is_select {
-                // For SELECT queries, collect all rows
+            if is_query_with_results {
+                // For SELECT queries or queries with RETURNING clause, collect all rows
                 let mut stmt = db.prepare(sql)
                     .map_err(|e| D1RsError::Database(e.to_string()))?;
                     
