@@ -5,6 +5,7 @@ pub mod data_seeding;
 pub mod differ;
 pub mod executor;
 pub mod introspector;
+pub mod migration_engine;
 pub mod migration_snapshots;
 pub mod parallel_execution;
 pub mod planner;
@@ -24,6 +25,10 @@ pub use data_seeding::*;
 pub use differ::*;
 pub use executor::*;
 pub use introspector::*;
+pub use migration_engine::{
+    EnhancedAutoMigrator, AutoMigrationConfig, AutoMigrationError,
+    EnhancedMigrationResult
+};
 pub use migration_snapshots::{
     MigrationSnapshot, MigrationSnapshotManager, RollbackResult, RollbackValidation,
     SnapshotConfig, SnapshotStorageStats, SnapshotType,
@@ -817,7 +822,7 @@ pub enum MigrationEnvironment {
 }
 
 /// Result of automatic migration execution
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MigrationResult {
     pub migrations_applied: Vec<String>,
     pub execution_time: std::time::Duration,
