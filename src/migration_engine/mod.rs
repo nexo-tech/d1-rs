@@ -4,11 +4,17 @@
 /// and execution capabilities using sea-query for database-agnostic SQL generation.
 
 pub mod differ;
+pub mod ddl_generator;
 
 pub use differ::{
     MigrationOperation, MigrationPlan, SafetyLevel, SchemaDiffer, 
     SchemaError, TableOperation, ColumnOperation, IndexOperation, 
     ConstraintOperation, MigrationResult
+};
+
+pub use ddl_generator::{
+    DDLGenerator, DDLStatement, DDLOperationType, DDLGenerationResult,
+    DDLStatistics, DDLError
 };
 
 // Re-export from introspection for convenience
