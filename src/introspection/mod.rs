@@ -3,6 +3,8 @@ use crate::dialects::DatabaseDialect;
 use crate::auto_migration::introspector::{
     DatabaseSchema, TableSchema, ColumnSchema, IndexSchema, ForeignKeySchema, ConstraintSchema
 };
+
+// Note: DatabaseSchema is imported from auto_migration but not re-exported to avoid conflicts
 use crate::D1RsError;
 use async_trait::async_trait;
 use std::fmt;

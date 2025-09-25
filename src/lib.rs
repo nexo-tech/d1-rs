@@ -15,6 +15,7 @@ pub mod type_safe_migrations;
 pub mod dialects;
 pub mod backends;
 pub mod introspection;
+pub mod migration_engine;
 
 pub use db::*;
 pub use query::*;
@@ -50,6 +51,13 @@ pub use schema_evolution::{
 // pub use auto_migration::*; // Selective exports to avoid conflicts
 // Phase 4.3B: Type-safe migrations exports
 pub use type_safe_migrations::*;
+
+// Phase 5.1: Database-agnostic migration engine exports
+pub use migration_engine::{
+    SchemaDiffer, MigrationPlan, MigrationOperation, SafetyLevel, 
+    SchemaError, MigrationResult, TableOperation, ColumnOperation,
+    IndexOperation as MigrationIndexOperation, ConstraintOperation
+};
 
 pub use async_trait::async_trait;
 use std::fmt;
