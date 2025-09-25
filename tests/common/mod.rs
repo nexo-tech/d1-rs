@@ -3,6 +3,8 @@ use d1_rs::*;
 use d1_rs::backends::QueryResult;
 use serde::{Deserialize, Serialize};
 
+pub mod multi_db;
+
 // Test model definitions
 #[derive(Debug, Serialize, Deserialize, Clone, Entity, PartialEq)]
 #[table(name = "test_users")]
