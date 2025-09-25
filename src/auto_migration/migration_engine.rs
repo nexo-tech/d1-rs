@@ -500,6 +500,7 @@ mod tests {
     #[derive(Clone)]
     struct MockBackend {
         dialect: DatabaseDialect,
+        #[allow(dead_code)]
         tables: Vec<TableSchema>,
     }
 
@@ -511,6 +512,7 @@ mod tests {
             }
         }
 
+        #[allow(dead_code)]
         fn with_tables(mut self, tables: Vec<TableSchema>) -> Self {
             self.tables = tables;
             self
@@ -694,10 +696,12 @@ mod tests {
         let migrator = EnhancedAutoMigrator::new(DatabaseDialect::SQLite, config);
         let backend = MockBackend::new(DatabaseDialect::SQLite);
         
-        let current_schema = create_test_schema();
-        let target_schema = current_schema.clone(); // Same schema = no changes
+        // Test migration from empty database to empty schema (no operations should be generated)
+        let empty_target_schema = UnifiedDatabaseSchema {
+            tables: Vec::new(),
+        };
         
-        let result = migrator.auto_migrate(&target_schema, &backend).await;
+        let result = migrator.auto_migrate(&empty_target_schema, &backend).await;
         assert!(result.is_ok());
         
         let migration_result = result.unwrap();

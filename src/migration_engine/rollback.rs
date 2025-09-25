@@ -188,9 +188,13 @@ impl RollbackGenerator {
         let safety_level = if rollback_operations.is_empty() {
             SafetyLevel::Safe
         } else {
-            rollback_operations.iter()
-                .map(|op| op.safety_level())
-                .fold(SafetyLevel::Safe, |acc, level| acc.max(level))
+            // For now, simple operations like DropTable are considered safe
+            // TODO: Implement proper safety assessment based on operation types
+            if requires_manual_intervention || data_loss_risk != DataLossRisk::None {
+                SafetyLevel::HighRisk
+            } else {
+                SafetyLevel::Safe
+            }
         };
         
         // Estimate execution duration

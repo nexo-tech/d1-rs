@@ -8,6 +8,8 @@ pub mod ddl_generator;
 pub mod executor;
 pub mod rollback;
 pub mod data_migration;
+pub mod verification;
+pub mod health;
 
 pub use differ::{
     MigrationOperation, MigrationPlan, SafetyLevel, SchemaDiffer, 
@@ -34,6 +36,15 @@ pub use data_migration::{
     DataMigrationResult, ColumnTransformation, TransformationType, 
     DataValidationRule, ValidationRuleType, ValidationSeverity,
     SplitStrategy, MergeStrategy, HashAlgorithm, TransformationErrorHandling
+};
+
+pub use verification::{
+    Phase5Verifier, VerificationReport, CleanupReport, VerificationError
+};
+
+pub use health::{
+    HealthChecker, SystemHealth, ComponentHealth, HealthStatus, 
+    HealthTrend, HealthCheckError
 };
 
 // Re-export from introspection for convenience
