@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: d1rs_postgres_dev
+    environment:
+      POSTGRES_USER: d1rs_user
+      POSTGRES_PASSWORD: d1rs_pass
+      POSTGRES_DB: d1rs_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    command: postgres -c log_statement=all -c log_destination=stderr
+    
+  postgres_test:
+    image: postgres:15
+    container_name: d1rs_postgres_test
+    environment:
+      POSTGRES_USER: d1rs_user
+      POSTGRES_PASSWORD: d1rs_pass  
+      POSTGRES_DB: d1rs_test
+    ports:
+      - "5434:5432"
+    tmpfs:
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=100m
+    command: postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+    
+  mysql:
+    image: mysql:8.0
+    container_name: d1rs_mysql_dev
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass
+      MYSQL_DATABASE: d1rs_dev
+      MYSQL_USER: d1rs_user
+      MYSQL_PASSWORD: d1rs_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init-mysql.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password --log-bin-trust-function-creators=1
+    
+  mysql_test:
+    image: mysql:8.0
+    container_name: d1rs_mysql_test
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass
+      MYSQL_DATABASE: d1rs_test
+      MYSQL_USER: d1rs_user
+      MYSQL_PASSWORD: d1rs_pass
+    ports:
+      - "3308:3306"
+    tmpfs:
+      - /var/lib/mysql:rw,noexec,nosuid,size=100m
+    command: --default-authentication-plugin=mysql_native_password --skip-log-bin
+
+volumes:
+  postgres_data:
+  mysql_data:

@@ -1,8 +1,8 @@
 {
-  description = "Minimal Rust development environment";
+  description = "d1-rs multi-database development environment";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -31,18 +31,46 @@
       {
         devShells.default = pkgs.mkShell rec {
           buildInputs = with pkgs; [
+            # Rust toolchain
             rustToolchain
+            cargo-nextest
+            
+            # Database engines
+            sqlite
+            postgresql_15
+            mysql80
+            
+            # Database tools
+            pgcli
+            mycli
+            sqlite-utils
+            
+            # Development tools
+            docker
+            docker-compose
+            just
+            watchexec
+            
+            # System dependencies
             pkg-config
             openssl
-            just
-            nodejs_22
+            zlib
             bzip2
             worker-build
-            # Dependencies for ORM testing
-            sqlite
+            nodejs_22
             libiconv
-            # Fast test runner
-            cargo-nextest
+            
+            # PostgreSQL development libraries
+            postgresql.dev
+            
+            # MySQL development libraries  
+            mysql80.dev
+            libmysqlclient
+            
+            # Additional utilities
+            jq
+            curl
+            git
           ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
             # Linux-specific dependencies for faster compilation
             mold
@@ -58,11 +86,28 @@
             export PATH="$HOME/.cargo/bin:$PATH"
             export LDFLAGS="-L${pkgs.bzip2}/lib -L${pkgs.sqlite.out}/lib -L${pkgs.libiconv}/lib $LDFLAGS"
             export CPPFLAGS="-I${pkgs.bzip2}/include -I${pkgs.sqlite.dev}/include -I${pkgs.libiconv}/include $CPPFLAGS"
-            export PKG_CONFIG_PATH="${pkgs.sqlite.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
+            export PKG_CONFIG_PATH="${pkgs.sqlite.dev}/lib/pkgconfig:${pkgs.postgresql.dev}/lib/pkgconfig:${pkgs.mysql80.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
             
             # Claude Code timeout settings
             export BASH_DEFAULT_TIMEOUT_MS="1800000"  # 30 minutes
             export BASH_MAX_TIMEOUT_MS="7200000"      # 2 hours
+            
+            # Set up PostgreSQL
+            export PGDATA=$PWD/postgres_data
+            export POSTGRES_TEST_URL="postgresql://d1rs_user:d1rs_pass@localhost:5434/d1rs_test"
+            export POSTGRES_DEV_URL="postgresql://d1rs_user:d1rs_pass@localhost:5433/d1rs_dev"
+            
+            # Set up MySQL
+            export MYSQL_TEST_URL="mysql://d1rs_user:d1rs_pass@localhost:3308/d1rs_test"
+            export MYSQL_DEV_URL="mysql://d1rs_user:d1rs_pass@localhost:3307/d1rs_dev"
+            
+            # SQLite (for testing)
+            export SQLITE_TEST_URL="sqlite::memory:"
+            export SQLITE_DEV_URL="./dev.db"
+            
+            # Testing Configuration
+            export TEST_TIMEOUT=300
+            export TEST_PARALLEL_JOBS=4
             
             # macOS framework paths
             ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
@@ -117,32 +162,48 @@ debug = 1            # Reduced debug info for faster compilation
 incremental = true   # Enable incremental compilation
 EOF
             
-            echo "🦀 Cloudflare Worker Rust Development Environment"
-            echo "================================================"
-            echo "Rust version: $(rustc --version)"
-            echo "Tools: rust-analyzer, clippy, rustfmt, just"
-            ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
-              echo "Linker: mold (fast linking enabled)"
-            ''}
-            ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
-              echo "Linking: Apple ld64 with optimizations enabled"
-            ''}
+            # Development shortcuts
+            alias db:setup="docker-compose -f docker-compose.dev.yml up -d"
+            alias db:stop="docker-compose -f docker-compose.dev.yml down"
+            alias db:reset="docker-compose -f docker-compose.dev.yml down -v && docker-compose -f docker-compose.dev.yml up -d"
+            alias test:all="just test"
+            alias test:postgres="POSTGRES_TEST_URL=$POSTGRES_TEST_URL just test-filter postgres"
+            alias test:mysql="MYSQL_TEST_URL=$MYSQL_TEST_URL just test-filter mysql"
+            alias test:sqlite="just test-filter sqlite"
+            
+            echo "🚀 d1-rs multi-database development environment loaded!"
+            echo "======================================================="
+            echo "📦 Available databases: PostgreSQL, MySQL, SQLite"
+            echo "🧰 Development tools: Docker, pgcli, mycli, sqlite-utils"
             echo ""
-            echo "Available commands:"
-            echo "  just dev               - Start local development"
-            echo "  just build             - Build for production"  
-            echo "  just deploy            - Deploy to Cloudflare"
+            echo "🐘 PostgreSQL URLs:"
+            echo "  DEV:  $POSTGRES_DEV_URL"
+            echo "  TEST: $POSTGRES_TEST_URL"
             echo ""
-            echo "🚀 Fast Testing (nextest):"
+            echo "🐬 MySQL URLs:"
+            echo "  DEV:  $MYSQL_DEV_URL"
+            echo "  TEST: $MYSQL_TEST_URL"
+            echo ""
+            echo "🗄️  SQLite URLs:"
+            echo "  DEV:  $SQLITE_DEV_URL"
+            echo "  TEST: $SQLITE_TEST_URL"
+            echo ""
+            echo "🧪 Database Management:"
+            echo "  db:setup    - Start development databases"
+            echo "  db:stop     - Stop development databases"
+            echo "  db:reset    - Reset databases (clean slate)"
+            echo ""
+            echo "🏃 Testing Commands:"
+            echo "  test:all       - Run ALL tests (all databases)"
+            echo "  test:postgres  - Run PostgreSQL-specific tests"
+            echo "  test:mysql     - Run MySQL-specific tests"
+            echo "  test:sqlite    - Run SQLite-specific tests"
+            echo ""
+            echo "🚀 Standard Testing (nextest):"
             echo "  just test              - Run ALL tests (fast parallel execution)"
             echo "  just test-one <name>   - Run specific test by name"
             echo "  just test-filter <pat> - Run tests matching pattern"
-            echo "  just test-quick        - Quick smoke tests only"
-            echo "  just test-fast         - Ultra-fast with aggressive timeouts"
-            echo "  just test-failed       - Re-run only failed tests"
             echo "  just test-debug <name> - Debug single test with full output"
-            echo "  just test-clean        - Clean locks if tests hang"
-            echo "  just test-legacy       - Use traditional cargo test (slower)"
           '';
           
           RUST_BACKTRACE = 1;
