@@ -7,6 +7,7 @@ pub mod differ;
 pub mod ddl_generator;
 pub mod executor;
 pub mod rollback;
+pub mod data_migration;
 
 pub use differ::{
     MigrationOperation, MigrationPlan, SafetyLevel, SchemaDiffer, 
@@ -26,6 +27,13 @@ pub use executor::{
 
 pub use rollback::{
     RollbackGenerator, RollbackPlan, RollbackError, DataLossRisk
+};
+
+pub use data_migration::{
+    DataMigrator, DataMigrationPlan, DataMigrationOperation, DataMigrationError,
+    DataMigrationResult, ColumnTransformation, TransformationType, 
+    DataValidationRule, ValidationRuleType, ValidationSeverity,
+    SplitStrategy, MergeStrategy, HashAlgorithm, TransformationErrorHandling
 };
 
 // Re-export from introspection for convenience
