@@ -13,6 +13,9 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 1.4**: Basic DatabaseBackend Trait (~200 lines, 2-3 hours) ✅
 - [x] **Task 1.5**: Raw SQL Audit & Documentation (~300 lines, 4-5 hours) ✅
 - [x] **Task 1.6**: Update lib.rs Exports (~100 lines, 1 hour) ✅
+- [ ] **Task 1.7**: Phase 1 Completion Verification & Cleanup (~200 lines, 3-4 hours)
+- [ ] **Task 1.8**: Phase 1 Additional Integration Verification (~150 lines, 2-3 hours)
+- [ ] **Task 1.9**: Phase 1 Production Readiness Assessment (~100 lines, 1-2 hours)
 
 ### **Phase 2: Database Client Refactor (Week 2)**
 - [x] **Task 2.1**: SQLite Backend Implementation (~400 lines, 6-8 hours) ✅
@@ -21,6 +24,9 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 2.4**: PostgreSQL Backend Stub (~350 lines, 5-6 hours) ✅
 - [x] **Task 2.5**: Update lib.rs with Backend Exports (~100 lines, 1-2 hours) ✅
 - [x] **Task 2.6**: MySQL Backend Stub (~350 lines, 5-6 hours) ✅
+- [ ] **Task 2.7**: Phase 2 Completion Verification & Cleanup (~200 lines, 3-4 hours)
+- [ ] **Task 2.8**: Phase 2 Advanced Backend Integration Testing (~175 lines, 2-3 hours)
+- [ ] **Task 2.9**: Phase 2 Migration Compatibility Verification (~125 lines, 1-2 hours)
 
 ### **Phase 3: Query Builder Migration (Week 3-4)**
 - [x] **Task 3.1**: Basic Sea-Query Integration (~300 lines, 4-5 hours) ✅
@@ -29,6 +35,9 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 3.4**: Basic INSERT Builder (~300 lines, 4-5 hours) ✅
 - [x] **Task 3.5**: Basic UPDATE Builder (~250 lines, 3-4 hours) ✅
 - [x] **Task 3.6**: Basic DELETE Builder (~200 lines, 2-3 hours) ✅
+- [ ] **Task 3.7**: Phase 3 Completion Verification & Cleanup (~200 lines, 3-4 hours)
+- [ ] **Task 3.8**: Phase 3 Advanced Sea-Query Integration Testing (~175 lines, 2-3 hours)
+- [ ] **Task 3.9**: Phase 3 Query Performance Optimization Verification (~150 lines, 2 hours)
 
 ### **Phase 4: Schema Introspection (Week 5)**
 - [x] **Task 4.1**: SchemaIntrospector Trait Definition (~200 lines, 3-4 hours) ✅
@@ -37,39 +46,36 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 4.4**: MySQL Schema Introspector (~450 lines, 7-9 hours) ✅
 - [x] **Task 4.5**: Unified Schema Representation (~300 lines, 4-5 hours) ✅
 - [x] **Task 4.6**: Cross-Database Type Mapping (~1100 lines, 8-10 hours) ✅
+- [ ] **Task 4.7**: Phase 4 Completion Verification & Cleanup (~200 lines, 3-4 hours)
+- [ ] **Task 4.8**: Phase 4 Advanced Schema Analysis & Edge Case Testing (~175 lines, 2-3 hours)
+- [ ] **Task 4.9**: Phase 4 Schema Diff & Migration Readiness Verification (~150 lines, 2 hours)
 
 ### **Phase 5: Migration System Overhaul (Week 6-7)**
 - [x] **Task 5.1**: Schema Diffing Engine (~460 lines, 10-12 hours) ✅
-
-**Implementation Summary:**
-- [x] Complete database-agnostic SchemaDiffer with cross-database support ✅
-- [x] Comprehensive migration operation types (Table, Column, Index, Constraint) ✅
-- [x] Safety level assessment system (Safe, LowRisk, ModerateRisk, HighRisk, Destructive) ✅
-- [x] Migration plan generation with estimated duration and affected tables ✅
-- [x] Legacy-to-unified schema conversion system for backward compatibility ✅
-- [x] Type-safe schema comparison with field-by-field difference detection ✅
-- [x] Comprehensive test suite covering all diffing scenarios ✅
-- [x] Zero compilation warnings and all 883 tests passing ✅
 - [x] **Task 5.2**: Database-Agnostic DDL Generation (~450 lines, 7-9 hours) ✅
-- [ ] **Task 5.3**: Migration Plan Execution (~350 lines, 5-6 hours)
+- [ ] **Task 5.3**: Migration Plan Execution Engine (~350 lines, 5-6 hours)
 - [ ] **Task 5.4**: Auto-Migration Integration (~400 lines, 6-8 hours)
 - [ ] **Task 5.5**: Migration Rollback System (~300 lines, 4-5 hours)
 - [ ] **Task 5.6**: Data Migration Support (~350 lines, 5-6 hours)
+- [ ] **Task 5.7**: Phase 5 Completion Verification & Cleanup (~200 lines, 3-4 hours)
 
 ### **Phase 6: Testing Infrastructure (Week 8)**
+- [ ] **Task 6.0**: Development Environment Setup (~400 lines, 6-8 hours)
 - [ ] **Task 6.1**: Multi-Database Test Setup (~300 lines, 4-5 hours)
 - [ ] **Task 6.2**: Cross-Database Test Suite (~400 lines, 6-8 hours)
 - [ ] **Task 6.3**: Performance Benchmarking (~250 lines, 3-4 hours)
-- [ ] **Task 6.4**: CI/CD Integration (~200 lines, 2-3 hours)
-- [ ] **Task 6.5**: Test Data Management (~300 lines, 4-5 hours)
+- [ ] **Task 6.4**: CI/CD Integration & GitHub Actions (~400 lines, 6-8 hours)
+- [ ] **Task 6.5**: Test Data Management & Fixtures (~300 lines, 4-5 hours)
+- [ ] **Task 6.6**: Phase 6 Completion Verification & Cleanup (~200 lines, 3-4 hours)
 
 ### **Phase 7: Documentation & Optimization (Week 9)**
 - [ ] **Task 7.1**: Documentation Updates (~200 lines, 2-3 hours)
 - [ ] **Task 7.2**: Performance Optimization (~300 lines, 4-5 hours)
 - [ ] **Task 7.3**: Security Review (~150 lines, 1-2 hours)
 - [ ] **Task 7.4**: Production Readiness (~200 lines, 2-3 hours)
+- [ ] **Task 7.5**: Phase 7 & Final Project Completion Verification (~200 lines, 3-4 hours)
 
-**Total Tasks: 40 | Total Estimated Effort: ~220 hours (5-6 weeks)**
+**Total Tasks: 52 | Total Estimated Effort: ~296 hours (7-8 weeks)**
 
 ---
 
@@ -499,6 +505,123 @@ pub trait DialectRenderer {
 - Feature flags working correctly
 - Zero compilation warnings
 - Basic trait implementations compile successfully
+
+### Task 1.7: Phase 1 Completion Verification & Cleanup (~200 lines, 3-4 hours)
+**Estimated effort**: 3-4 hours | **Files**: Analysis across all Phase 1 files
+
+**Comprehensive verification that Phase 1 is complete and ready for Phase 2**:
+
+**Analysis and Verification**:
+1. **Code Quality Audit**:
+   - [ ] Run `cargo check` - must show ZERO warnings
+   - [ ] Run `just test` - all tests must pass cleanly
+   - [ ] Verify no TODO comments or placeholder implementations remain
+   - [ ] Ensure all traits are properly documented with examples
+
+2. **Implementation Completeness**:
+   - [ ] Verify all backend abstractions (DatabaseBackend, QueryResult, DialectRenderer) are fully implemented
+   - [ ] Confirm DatabaseDialect enum supports all required database types
+   - [ ] Validate feature flag combinations work correctly
+   - [ ] Check that all raw SQL patterns are documented in the audit
+
+3. **API Stability Check**:
+   - [ ] Ensure existing D1Client interface is preserved
+   - [ ] Verify no breaking changes to public APIs
+   - [ ] Confirm backward compatibility with current usage patterns
+   - [ ] Test that existing code compiles without modifications
+
+4. **Performance Validation**:
+   - [ ] Benchmark new trait implementations against current code
+   - [ ] Ensure zero runtime overhead from abstractions
+   - [ ] Verify compilation time hasn't significantly increased
+   - [ ] Check binary size impact with different feature combinations
+
+**Acceptance Criteria**:
+- [ ] All Phase 1 tasks marked complete with full implementations
+- [ ] Zero compilation warnings across all feature flag combinations
+- [ ] All existing functionality preserved and working
+- [ ] Complete documentation and examples for all new traits
+- [ ] No TODO comments or placeholder code remaining
+- [ ] Performance equivalent to or better than baseline
+- [ ] Ready to proceed with Phase 2 backend implementations
+
+**Testing**: Comprehensive verification that foundation is solid for Phase 2
+
+### Task 1.8: Phase 1 Additional Integration Verification (~150 lines, 2-3 hours)
+**Estimated effort**: 2-3 hours | **Files**: Cross-module integration testing
+
+**Supplementary verification focusing on integration aspects and edge cases**:
+
+**Deep Integration Testing**:
+1. **Cross-Feature Flag Validation**:
+   - [ ] Test all possible feature flag combinations compile successfully
+   - [ ] Verify conditional compilation works correctly across WASM and native targets
+   - [ ] Ensure no dead code paths exist in any feature combination
+   - [ ] Test that disabled features don't leak into compilation
+
+2. **Trait Interaction Testing**:
+   - [ ] Verify DatabaseBackend trait works with all QueryResult implementations
+   - [ ] Test DialectRenderer integration with all DatabaseDialect variants
+   - [ ] Ensure trait bounds are correct and don't over-constrain implementations
+   - [ ] Validate async traits work correctly with all backend types
+
+3. **Memory and Performance Edge Cases**:
+   - [ ] Test large query parameter sets don't cause stack overflow
+   - [ ] Verify connection pooling configuration doesn't cause memory leaks
+   - [ ] Test that error handling doesn't retain references unnecessarily
+   - [ ] Benchmark trait dispatch overhead vs direct implementation calls
+
+4. **Documentation and API Surface**:
+   - [ ] Ensure all public traits have comprehensive doc examples that compile
+   - [ ] Verify that doc tests actually run and pass
+   - [ ] Check that breaking changes are properly documented with migration paths
+   - [ ] Validate that all error types have meaningful Display implementations
+
+**Acceptance Criteria**:
+- [ ] All possible feature combinations tested and working
+- [ ] Trait interactions verified through comprehensive integration tests
+- [ ] Performance regressions identified and documented
+- [ ] Documentation is complete and all examples compile
+
+**Testing**: Advanced integration scenarios with feature flag matrix testing
+
+### Task 1.9: Phase 1 Production Readiness Assessment (~100 lines, 1-2 hours)
+**Estimated effort**: 1-2 hours | **Files**: Production readiness analysis
+
+**Final production readiness check before Phase 2 implementation**:
+
+**Production Environment Validation**:
+1. **Security Assessment**:
+   - [ ] Verify no unsafe code blocks without proper justification
+   - [ ] Ensure error messages don't leak sensitive information
+   - [ ] Test that connection strings are properly secured
+   - [ ] Validate that SQL injection protection mechanisms are in place
+
+2. **Monitoring and Observability**:
+   - [ ] Ensure adequate logging at appropriate levels
+   - [ ] Verify error reporting provides actionable information
+   - [ ] Test that performance metrics can be collected
+   - [ ] Check that debugging information is available in development builds
+
+3. **Compatibility and Stability**:
+   - [ ] Test minimum supported Rust version compatibility
+   - [ ] Verify that semantic versioning is properly applied
+   - [ ] Ensure breaking changes are properly communicated
+   - [ ] Test stability under concurrent access patterns
+
+4. **Deployment Readiness**:
+   - [ ] Verify builds work in CI/CD environments
+   - [ ] Test that dependencies are properly locked and audited
+   - [ ] Ensure binary size is reasonable for target environments
+   - [ ] Validate WASM target builds without warnings or errors
+
+**Acceptance Criteria**:
+- [ ] Security review passes with no critical issues
+- [ ] Monitoring capabilities meet production requirements
+- [ ] Compatibility matrix is complete and validated
+- [ ] Deployment pipeline integration is confirmed
+
+**Testing**: Production environment simulation and security validation
 
 ---
 
@@ -1160,6 +1283,130 @@ impl DatabaseBackend for PostgreSQLBackend {
 - PostgreSQL and MySQL connections established
 - Type conversion working for all databases
 - Zero compilation warnings
+
+### Task 2.7: Phase 2 Completion Verification & Cleanup (~200 lines, 3-4 hours)
+**Estimated effort**: 3-4 hours | **Files**: Analysis across all Phase 2 backend implementations
+
+**Comprehensive verification that Phase 2 is complete and backends are production-ready**:
+
+**Analysis and Verification**:
+1. **Backend Implementation Audit**:
+   - [ ] Run `cargo check` with all feature flags - must show ZERO warnings
+   - [ ] Run `just test` with database-specific features - all tests must pass
+   - [ ] Verify SQLite, PostgreSQL, and MySQL backends are fully implemented
+   - [ ] Ensure no placeholder implementations or TODO comments remain
+
+2. **Database Connectivity Validation**:
+   - [ ] Test SQLite backend with both WASM and native targets
+   - [ ] Verify PostgreSQL connection handling and connection pooling
+   - [ ] Validate MySQL backend with proper connection configuration
+   - [ ] Confirm all backends handle connection failures gracefully
+
+3. **API Compatibility Check**:
+   - [ ] Ensure all existing D1Client functionality works through new backends
+   - [ ] Verify query execution works identically across all backends
+   - [ ] Test type conversion and parameter binding for all database types
+   - [ ] Confirm RETURNING clause handling works correctly
+
+4. **Performance and Reliability**:
+   - [ ] Benchmark query execution across all three backends
+   - [ ] Test connection pooling efficiency for PostgreSQL and MySQL
+   - [ ] Verify memory usage is reasonable for all backends
+   - [ ] Test error handling and recovery scenarios
+
+5. **Configuration and Feature Flags**:
+   - [ ] Validate all database configuration options work correctly
+   - [ ] Test feature flag combinations compile and work as expected
+   - [ ] Ensure proper conditional compilation for different targets
+   - [ ] Verify environment-based configuration parsing
+
+**Acceptance Criteria**:
+- [ ] All Phase 2 tasks marked complete with full backend implementations
+- [ ] Zero compilation warnings across all database feature combinations
+- [ ] All three database backends (SQLite, PostgreSQL, MySQL) working
+- [ ] Complete backward compatibility with existing D1Client usage
+- [ ] No TODO comments or placeholder implementations remaining  
+- [ ] Performance meets or exceeds current SQLite-only implementation
+- [ ] Comprehensive test coverage for all backend scenarios
+- [ ] Ready to proceed with Phase 3 query builder migration
+
+**Testing**: Multi-database backend validation with comprehensive error scenarios
+
+### Task 2.8: Phase 2 Advanced Backend Integration Testing (~175 lines, 2-3 hours)
+**Estimated effort**: 2-3 hours | **Files**: Advanced backend testing scenarios
+
+**Supplementary testing focusing on complex backend interaction scenarios**:
+
+**Advanced Backend Testing**:
+1. **Connection Pool Stress Testing**:
+   - [ ] Test connection pool exhaustion scenarios for PostgreSQL and MySQL
+   - [ ] Verify graceful degradation when connections are unavailable
+   - [ ] Test connection recovery after network interruptions
+   - [ ] Validate connection pool metrics and monitoring capabilities
+
+2. **Cross-Backend Query Compatibility**:
+   - [ ] Execute identical queries across all three backends and verify results
+   - [ ] Test complex queries with joins, subqueries, and aggregations
+   - [ ] Verify parameter binding edge cases (NULL values, large strings, binary data)
+   - [ ] Test transaction isolation levels across different backends
+
+3. **Backend-Specific Feature Validation**:
+   - [ ] Test SQLite WAL mode and journal configurations
+   - [ ] Verify PostgreSQL array and JSON type handling
+   - [ ] Test MySQL specific functions and optimizations  
+   - [ ] Validate database-specific error message handling
+
+4. **Concurrency and Threading**:
+   - [ ] Test concurrent query execution across all backends
+   - [ ] Verify thread safety of connection pools and shared resources
+   - [ ] Test async/await integration with all backend implementations
+   - [ ] Validate that backends properly handle cancellation tokens
+
+**Acceptance Criteria**:
+- [ ] All backends handle stress testing scenarios gracefully
+- [ ] Query compatibility verified across complex SQL operations
+- [ ] Backend-specific features work correctly without breaking abstraction
+- [ ] Concurrency scenarios work safely across all implementations
+
+**Testing**: Stress testing and advanced backend feature validation
+
+### Task 2.9: Phase 2 Migration Compatibility Verification (~125 lines, 1-2 hours)
+**Estimated effort**: 1-2 hours | **Files**: Migration compatibility analysis
+
+**Final verification of migration compatibility and upgrade path**:
+
+**Migration Path Validation**:
+1. **Legacy Code Compatibility**:
+   - [ ] Verify existing D1Client code compiles without modifications
+   - [ ] Test that existing query patterns work identically
+   - [ ] Ensure error types and error handling remain compatible
+   - [ ] Validate that existing tests pass without changes
+
+2. **Performance Regression Testing**:
+   - [ ] Benchmark new backend implementations vs legacy D1Client
+   - [ ] Ensure no performance degradation in common use cases
+   - [ ] Test memory usage patterns remain similar or improved
+   - [ ] Verify compilation time hasn't significantly increased
+
+3. **Feature Parity Validation**:
+   - [ ] Confirm all D1Client methods have equivalent backend implementations
+   - [ ] Test edge cases that might have been handled differently
+   - [ ] Verify error reporting consistency across backends
+   - [ ] Ensure debugging capabilities are preserved or enhanced
+
+4. **Documentation and Migration Guide**:
+   - [ ] Verify migration documentation is complete and accurate
+   - [ ] Test that provided examples compile and work correctly
+   - [ ] Ensure troubleshooting guides cover common issues
+   - [ ] Validate that breaking changes are properly documented
+
+**Acceptance Criteria**:
+- [ ] Zero breaking changes for existing D1Client users
+- [ ] Performance is equal or better than legacy implementation
+- [ ] Complete feature parity with enhanced multi-database support
+- [ ] Migration documentation is comprehensive and tested
+
+**Testing**: Legacy compatibility and migration path validation
 
 ---
 
@@ -1896,6 +2143,2018 @@ impl User {
 - Performance equals or exceeds current implementation
 - Zero compilation warnings
 
+### Task 3.7: Phase 3 Completion Verification & Cleanup (~200 lines, 3-4 hours)
+**Estimated effort**: 3-4 hours | **Files**: Analysis across all Phase 3 query builder implementations
+
+**Comprehensive verification that Phase 3 sea-query migration is complete and production-ready**:
+
+**Analysis and Verification**:
+1. **Query Builder Implementation Audit**:
+   - [ ] Run `cargo check` with all query builder features - must show ZERO warnings
+   - [ ] Run `just test` focusing on query generation tests - all tests must pass
+   - [ ] Verify all raw SQL has been replaced with sea-query builders
+   - [ ] Ensure no string concatenation or format!() SQL generation remains
+
+2. **Sea-Query Integration Validation**:
+   - [ ] Test SELECT, INSERT, UPDATE, DELETE builders work correctly
+   - [ ] Verify complex queries (JOINs, subqueries, aggregations) generate proper SQL
+   - [ ] Confirm dialect-specific SQL generation works for SQLite, PostgreSQL, MySQL
+   - [ ] Validate parameter binding and value conversion works correctly
+
+3. **API Compatibility and Type Safety**:
+   - [ ] Ensure all existing query methods work identically through sea-query
+   - [ ] Verify type-safe query building prevents runtime SQL errors
+   - [ ] Test that generated SQL is optimal for each database backend
+   - [ ] Confirm query builder API is intuitive and maintainable
+
+4. **Performance and Query Optimization**:
+   - [ ] Benchmark query generation performance vs previous string-based approach
+   - [ ] Verify generated SQL is as efficient as hand-written queries
+   - [ ] Test query compilation time impact is minimal
+   - [ ] Ensure memory usage during query building is reasonable
+
+5. **Cross-Database Compatibility**:
+   - [ ] Validate identical query results across SQLite, PostgreSQL, MySQL
+   - [ ] Test database-specific features work correctly (RETURNING, LIMIT, etc.)
+   - [ ] Ensure proper dialect handling for SQL variations
+   - [ ] Verify feature flag combinations work for different database targets
+
+**Acceptance Criteria**:
+- [ ] All Phase 3 tasks marked complete with full sea-query integration
+- [ ] Zero raw SQL strings remaining in query building logic
+- [ ] Zero compilation warnings across all database feature combinations
+- [ ] All query operations work identically to previous string-based implementation
+- [ ] No TODO comments or placeholder query builders remaining
+- [ ] Performance meets or exceeds previous query generation approach
+- [ ] Type safety prevents common SQL errors at compile time
+- [ ] Ready to proceed with Phase 4 schema introspection
+
+**Testing**: Comprehensive query generation validation across all supported databases
+
+### Task 3.8: Phase 3 Advanced Sea-Query Integration Testing (~175 lines, 2-3 hours)
+**Estimated effort**: 2-3 hours | **Files**: Advanced sea-query testing scenarios
+
+**Supplementary testing focusing on complex sea-query integration scenarios**:
+
+**Advanced Sea-Query Testing**:
+1. **Complex Query Pattern Validation**:
+   - [ ] Test deeply nested subqueries across all database backends
+   - [ ] Verify complex JOIN patterns (LEFT, RIGHT, INNER, CROSS, FULL OUTER)
+   - [ ] Test window functions and advanced aggregations through sea-query
+   - [ ] Validate common table expressions (CTEs) generation and execution
+
+2. **Database-Specific SQL Generation**:
+   - [ ] Test SQLite-specific features (WITHOUT ROWID, STRICT tables, generated columns)
+   - [ ] Verify PostgreSQL-specific syntax (RETURNING *, ON CONFLICT, array operations)
+   - [ ] Test MySQL-specific features (ON DUPLICATE KEY UPDATE, JSON functions)
+   - [ ] Ensure database-specific optimizations are properly applied
+
+3. **Query Builder Edge Cases**:
+   - [ ] Test extremely large parameter lists and query complexity
+   - [ ] Verify handling of special characters and Unicode in identifiers
+   - [ ] Test empty result sets and NULL value handling across builders
+   - [ ] Validate query builder memory efficiency with large schemas
+
+4. **Type Safety and Error Prevention**:
+   - [ ] Test compile-time prevention of invalid SQL combinations
+   - [ ] Verify type coercion and conversion safety across database types
+   - [ ] Test that generated SQL prevents common injection attack vectors
+   - [ ] Validate parameter binding safety with different data types
+
+**Acceptance Criteria**:
+- [ ] Complex query patterns generate optimal SQL for each database
+- [ ] Database-specific features work correctly without breaking portability
+- [ ] Edge cases handled gracefully with proper error messaging
+- [ ] Type safety prevents entire classes of SQL-related runtime errors
+
+**Testing**: Advanced sea-query integration with complex SQL pattern validation
+
+### Task 3.9: Phase 3 Query Performance Optimization Verification (~150 lines, 2 hours)
+**Estimated effort**: 2 hours | **Files**: Query performance analysis and optimization
+
+**Final verification of query performance and optimization effectiveness**:
+
+**Performance Optimization Validation**:
+1. **Query Generation Performance**:
+   - [ ] Benchmark sea-query builder performance vs string concatenation
+   - [ ] Test query compilation time impact on build performance
+   - [ ] Verify memory allocation patterns during query building
+   - [ ] Test caching effectiveness for commonly used query patterns
+
+2. **Generated SQL Quality**:
+   - [ ] Compare generated SQL quality against hand-optimized queries
+   - [ ] Verify query plans are optimal for each database backend
+   - [ ] Test that sea-query generates efficient JOIN orders and WHERE clauses
+   - [ ] Ensure no unnecessary SQL complexity is introduced
+
+3. **Runtime Performance Analysis**:
+   - [ ] Benchmark actual query execution performance across all backends
+   - [ ] Test parameter binding efficiency vs traditional approaches
+   - [ ] Verify connection utilization patterns remain optimal
+   - [ ] Test that query result processing maintains performance
+
+4. **Scalability and Resource Usage**:
+   - [ ] Test performance with large datasets and complex schemas
+   - [ ] Verify memory usage scales linearly with query complexity
+   - [ ] Test concurrent query building and execution scenarios
+   - [ ] Ensure resource cleanup is proper and timely
+
+**Acceptance Criteria**:
+- [ ] Query generation performance meets or exceeds baseline requirements
+- [ ] Generated SQL quality is equivalent to expert hand-written queries
+- [ ] Runtime performance shows no regression from string-based approach
+- [ ] Scalability characteristics support production workload requirements
+
+**Testing**: Comprehensive performance benchmarking and optimization validation
+
+---
+
+### Task 5.3: Migration Plan Execution Engine (~350 lines, 5-6 hours)
+**Estimated effort**: 5-6 hours | **Files**: `src/migration_engine/executor.rs` (new)
+
+**Create comprehensive migration execution engine**:
+```rust
+// src/migration_engine/executor.rs
+use crate::migration_engine::{MigrationPlan, DDLGenerator, DDLGenerationResult, DDLError};
+use crate::dialects::DatabaseDialect;
+use crate::backends::DatabaseBackend;
+use std::time::{Duration, Instant};
+use serde::{Serialize, Deserialize};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum MigrationExecutionError {
+    #[error("DDL generation failed: {0}")]
+    DdlGeneration(#[from] DDLError),
+    
+    #[error("Database execution failed: {0}")]
+    DatabaseExecution(String),
+    
+    #[error("Transaction rollback failed: {0}")]
+    RollbackFailed(String),
+    
+    #[error("Pre-execution validation failed: {0}")]
+    ValidationFailed(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrationExecutionResult {
+    pub plan_id: String,
+    pub success: bool,
+    pub executed_statements: usize,
+    pub total_statements: usize,
+    pub execution_duration: Duration,
+    pub errors: Vec<String>,
+    pub rollback_performed: bool,
+}
+
+#[derive(Debug)]
+pub struct MigrationExecutor {
+    ddl_generator: DDLGenerator,
+    dialect: DatabaseDialect,
+}
+
+impl MigrationExecutor {
+    pub fn new(dialect: DatabaseDialect) -> Self {
+        Self {
+            ddl_generator: DDLGenerator::new(dialect),
+            dialect,
+        }
+    }
+    
+    pub async fn execute_migration<B: DatabaseBackend>(
+        &self,
+        plan: &MigrationPlan,
+        backend: &B,
+    ) -> Result<MigrationExecutionResult, MigrationExecutionError> {
+        let start_time = Instant::now();
+        let plan_id = format!("migration_{}", chrono::Utc::now().timestamp());
+        
+        // Pre-execution validation
+        self.validate_migration_safety(plan, backend).await?;
+        
+        // Generate DDL statements
+        let ddl_result = self.ddl_generator.generate_ddl(plan)?;
+        
+        // Execute with transaction safety
+        self.execute_with_transaction(ddl_result, backend, &plan_id, start_time).await
+    }
+    
+    async fn validate_migration_safety<B: DatabaseBackend>(
+        &self,
+        plan: &MigrationPlan,
+        _backend: &B,
+    ) -> Result<(), MigrationExecutionError> {
+        // Validate safety levels and destructive operations
+        for operation in &plan.operations {
+            if operation.safety_level().is_destructive() {
+                return Err(MigrationExecutionError::ValidationFailed(
+                    format!("Destructive operation detected: {:?}", operation)
+                ));
+            }
+        }
+        Ok(())
+    }
+    
+    async fn execute_with_transaction<B: DatabaseBackend>(
+        &self,
+        ddl_result: DDLGenerationResult,
+        backend: &B,
+        plan_id: &str,
+        start_time: Instant,
+    ) -> Result<MigrationExecutionResult, MigrationExecutionError> {
+        let total_statements = ddl_result.statements.len();
+        let mut executed_statements = 0;
+        let mut errors = Vec::new();
+        let mut rollback_performed = false;
+        
+        // Begin transaction
+        backend.execute("BEGIN TRANSACTION", &[]).await
+            .map_err(|e| MigrationExecutionError::DatabaseExecution(format!("{:?}", e)))?;
+        
+        // Execute statements
+        for statement in &ddl_result.statements {
+            match backend.execute(&statement.sql, &[]).await {
+                Ok(_) => {
+                    executed_statements += 1;
+                },
+                Err(e) => {
+                    errors.push(format!("Statement failed: {}: {:?}", statement.sql, e));
+                    
+                    // Rollback on error
+                    if let Err(rollback_error) = backend.execute("ROLLBACK", &[]).await {
+                        return Err(MigrationExecutionError::RollbackFailed(
+                            format!("{:?}", rollback_error)
+                        ));
+                    }
+                    rollback_performed = true;
+                    break;
+                }
+            }
+        }
+        
+        // Commit if no errors
+        if !rollback_performed {
+            backend.execute("COMMIT", &[]).await
+                .map_err(|e| MigrationExecutionError::DatabaseExecution(format!("{:?}", e)))?;
+        }
+        
+        Ok(MigrationExecutionResult {
+            plan_id: plan_id.to_string(),
+            success: !rollback_performed && errors.is_empty(),
+            executed_statements,
+            total_statements,
+            execution_duration: start_time.elapsed(),
+            errors,
+            rollback_performed,
+        })
+    }
+}
+```
+
+**Acceptance criteria**:
+- [ ] Transaction-safe migration execution with automatic rollback
+- [ ] Pre-execution validation and safety checks
+- [ ] Progress tracking and detailed error reporting
+- [ ] Integration with DDL generator and all database backends
+- [ ] Comprehensive test coverage for execution scenarios
+
+**Testing**: Execute migrations on all database backends with rollback scenarios
+
+---
+
+### Task 5.4: Auto-Migration Integration (~400 lines, 6-8 hours)
+**Estimated effort**: 6-8 hours | **Files**: `src/auto_migration/migration_engine.rs` (new), `src/auto_migration/mod.rs` (update)
+
+**Integrate new migration engine with existing auto-migration system**:
+```rust
+// src/auto_migration/migration_engine.rs
+use crate::migration_engine::{SchemaDiffer, DDLGenerator, MigrationExecutor};
+use crate::auto_migration::{AutoMigrator, AutoMigrationConfig};
+use crate::introspection::{UnifiedTableSchema, DatabaseSchema};
+use crate::dialects::DatabaseDialect;
+use crate::backends::DatabaseBackend;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum AutoMigrationError {
+    #[error("Schema introspection failed: {0}")]
+    IntrospectionFailed(String),
+    
+    #[error("Schema diffing failed: {0}")]
+    DiffingFailed(String),
+    
+    #[error("Migration execution failed: {0}")]
+    ExecutionFailed(String),
+    
+    #[error("Backward compatibility validation failed: {0}")]
+    CompatibilityFailed(String),
+}
+
+pub struct EnhancedAutoMigrator {
+    schema_differ: SchemaDiffer,
+    ddl_generator: DDLGenerator,
+    migration_executor: MigrationExecutor,
+    config: AutoMigrationConfig,
+    dialect: DatabaseDialect,
+}
+
+impl EnhancedAutoMigrator {
+    pub fn new(dialect: DatabaseDialect, config: AutoMigrationConfig) -> Self {
+        Self {
+            schema_differ: SchemaDiffer::new(dialect),
+            ddl_generator: DDLGenerator::new(dialect),
+            migration_executor: MigrationExecutor::new(dialect),
+            config,
+            dialect,
+        }
+    }
+    
+    pub async fn auto_migrate<B: DatabaseBackend>(
+        &self,
+        target_schema: &DatabaseSchema,
+        backend: &B,
+    ) -> Result<(), AutoMigrationError> {
+        // Get current database schema
+        let current_schema = self.introspect_current_schema(backend).await?;
+        
+        // Generate migration plan
+        let migration_plan = self.schema_differ
+            .diff_schemas(&current_schema, target_schema)
+            .map_err(|e| AutoMigrationError::DiffingFailed(format!("{:?}", e)))?;
+        
+        // Validate backward compatibility if required
+        if self.config.require_backward_compatibility {
+            self.validate_backward_compatibility(&migration_plan)?;
+        }
+        
+        // Execute migration
+        let execution_result = self.migration_executor
+            .execute_migration(&migration_plan, backend)
+            .await
+            .map_err(|e| AutoMigrationError::ExecutionFailed(format!("{:?}", e)))?;
+        
+        if !execution_result.success {
+            return Err(AutoMigrationError::ExecutionFailed(
+                format!("Migration failed: {:?}", execution_result.errors)
+            ));
+        }
+        
+        Ok(())
+    }
+    
+    async fn introspect_current_schema<B: DatabaseBackend>(
+        &self,
+        backend: &B,
+    ) -> Result<DatabaseSchema, AutoMigrationError> {
+        // Use appropriate introspector based on dialect
+        match self.dialect {
+            DatabaseDialect::SQLite => {
+                let introspector = crate::introspection::sqlite::SQLiteIntrospector::new();
+                introspector.introspect_database(backend).await
+                    .map_err(|e| AutoMigrationError::IntrospectionFailed(format!("{:?}", e)))
+            },
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => {
+                let introspector = crate::introspection::postgres::PostgreSQLIntrospector::new();
+                introspector.introspect_database(backend).await
+                    .map_err(|e| AutoMigrationError::IntrospectionFailed(format!("{:?}", e)))
+            },
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => {
+                let introspector = crate::introspection::mysql::MySQLIntrospector::new();
+                introspector.introspect_database(backend).await
+                    .map_err(|e| AutoMigrationError::IntrospectionFailed(format!("{:?}", e)))
+            }
+        }
+    }
+    
+    fn validate_backward_compatibility(
+        &self,
+        plan: &crate::migration_engine::MigrationPlan,
+    ) -> Result<(), AutoMigrationError> {
+        for operation in &plan.operations {
+            if operation.safety_level().is_breaking() {
+                return Err(AutoMigrationError::CompatibilityFailed(
+                    format!("Breaking change detected: {:?}", operation)
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+// Backward compatibility layer
+impl AutoMigrator {
+    pub async fn migrate_with_new_engine<B: DatabaseBackend>(
+        &self,
+        target_schema: &DatabaseSchema,
+        backend: &B,
+    ) -> Result<(), crate::D1RsError> {
+        let enhanced_migrator = EnhancedAutoMigrator::new(
+            backend.dialect(),
+            self.config.clone(),
+        );
+        
+        enhanced_migrator.auto_migrate(target_schema, backend).await
+            .map_err(|e| crate::D1RsError::Migration(format!("{:?}", e)))
+    }
+}
+```
+
+**Acceptance criteria**:
+- [ ] Seamless integration with existing AutoMigrator
+- [ ] Backward compatibility preservation for existing code
+- [ ] Enhanced safety validation and breaking change detection
+- [ ] Support for all database dialects via introspectors
+- [ ] Migration from legacy system with fallback support
+
+**Testing**: Migration compatibility tests with existing auto-migration scenarios
+
+---
+
+### Task 5.5: Migration Rollback System (~300 lines, 4-5 hours)
+**Estimated effort**: 4-5 hours | **Files**: `src/migration_engine/rollback.rs` (new)
+
+**Create comprehensive rollback system for safe migration recovery**:
+```rust
+// src/migration_engine/rollback.rs
+use crate::migration_engine::{MigrationPlan, MigrationOperation, DDLStatement};
+use crate::introspection::{UnifiedTableSchema, UnifiedColumnSchema};
+use serde::{Serialize, Deserialize};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum RollbackError {
+    #[error("Cannot generate rollback: {0}")]
+    CannotRollback(String),
+    
+    #[error("Data loss would occur: {0}")]
+    DataLoss(String),
+    
+    #[error("Rollback validation failed: {0}")]
+    ValidationFailed(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RollbackPlan {
+    pub original_plan_id: String,
+    pub rollback_operations: Vec<MigrationOperation>,
+    pub data_loss_risk: DataLossRisk,
+    pub rollback_warnings: Vec<String>,
+    pub requires_manual_intervention: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DataLossRisk {
+    None,
+    Low(String),
+    High(String),
+    DataLossInevitable(String),
+}
+
+pub struct RollbackGenerator {
+    dialect: crate::dialects::DatabaseDialect,
+}
+
+impl RollbackGenerator {
+    pub fn new(dialect: crate::dialects::DatabaseDialect) -> Self {
+        Self { dialect }
+    }
+    
+    pub fn generate_rollback_plan(
+        &self,
+        original_plan: &MigrationPlan,
+    ) -> Result<RollbackPlan, RollbackError> {
+        let mut rollback_operations = Vec::new();
+        let mut warnings = Vec::new();
+        let mut data_loss_risk = DataLossRisk::None;
+        let mut requires_manual_intervention = false;
+        
+        // Process operations in reverse order
+        for operation in original_plan.operations.iter().rev() {
+            match self.create_rollback_operation(operation) {
+                Ok(rollback_op) => {
+                    rollback_operations.push(rollback_op);
+                },
+                Err(RollbackError::DataLoss(msg)) => {
+                    data_loss_risk = DataLossRisk::High(msg.clone());
+                    warnings.push(msg);
+                    requires_manual_intervention = true;
+                },
+                Err(RollbackError::CannotRollback(msg)) => {
+                    warnings.push(msg);
+                    requires_manual_intervention = true;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        
+        Ok(RollbackPlan {
+            original_plan_id: format!("rollback_{}", chrono::Utc::now().timestamp()),
+            rollback_operations,
+            data_loss_risk,
+            rollback_warnings: warnings,
+            requires_manual_intervention,
+        })
+    }
+    
+    fn create_rollback_operation(
+        &self,
+        operation: &MigrationOperation,
+    ) -> Result<MigrationOperation, RollbackError> {
+        use crate::migration_engine::{TableOperation, ColumnOperation, IndexOperation};
+        
+        match operation {
+            MigrationOperation::Table(table_op) => {
+                match table_op {
+                    TableOperation::CreateTable { schema, .. } => {
+                        Ok(MigrationOperation::Table(TableOperation::DropTable {
+                            table_name: schema.name.clone(),
+                        }))
+                    },
+                    TableOperation::DropTable { table_name } => {
+                        Err(RollbackError::DataLoss(
+                            format!("Cannot recreate dropped table '{}' - data lost", table_name)
+                        ))
+                    },
+                    TableOperation::RenameTable { old_name, new_name } => {
+                        Ok(MigrationOperation::Table(TableOperation::RenameTable {
+                            old_name: new_name.clone(),
+                            new_name: old_name.clone(),
+                        }))
+                    },
+                }
+            },
+            MigrationOperation::Column(column_op) => {
+                match column_op {
+                    ColumnOperation::AddColumn { table_name, column } => {
+                        Ok(MigrationOperation::Column(ColumnOperation::DropColumn {
+                            table_name: table_name.clone(),
+                            column_name: column.name.clone(),
+                        }))
+                    },
+                    ColumnOperation::DropColumn { table_name, column_name } => {
+                        Err(RollbackError::DataLoss(
+                            format!("Cannot recreate dropped column '{}.{}' - data lost", 
+                                   table_name, column_name)
+                        ))
+                    },
+                    ColumnOperation::ModifyColumn { table_name, old_column, new_column } => {
+                        Ok(MigrationOperation::Column(ColumnOperation::ModifyColumn {
+                            table_name: table_name.clone(),
+                            old_column: new_column.clone(),
+                            new_column: old_column.clone(),
+                        }))
+                    },
+                    ColumnOperation::RenameColumn { table_name, old_name, new_name } => {
+                        Ok(MigrationOperation::Column(ColumnOperation::RenameColumn {
+                            table_name: table_name.clone(),
+                            old_name: new_name.clone(),
+                            new_name: old_name.clone(),
+                        }))
+                    },
+                }
+            },
+            MigrationOperation::Index(index_op) => {
+                match index_op {
+                    IndexOperation::CreateIndex { table_name, index } => {
+                        Ok(MigrationOperation::Index(IndexOperation::DropIndex {
+                            table_name: table_name.clone(),
+                            index_name: index.name.clone(),
+                        }))
+                    },
+                    IndexOperation::DropIndex { table_name, index_name } => {
+                        Ok(MigrationOperation::Index(IndexOperation::CreateIndex {
+                            table_name: table_name.clone(),
+                            index: crate::introspection::UnifiedIndexSchema {
+                                name: index_name.clone(),
+                                table_name: table_name.clone(),
+                                columns: vec![], // Would need original index definition
+                                unique: false,
+                                primary: false,
+                                index_type: crate::introspection::UnifiedIndexType::BTree,
+                                condition: None,
+                                comment: None,
+                            },
+                        }))
+                    },
+                    IndexOperation::ModifyIndex { .. } => {
+                        Err(RollbackError::CannotRollback(
+                            "Index modifications require manual rollback".to_string()
+                        ))
+                    },
+                }
+            },
+            MigrationOperation::Constraint(constraint_op) => {
+                // Simplified constraint rollback - full implementation would be more complex
+                Err(RollbackError::CannotRollback(
+                    "Constraint rollbacks require manual intervention".to_string()
+                ))
+            }
+        }
+    }
+    
+    pub fn validate_rollback_safety(
+        &self,
+        rollback_plan: &RollbackPlan,
+    ) -> Result<(), RollbackError> {
+        match rollback_plan.data_loss_risk {
+            DataLossRisk::DataLossInevitable(ref msg) => {
+                Err(RollbackError::DataLoss(msg.clone()))
+            },
+            DataLossRisk::High(ref msg) if rollback_plan.requires_manual_intervention => {
+                Err(RollbackError::ValidationFailed(
+                    format!("Manual intervention required: {}", msg)
+                ))
+            },
+            _ => Ok(())
+        }
+    }
+}
+```
+
+**Acceptance criteria**:
+- [ ] Automatic rollback plan generation from forward migrations
+- [ ] Data loss risk assessment and safety validation
+- [ ] Manual intervention detection for complex scenarios
+- [ ] Integration with migration execution engine
+- [ ] Support for partial rollbacks with detailed warnings
+
+**Testing**: Rollback generation and validation across all operation types
+
+---
+
+### Task 5.6: Data Migration Support (~350 lines, 5-6 hours)
+**Estimated effort**: 5-6 hours | **Files**: `src/migration_engine/data_migration.rs` (new)
+
+**Add comprehensive data transformation and migration capabilities**:
+```rust
+// src/migration_engine/data_migration.rs
+use crate::migration_engine::MigrationOperation;
+use crate::introspection::{UnifiedColumnSchema, UnifiedColumnType};
+use crate::backends::DatabaseBackend;
+use serde::{Serialize, Deserialize};
+use serde_json::Value;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum DataMigrationError {
+    #[error("Data transformation failed: {0}")]
+    TransformationFailed(String),
+    
+    #[error("Batch processing error: {0}")]
+    BatchProcessingFailed(String),
+    
+    #[error("Data validation failed: {0}")]
+    ValidationFailed(String),
+    
+    #[error("Type conversion error: {0}")]
+    TypeConversionFailed(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataMigrationPlan {
+    pub operations: Vec<DataMigrationOperation>,
+    pub batch_size: usize,
+    pub validation_rules: Vec<DataValidationRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DataMigrationOperation {
+    TypeConversion {
+        table: String,
+        column: String,
+        from_type: UnifiedColumnType,
+        to_type: UnifiedColumnType,
+        conversion_function: String,
+    },
+    DefaultValueBackfill {
+        table: String,
+        column: String,
+        default_value: Value,
+        condition: Option<String>,
+    },
+    DataNormalization {
+        table: String,
+        transformations: Vec<ColumnTransformation>,
+    },
+    CustomScript {
+        script: String,
+        description: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColumnTransformation {
+    pub column: String,
+    pub transformation_type: TransformationType,
+    pub parameters: serde_json::Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TransformationType {
+    Trim,
+    ToLowerCase,
+    ToUpperCase,
+    DateFormatConversion,
+    NumericNormalization,
+    JsonExtraction { path: String },
+    RegexReplace { pattern: String, replacement: String },
+    Custom { function: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataValidationRule {
+    pub table: String,
+    pub column: Option<String>,
+    pub rule_type: ValidationRuleType,
+    pub error_message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ValidationRuleType {
+    NotNull,
+    UniqueValues,
+    ValueInRange { min: Value, max: Value },
+    MatchesPattern { pattern: String },
+    ReferentialIntegrity { referenced_table: String, referenced_column: String },
+}
+
+pub struct DataMigrator {
+    dialect: crate::dialects::DatabaseDialect,
+}
+
+impl DataMigrator {
+    pub fn new(dialect: crate::dialects::DatabaseDialect) -> Self {
+        Self { dialect }
+    }
+    
+    pub fn generate_data_migration_plan(
+        &self,
+        schema_operations: &[MigrationOperation],
+    ) -> Result<DataMigrationPlan, DataMigrationError> {
+        let mut data_operations = Vec::new();
+        let mut validation_rules = Vec::new();
+        
+        for operation in schema_operations {
+            match operation {
+                MigrationOperation::Column(column_op) => {
+                    if let Some((data_op, validation)) = self.analyze_column_operation(column_op)? {
+                        data_operations.push(data_op);
+                        if let Some(rule) = validation {
+                            validation_rules.push(rule);
+                        }
+                    }
+                },
+                _ => {
+                    // Other operations may not require data migration
+                }
+            }
+        }
+        
+        Ok(DataMigrationPlan {
+            operations: data_operations,
+            batch_size: self.get_optimal_batch_size(),
+            validation_rules,
+        })
+    }
+    
+    pub async fn execute_data_migration<B: DatabaseBackend>(
+        &self,
+        plan: &DataMigrationPlan,
+        backend: &B,
+    ) -> Result<(), DataMigrationError> {
+        // Pre-migration validation
+        self.validate_data_integrity(plan, backend).await?;
+        
+        // Execute data operations in batches
+        for operation in &plan.operations {
+            self.execute_data_operation(operation, backend, plan.batch_size).await?;
+        }
+        
+        // Post-migration validation
+        self.validate_migration_results(plan, backend).await?;
+        
+        Ok(())
+    }
+    
+    fn analyze_column_operation(
+        &self,
+        column_op: &crate::migration_engine::ColumnOperation,
+    ) -> Result<Option<(DataMigrationOperation, Option<DataValidationRule>)>, DataMigrationError> {
+        use crate::migration_engine::ColumnOperation;
+        
+        match column_op {
+            ColumnOperation::AddColumn { table_name, column } => {
+                if let Some(ref default_value) = column.default_value {
+                    let data_op = DataMigrationOperation::DefaultValueBackfill {
+                        table: table_name.clone(),
+                        column: column.name.clone(),
+                        default_value: serde_json::from_str(default_value)
+                            .unwrap_or(Value::Null),
+                        condition: None,
+                    };
+                    
+                    let validation = if !column.nullable {
+                        Some(DataValidationRule {
+                            table: table_name.clone(),
+                            column: Some(column.name.clone()),
+                            rule_type: ValidationRuleType::NotNull,
+                            error_message: format!("Column {} cannot be null", column.name),
+                        })
+                    } else {
+                        None
+                    };
+                    
+                    Ok(Some((data_op, validation)))
+                } else {
+                    Ok(None)
+                }
+            },
+            ColumnOperation::ModifyColumn { table_name, old_column, new_column } => {
+                if old_column.column_type != new_column.column_type {
+                    let data_op = DataMigrationOperation::TypeConversion {
+                        table: table_name.clone(),
+                        column: new_column.name.clone(),
+                        from_type: old_column.column_type.clone(),
+                        to_type: new_column.column_type.clone(),
+                        conversion_function: self.get_type_conversion_function(
+                            &old_column.column_type,
+                            &new_column.column_type,
+                        )?,
+                    };
+                    Ok(Some((data_op, None)))
+                } else {
+                    Ok(None)
+                }
+            },
+            _ => Ok(None),
+        }
+    }
+    
+    async fn execute_data_operation<B: DatabaseBackend>(
+        &self,
+        operation: &DataMigrationOperation,
+        backend: &B,
+        batch_size: usize,
+    ) -> Result<(), DataMigrationError> {
+        match operation {
+            DataMigrationOperation::DefaultValueBackfill { table, column, default_value, condition } => {
+                let condition_clause = condition.as_deref().unwrap_or("1=1");
+                let sql = format!(
+                    "UPDATE {} SET {} = ? WHERE {} AND {} IS NULL",
+                    table, column, condition_clause, column
+                );
+                
+                backend.execute(&sql, &[default_value.clone()]).await
+                    .map_err(|e| DataMigrationError::BatchProcessingFailed(format!("{:?}", e)))?;
+            },
+            DataMigrationOperation::TypeConversion { table, column, conversion_function, .. } => {
+                let sql = format!(
+                    "UPDATE {} SET {} = {}({})",
+                    table, column, conversion_function, column
+                );
+                
+                backend.execute(&sql, &[]).await
+                    .map_err(|e| DataMigrationError::TransformationFailed(format!("{:?}", e)))?;
+            },
+            DataMigrationOperation::CustomScript { script, .. } => {
+                backend.execute(script, &[]).await
+                    .map_err(|e| DataMigrationError::BatchProcessingFailed(format!("{:?}", e)))?;
+            },
+            _ => {
+                // Other operations would be implemented similarly
+            }
+        }
+        
+        Ok(())
+    }
+    
+    async fn validate_data_integrity<B: DatabaseBackend>(
+        &self,
+        plan: &DataMigrationPlan,
+        backend: &B,
+    ) -> Result<(), DataMigrationError> {
+        for rule in &plan.validation_rules {
+            self.validate_rule(rule, backend).await?;
+        }
+        Ok(())
+    }
+    
+    async fn validate_migration_results<B: DatabaseBackend>(
+        &self,
+        plan: &DataMigrationPlan,
+        backend: &B,
+    ) -> Result<(), DataMigrationError> {
+        self.validate_data_integrity(plan, backend).await
+    }
+    
+    async fn validate_rule<B: DatabaseBackend>(
+        &self,
+        rule: &DataValidationRule,
+        backend: &B,
+    ) -> Result<(), DataMigrationError> {
+        match &rule.rule_type {
+            ValidationRuleType::NotNull => {
+                if let Some(ref column) = rule.column {
+                    let sql = format!(
+                        "SELECT COUNT(*) as count FROM {} WHERE {} IS NULL",
+                        rule.table, column
+                    );
+                    
+                    let result = backend.query(&sql, &[]).await
+                        .map_err(|e| DataMigrationError::ValidationFailed(format!("{:?}", e)))?;
+                    
+                    // Check if count > 0 (simplified - would need proper result parsing)
+                    // Implementation would parse result and validate count == 0
+                }
+            },
+            _ => {
+                // Other validation rules would be implemented similarly
+            }
+        }
+        Ok(())
+    }
+    
+    fn get_type_conversion_function(
+        &self,
+        from_type: &UnifiedColumnType,
+        to_type: &UnifiedColumnType,
+    ) -> Result<String, DataMigrationError> {
+        use UnifiedColumnType::*;
+        
+        let function = match (from_type, to_type) {
+            (VarChar, Integer) => "CAST(NULLIF(TRIM(?), '') AS INTEGER)",
+            (Integer, VarChar) => "CAST(? AS TEXT)",
+            (DateTime, Date) => "DATE(?)",
+            (Date, DateTime) => "DATETIME(?)",
+            (Text, Json) => "JSON(?)",
+            _ => return Err(DataMigrationError::TypeConversionFailed(
+                format!("No conversion function available from {:?} to {:?}", from_type, to_type)
+            )),
+        };
+        
+        Ok(function.to_string())
+    }
+    
+    fn get_optimal_batch_size(&self) -> usize {
+        match self.dialect {
+            crate::dialects::DatabaseDialect::SQLite => 1000,
+            #[cfg(feature = "postgres")]
+            crate::dialects::DatabaseDialect::PostgreSQL => 5000,
+            #[cfg(feature = "mysql")]
+            crate::dialects::DatabaseDialect::MySQL => 3000,
+        }
+    }
+}
+```
+
+**Acceptance criteria**:
+- [ ] Automatic data migration plan generation for schema changes
+- [ ] Batch processing for large dataset transformations
+- [ ] Type conversion support with database-specific functions
+- [ ] Pre/post migration data validation and integrity checks
+- [ ] Custom script support for complex data transformations
+
+**Testing**: Data migration scenarios with type conversions and large datasets
+
+---
+
+### Task 6.0: Development Environment Setup (~400 lines, 6-8 hours)
+**Estimated effort**: 6-8 hours | **Files**: `flake.nix` (update), `docker-compose.yml` (new), `.env.example` (new)
+
+**Setup comprehensive multi-database development environment**:
+```nix
+# flake.nix updates
+{
+  description = "d1-rs development environment";
+  
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+  
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            # Rust toolchain
+            cargo
+            rustc
+            rust-analyzer
+            rustfmt
+            clippy
+            cargo-nextest
+            
+            # Database engines
+            sqlite
+            postgresql_15
+            mysql80
+            
+            # Database tools
+            pgcli
+            mycli
+            sqlite-utils
+            
+            # Development tools
+            docker
+            docker-compose
+            just
+            watchexec
+            
+            # System dependencies
+            pkg-config
+            openssl
+            zlib
+            
+            # PostgreSQL development libraries
+            postgresql.dev
+            
+            # MySQL development libraries  
+            mysql80.dev
+            libmysqlclient
+            
+            # Additional utilities
+            jq
+            curl
+            git
+          ];
+          
+          shellHook = ''
+            # Set up PostgreSQL
+            export PGDATA=$PWD/postgres_data
+            export POSTGRES_TEST_URL="postgresql://d1rs_user:d1rs_pass@localhost:5433/d1rs_test"
+            export POSTGRES_DEV_URL="postgresql://d1rs_user:d1rs_pass@localhost:5433/d1rs_dev"
+            
+            # Set up MySQL
+            export MYSQL_TEST_URL="mysql://d1rs_user:d1rs_pass@localhost:3307/d1rs_test"
+            export MYSQL_DEV_URL="mysql://d1rs_user:d1rs_pass@localhost:3307/d1rs_dev"
+            
+            # SQLite (for testing)
+            export SQLITE_TEST_URL="sqlite::memory:"
+            export SQLITE_DEV_URL="./dev.db"
+            
+            # Development shortcuts
+            alias db:setup="docker-compose -f docker-compose.dev.yml up -d"
+            alias db:stop="docker-compose -f docker-compose.dev.yml down"
+            alias db:reset="docker-compose -f docker-compose.dev.yml down -v && docker-compose -f docker-compose.dev.yml up -d"
+            alias test:all="just test"
+            alias test:postgres="POSTGRES_TEST_URL=$POSTGRES_TEST_URL just test-filter postgres"
+            alias test:mysql="MYSQL_TEST_URL=$MYSQL_TEST_URL just test-filter mysql"
+            alias test:sqlite="just test-filter sqlite"
+            
+            echo "🚀 d1-rs development environment loaded!"
+            echo "📦 Available databases: PostgreSQL, MySQL, SQLite"
+            echo "🧪 Run 'db:setup' to start development databases"
+            echo "🏃 Run 'just test' to run the full test suite"
+          '';
+        };
+      });
+}
+```
+
+```yaml
+# docker-compose.dev.yml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: d1rs_postgres_dev
+    environment:
+      POSTGRES_USER: d1rs_user
+      POSTGRES_PASSWORD: d1rs_pass
+      POSTGRES_DB: d1rs_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    command: postgres -c log_statement=all -c log_destination=stderr
+    
+  postgres_test:
+    image: postgres:15
+    container_name: d1rs_postgres_test
+    environment:
+      POSTGRES_USER: d1rs_user
+      POSTGRES_PASSWORD: d1rs_pass  
+      POSTGRES_DB: d1rs_test
+    ports:
+      - "5434:5432"
+    tmpfs:
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=100m
+    command: postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+    
+  mysql:
+    image: mysql:8.0
+    container_name: d1rs_mysql_dev
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass
+      MYSQL_DATABASE: d1rs_dev
+      MYSQL_USER: d1rs_user
+      MYSQL_PASSWORD: d1rs_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init-mysql.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password --log-bin-trust-function-creators=1
+    
+  mysql_test:
+    image: mysql:8.0
+    container_name: d1rs_mysql_test
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass
+      MYSQL_DATABASE: d1rs_test
+      MYSQL_USER: d1rs_user
+      MYSQL_PASSWORD: d1rs_pass
+    ports:
+      - "3308:3306"
+    tmpfs:
+      - /var/lib/mysql:rw,noexec,nosuid,size=100m
+    command: --default-authentication-plugin=mysql_native_password --skip-log-bin
+
+volumes:
+  postgres_data:
+  mysql_data:
+```
+
+```bash
+# scripts/init-postgres.sql
+-- Create test database
+CREATE DATABASE d1rs_test;
+
+-- Grant permissions
+GRANT ALL PRIVILEGES ON DATABASE d1rs_dev TO d1rs_user;
+GRANT ALL PRIVILEGES ON DATABASE d1rs_test TO d1rs_user;
+
+-- Create schemas for testing
+\c d1rs_dev;
+CREATE SCHEMA IF NOT EXISTS public;
+GRANT ALL ON SCHEMA public TO d1rs_user;
+
+\c d1rs_test;
+CREATE SCHEMA IF NOT EXISTS public; 
+GRANT ALL ON SCHEMA public TO d1rs_user;
+```
+
+```sql
+-- scripts/init-mysql.sql
+-- Create test database
+CREATE DATABASE IF NOT EXISTS d1rs_test;
+
+-- Grant permissions  
+GRANT ALL PRIVILEGES ON d1rs_dev.* TO 'd1rs_user'@'%';
+GRANT ALL PRIVILEGES ON d1rs_test.* TO 'd1rs_user'@'%';
+
+FLUSH PRIVILEGES;
+```
+
+```env
+# .env.example
+# Copy to .env and adjust as needed
+
+# PostgreSQL Configuration
+POSTGRES_DEV_URL=postgresql://d1rs_user:d1rs_pass@localhost:5433/d1rs_dev
+POSTGRES_TEST_URL=postgresql://d1rs_user:d1rs_pass@localhost:5434/d1rs_test
+
+# MySQL Configuration  
+MYSQL_DEV_URL=mysql://d1rs_user:d1rs_pass@localhost:3307/d1rs_dev
+MYSQL_TEST_URL=mysql://d1rs_user:d1rs_pass@localhost:3308/d1rs_test
+
+# SQLite Configuration
+SQLITE_DEV_URL=./dev.db
+SQLITE_TEST_URL=sqlite::memory:
+
+# Testing Configuration
+TEST_TIMEOUT=300
+TEST_PARALLEL_JOBS=4
+```
+
+**Acceptance criteria**:
+- [ ] Complete Nix development environment with all database dependencies
+- [ ] Docker Compose setup for PostgreSQL and MySQL development/testing
+- [ ] Environment variable management for all database connections
+- [ ] Database initialization scripts and user setup
+- [ ] Development shortcuts and aliases for common tasks
+
+**Testing**: Environment setup validation across different systems
+
+---
+
+### Task 6.4: CI/CD Integration & GitHub Actions (~400 lines, 6-8 hours)
+**Estimated effort**: 6-8 hours | **Files**: `.github/workflows/ci.yml` (new), `.github/workflows/release.yml` (new)
+
+**Create comprehensive CI/CD pipeline with multi-database testing**:
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        rust: [stable, beta]
+        database: [sqlite, postgres, mysql, all]
+        
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: d1rs_user
+          POSTGRES_PASSWORD: d1rs_pass
+          POSTGRES_DB: d1rs_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+          
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_pass
+          MYSQL_DATABASE: d1rs_test
+          MYSQL_USER: d1rs_user
+          MYSQL_PASSWORD: d1rs_pass
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+        ports:
+          - 3306:3306
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust }}
+        profile: minimal
+        override: true
+        components: rustfmt, clippy
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libpq-dev libmysqlclient-dev libsqlite3-dev
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Setup database environment
+      run: |
+        echo "POSTGRES_TEST_URL=postgresql://d1rs_user:d1rs_pass@localhost:5432/d1rs_test" >> $GITHUB_ENV
+        echo "MYSQL_TEST_URL=mysql://d1rs_user:d1rs_pass@localhost:3306/d1rs_test" >> $GITHUB_ENV
+        echo "SQLITE_TEST_URL=sqlite::memory:" >> $GITHUB_ENV
+        
+    - name: Wait for databases
+      run: |
+        # Wait for PostgreSQL
+        until pg_isready -h localhost -p 5432 -U d1rs_user; do
+          sleep 1
+        done
+        
+        # Wait for MySQL
+        until mysqladmin ping -h localhost -P 3306 -u d1rs_user -pd1rs_pass --silent; do
+          sleep 1
+        done
+        
+    - name: Check formatting
+      run: cargo fmt -- --check
+      
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+      
+    - name: Build
+      run: |
+        case ${{ matrix.database }} in
+          sqlite)
+            cargo build --verbose
+            ;;
+          postgres)
+            cargo build --verbose --features postgres
+            ;;  
+          mysql)
+            cargo build --verbose --features mysql
+            ;;
+          all)
+            cargo build --verbose --features postgres,mysql
+            ;;
+        esac
+        
+    - name: Run tests
+      run: |
+        case ${{ matrix.database }} in
+          sqlite)
+            cargo test --verbose
+            ;;
+          postgres)
+            cargo test --verbose --features postgres
+            ;;
+          mysql) 
+            cargo test --verbose --features mysql
+            ;;
+          all)
+            cargo test --verbose --features postgres,mysql
+            ;;
+        esac
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions-rs/audit-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: d1rs_user
+          POSTGRES_PASSWORD: d1rs_pass
+          POSTGRES_DB: d1rs_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+          
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_pass
+          MYSQL_DATABASE: d1rs_test
+          MYSQL_USER: d1rs_user
+          MYSQL_PASSWORD: d1rs_pass
+        ports:
+          - 3306:3306
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libpq-dev libmysqlclient-dev libsqlite3-dev
+        
+    - name: Install cargo-tarpaulin
+      uses: actions-rs/install@v0.1
+      with:
+        crate: cargo-tarpaulin
+        version: latest
+        
+    - name: Setup database environment
+      run: |
+        echo "POSTGRES_TEST_URL=postgresql://d1rs_user:d1rs_pass@localhost:5432/d1rs_test" >> $GITHUB_ENV
+        echo "MYSQL_TEST_URL=mysql://d1rs_user:d1rs_pass@localhost:3306/d1rs_test" >> $GITHUB_ENV
+        echo "SQLITE_TEST_URL=sqlite::memory:" >> $GITHUB_ENV
+        
+    - name: Generate code coverage
+      run: cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml
+      
+    - name: Upload to codecov.io
+      uses: codecov/codecov-action@v3
+      with:
+        fail_ci_if_error: false
+
+  performance:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: d1rs_user  
+          POSTGRES_PASSWORD: d1rs_pass
+          POSTGRES_DB: d1rs_bench
+        ports:
+          - 5432:5432
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libpq-dev libsqlite3-dev
+        
+    - name: Run benchmarks
+      run: cargo bench --features postgres
+      
+    - name: Store benchmark results
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        name: D1-RS Benchmark
+        tool: 'cargo'
+        output-file-path: target/criterion/benchmark.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+```
+
+```yaml
+# .github/workflows/release.yml
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+  publish-crate:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: create-release
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        
+    - name: Login to crates.io
+      run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
+      
+    - name: Publish d1-rs-derive
+      run: |
+        cd d1-rs-derive
+        cargo publish
+        
+    - name: Wait for derive crate
+      run: sleep 60
+      
+    - name: Publish d1-rs
+      run: cargo publish
+
+  docker-build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: create-release
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Build and push
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:latest
+          ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+```
+
+**Acceptance criteria**:
+- [ ] Multi-database CI pipeline testing SQLite, PostgreSQL, MySQL
+- [ ] Matrix testing across Rust stable/beta versions
+- [ ] Security auditing and code coverage reporting  
+- [ ] Performance benchmarking on main branch
+- [ ] Automated releases to crates.io with proper versioning
+
+**Testing**: CI pipeline validation with all database combinations
+
+---
+
+### Task 6.5: Test Data Management & Fixtures (~300 lines, 4-5 hours)
+**Estimated effort**: 4-5 hours | **Files**: `tests/fixtures/mod.rs` (new), `tests/test_data/` (new directory)
+
+**Create comprehensive test data management system**:
+```rust
+// tests/fixtures/mod.rs
+use d1_rs::*;
+use std::collections::HashMap;
+use serde_json::{json, Value};
+
+pub mod entities;
+pub mod schemas;
+pub mod data_sets;
+
+use crate::backends::DatabaseBackend;
+use crate::dialects::DatabaseDialect;
+
+/// Test fixture manager for multi-database testing
+pub struct TestFixtureManager {
+    dialect: DatabaseDialect,
+    fixtures: HashMap<String, TestFixture>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestFixture {
+    pub name: String,
+    pub description: String,
+    pub setup_sql: Vec<String>,
+    pub teardown_sql: Vec<String>,
+    pub test_data: Vec<TestRecord>,
+    pub expected_results: HashMap<String, Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestRecord {
+    pub table: String,
+    pub data: HashMap<String, Value>,
+}
+
+impl TestFixtureManager {
+    pub fn new(dialect: DatabaseDialect) -> Self {
+        let mut manager = Self {
+            dialect,
+            fixtures: HashMap::new(),
+        };
+        
+        // Load built-in fixtures
+        manager.load_built_in_fixtures();
+        manager
+    }
+    
+    pub async fn setup_fixture<B: DatabaseBackend>(
+        &self,
+        fixture_name: &str,
+        backend: &B,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = self.fixtures.get(fixture_name)
+            .ok_or_else(|| format!("Fixture '{}' not found", fixture_name))?;
+            
+        // Execute setup SQL
+        for sql in &fixture.setup_sql {
+            backend.execute(sql, &[]).await?;
+        }
+        
+        // Insert test data
+        for record in &fixture.test_data {
+            self.insert_test_record(record, backend).await?;
+        }
+        
+        Ok(())
+    }
+    
+    pub async fn teardown_fixture<B: DatabaseBackend>(
+        &self,
+        fixture_name: &str, 
+        backend: &B,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = self.fixtures.get(fixture_name)
+            .ok_or_else(|| format!("Fixture '{}' not found", fixture_name))?;
+            
+        // Execute teardown SQL
+        for sql in &fixture.teardown_sql {
+            backend.execute(sql, &[]).await?;
+        }
+        
+        Ok(())
+    }
+    
+    fn load_built_in_fixtures(&mut self) {
+        // Users and Posts fixture
+        self.fixtures.insert("users_posts".to_string(), TestFixture {
+            name: "users_posts".to_string(),
+            description: "Users with posts for relationship testing".to_string(),
+            setup_sql: self.get_users_posts_schema(),
+            teardown_sql: vec![
+                "DROP TABLE IF EXISTS posts".to_string(),
+                "DROP TABLE IF EXISTS users".to_string(),
+            ],
+            test_data: vec![
+                TestRecord {
+                    table: "users".to_string(),
+                    data: [
+                        ("id".to_string(), json!(1)),
+                        ("name".to_string(), json!("John Doe")),
+                        ("email".to_string(), json!("john@example.com")),
+                        ("created_at".to_string(), json!("2024-01-01 00:00:00")),
+                    ].into_iter().collect(),
+                },
+                TestRecord {
+                    table: "users".to_string(),
+                    data: [
+                        ("id".to_string(), json!(2)),
+                        ("name".to_string(), json!("Jane Smith")),
+                        ("email".to_string(), json!("jane@example.com")),
+                        ("created_at".to_string(), json!("2024-01-02 00:00:00")),
+                    ].into_iter().collect(),
+                },
+                TestRecord {
+                    table: "posts".to_string(),
+                    data: [
+                        ("id".to_string(), json!(1)),
+                        ("title".to_string(), json!("First Post")),
+                        ("content".to_string(), json!("Hello World")),
+                        ("user_id".to_string(), json!(1)),
+                        ("created_at".to_string(), json!("2024-01-03 00:00:00")),
+                    ].into_iter().collect(),
+                },
+            ],
+            expected_results: [
+                ("user_count".to_string(), json!(2)),
+                ("post_count".to_string(), json!(1)),
+            ].into_iter().collect(),
+        });
+        
+        // Type testing fixture
+        self.fixtures.insert("type_testing".to_string(), TestFixture {
+            name: "type_testing".to_string(),
+            description: "All column types for cross-database compatibility".to_string(),
+            setup_sql: self.get_type_testing_schema(),
+            teardown_sql: vec![
+                "DROP TABLE IF EXISTS type_test".to_string(),
+            ],
+            test_data: vec![
+                TestRecord {
+                    table: "type_test".to_string(),
+                    data: self.get_type_test_data(),
+                },
+            ],
+            expected_results: HashMap::new(),
+        });
+        
+        // Performance testing fixture
+        self.fixtures.insert("performance_large".to_string(), TestFixture {
+            name: "performance_large".to_string(),
+            description: "Large dataset for performance testing".to_string(),
+            setup_sql: self.get_performance_schema(),
+            teardown_sql: vec![
+                "DROP TABLE IF EXISTS performance_test".to_string(),
+            ],
+            test_data: self.generate_performance_data(10000),
+            expected_results: [
+                ("record_count".to_string(), json!(10000)),
+            ].into_iter().collect(),
+        });
+    }
+    
+    fn get_users_posts_schema(&self) -> Vec<String> {
+        match self.dialect {
+            DatabaseDialect::SQLite => vec![
+                r#"
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    created_at DATETIME NOT NULL
+                )
+                "#.to_string(),
+                r#"
+                CREATE TABLE posts (
+                    id INTEGER PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    content TEXT,
+                    user_id INTEGER NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                "#.to_string(),
+            ],
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => vec![
+                r#"
+                CREATE TABLE users (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    created_at TIMESTAMP NOT NULL
+                )
+                "#.to_string(),
+                r#"
+                CREATE TABLE posts (
+                    id SERIAL PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    content TEXT,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    created_at TIMESTAMP NOT NULL
+                )
+                "#.to_string(),
+            ],
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => vec![
+                r#"
+                CREATE TABLE users (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    created_at DATETIME NOT NULL
+                )
+                "#.to_string(),
+                r#"
+                CREATE TABLE posts (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    content TEXT,
+                    user_id INT NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                "#.to_string(),
+            ],
+        }
+    }
+    
+    fn get_type_testing_schema(&self) -> Vec<String> {
+        match self.dialect {
+            DatabaseDialect::SQLite => vec![
+                r#"
+                CREATE TABLE type_test (
+                    id INTEGER PRIMARY KEY,
+                    text_col TEXT,
+                    integer_col INTEGER,
+                    real_col REAL,
+                    blob_col BLOB,
+                    boolean_col BOOLEAN,
+                    date_col DATE,
+                    datetime_col DATETIME
+                )
+                "#.to_string(),
+            ],
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => vec![
+                r#"
+                CREATE TABLE type_test (
+                    id SERIAL PRIMARY KEY,
+                    text_col TEXT,
+                    integer_col INTEGER,
+                    real_col REAL,
+                    blob_col BYTEA,
+                    boolean_col BOOLEAN,
+                    date_col DATE,
+                    datetime_col TIMESTAMP,
+                    json_col JSON,
+                    uuid_col UUID
+                )
+                "#.to_string(),
+            ],
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => vec![
+                r#"
+                CREATE TABLE type_test (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    text_col TEXT,
+                    integer_col INT,
+                    real_col DOUBLE,
+                    blob_col BLOB,
+                    boolean_col BOOLEAN,
+                    date_col DATE,
+                    datetime_col DATETIME,
+                    json_col JSON
+                )
+                "#.to_string(),
+            ],
+        }
+    }
+    
+    fn get_type_test_data(&self) -> HashMap<String, Value> {
+        let mut data = HashMap::new();
+        data.insert("id".to_string(), json!(1));
+        data.insert("text_col".to_string(), json!("test text"));
+        data.insert("integer_col".to_string(), json!(42));
+        data.insert("real_col".to_string(), json!(3.14));
+        data.insert("boolean_col".to_string(), json!(true));
+        data.insert("date_col".to_string(), json!("2024-01-01"));
+        data.insert("datetime_col".to_string(), json!("2024-01-01 12:00:00"));
+        
+        // Database-specific columns
+        match self.dialect {
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => {
+                data.insert("json_col".to_string(), json!({"key": "value"}));
+                data.insert("uuid_col".to_string(), json!("123e4567-e89b-12d3-a456-426614174000"));
+            },
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => {
+                data.insert("json_col".to_string(), json!({"key": "value"}));
+            },
+            _ => {}
+        }
+        
+        data
+    }
+    
+    fn get_performance_schema(&self) -> Vec<String> {
+        match self.dialect {
+            DatabaseDialect::SQLite => vec![
+                r#"
+                CREATE TABLE performance_test (
+                    id INTEGER PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    value INTEGER NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                "#.to_string(),
+                "CREATE INDEX idx_performance_value ON performance_test(value)".to_string(),
+            ],
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => vec![
+                r#"
+                CREATE TABLE performance_test (
+                    id SERIAL PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    value INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+                "#.to_string(),
+                "CREATE INDEX idx_performance_value ON performance_test(value)".to_string(),
+            ],
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => vec![
+                r#"
+                CREATE TABLE performance_test (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    value INT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_performance_value (value)
+                )
+                "#.to_string(),
+            ],
+        }
+    }
+    
+    fn generate_performance_data(&self, count: usize) -> Vec<TestRecord> {
+        (0..count).map(|i| {
+            TestRecord {
+                table: "performance_test".to_string(),
+                data: [
+                    ("data".to_string(), json!(format!("test data {}", i))),
+                    ("value".to_string(), json!(i % 1000)),
+                ].into_iter().collect(),
+            }
+        }).collect()
+    }
+    
+    async fn insert_test_record<B: DatabaseBackend>(
+        &self,
+        record: &TestRecord,
+        backend: &B,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let columns: Vec<String> = record.data.keys().cloned().collect();
+        let placeholders: Vec<String> = (0..columns.len()).map(|_| "?".to_string()).collect();
+        let values: Vec<Value> = columns.iter().map(|k| record.data[k].clone()).collect();
+        
+        let sql = format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            record.table,
+            columns.join(", "),
+            placeholders.join(", ")
+        );
+        
+        backend.execute(&sql, &values).await?;
+        Ok(())
+    }
+}
+
+// Test helper macros
+#[macro_export]
+macro_rules! with_test_fixture {
+    ($fixture_name:expr, $backend:expr, $test_code:block) => {{
+        let fixture_manager = TestFixtureManager::new($backend.dialect());
+        fixture_manager.setup_fixture($fixture_name, &$backend).await?;
+        
+        let result = async move $test_code.await;
+        
+        let _ = fixture_manager.teardown_fixture($fixture_name, &$backend).await;
+        result
+    }};
+}
+
+#[macro_export]
+macro_rules! test_all_databases {
+    ($test_name:ident, $test_body:block) => {
+        #[tokio::test]
+        async fn $test_name() -> Result<(), Box<dyn std::error::Error>> {
+            // SQLite
+            {
+                let backend = crate::backends::sqlite::SQLiteBackend::new_in_memory().await?;
+                $test_body(backend).await?;
+            }
+            
+            // PostgreSQL (if available)
+            #[cfg(feature = "postgres")]
+            if let Ok(url) = std::env::var("POSTGRES_TEST_URL") {
+                let backend = crate::backends::postgres::PostgreSQLBackend::new(&url).await?;
+                $test_body(backend).await?;
+            }
+            
+            // MySQL (if available)
+            #[cfg(feature = "mysql")]
+            if let Ok(url) = std::env::var("MYSQL_TEST_URL") {
+                let backend = crate::backends::mysql::MySQLBackend::new(&url).await?;
+                $test_body(backend).await?;
+            }
+            
+            Ok(())
+        }
+    };
+}
+```
+
+```rust
+// tests/test_data/mod.rs - Usage example
+use d1_rs_fixtures::*;
+
+test_all_databases!(test_user_crud, |backend| async {
+    with_test_fixture!("users_posts", backend, {
+        // Test user CRUD operations
+        let users = User::query().all(&backend).await?;
+        assert_eq!(users.len(), 2);
+        
+        let user = User::query()
+            .where_email_eq("john@example.com")
+            .first(&backend).await?;
+        assert_eq!(user.name, "John Doe");
+        
+        Ok(())
+    })
+});
+```
+
+**Acceptance criteria**:
+- [ ] Comprehensive fixture management for all database types
+- [ ] Database-specific schema creation with proper types
+- [ ] Large dataset generation for performance testing
+- [ ] Test helper macros for cross-database testing
+- [ ] Automatic setup/teardown of test environments
+
+**Testing**: Fixture validation across all supported databases
+
 ---
 
 ## Phase 4: Schema Introspection (Week 5)
@@ -1984,6 +4243,130 @@ impl SchemaIntrospector for PostgreSQLIntrospector<'_> {
 - Type mapping is correct across databases
 - Foreign key and index discovery works
 - Zero compilation warnings
+
+### Task 4.7: Phase 4 Completion Verification & Cleanup (~200 lines, 3-4 hours)
+**Estimated effort**: 3-4 hours | **Files**: Analysis across all Phase 4 schema introspection implementations
+
+**Comprehensive verification that Phase 4 schema introspection is complete and cross-database compatible**:
+
+**Analysis and Verification**:
+1. **Schema Introspection Implementation Audit**:
+   - [ ] Run `cargo check` with all database introspection features - must show ZERO warnings
+   - [ ] Run `just test` focusing on introspection tests - all tests must pass
+   - [ ] Verify SQLite, PostgreSQL, and MySQL introspectors are fully implemented
+   - [ ] Ensure no placeholder implementations or TODO comments remain
+
+2. **Cross-Database Schema Discovery Validation**:
+   - [ ] Test table structure discovery works identically across all databases
+   - [ ] Verify column type mapping is accurate for all supported types
+   - [ ] Confirm index and constraint discovery works for all database types
+   - [ ] Validate foreign key relationship detection across all backends
+
+3. **Unified Schema Representation Testing**:
+   - [ ] Ensure UnifiedTableSchema captures all necessary table information
+   - [ ] Verify UnifiedColumnSchema handles all column types correctly
+   - [ ] Test UnifiedIndexSchema represents indexes consistently
+   - [ ] Confirm UnifiedConstraintSchema works for all constraint types
+
+4. **Database-Specific Feature Handling**:
+   - [ ] Test SQLite pragma-based introspection works correctly
+   - [ ] Verify PostgreSQL information_schema queries are accurate
+   - [ ] Validate MySQL information_schema integration works properly
+   - [ ] Ensure database-specific type mappings are handled correctly
+
+5. **Schema Comparison and Diffing Readiness**:
+   - [ ] Verify schema representations can be compared accurately
+   - [ ] Test that schemas from different databases can be unified
+   - [ ] Ensure schema introspection supports migration planning
+   - [ ] Validate performance is acceptable for large database schemas
+
+**Acceptance Criteria**:
+- [ ] All Phase 4 tasks marked complete with full schema introspection
+- [ ] Zero compilation warnings across all database introspection features
+- [ ] Schema discovery works accurately for SQLite, PostgreSQL, and MySQL
+- [ ] Unified schema representation captures all necessary database information
+- [ ] No TODO comments or placeholder introspection logic remaining
+- [ ] Performance is acceptable for schemas with hundreds of tables
+- [ ] Cross-database schema comparison is fully functional
+- [ ] Ready to proceed with Phase 5 migration system implementation
+
+**Testing**: Comprehensive schema introspection validation across all supported databases
+
+### Task 4.8: Phase 4 Advanced Schema Analysis & Edge Case Testing (~175 lines, 2-3 hours)
+**Estimated effort**: 2-3 hours | **Files**: Advanced schema introspection testing
+
+**Supplementary testing focusing on complex schema analysis scenarios**:
+
+**Advanced Schema Analysis Testing**:
+1. **Complex Schema Pattern Discovery**:
+   - [ ] Test introspection of schemas with hundreds of tables and relationships
+   - [ ] Verify detection of complex foreign key chains and circular references
+   - [ ] Test discovery of multi-column indexes and composite primary keys
+   - [ ] Validate handling of schema-specific features (PostgreSQL schemas, MySQL databases)
+
+2. **Edge Case Schema Handling**:
+   - [ ] Test introspection of tables with unusual column names (keywords, special chars)
+   - [ ] Verify handling of very large VARCHAR/TEXT column definitions
+   - [ ] Test discovery of partial and functional indexes
+   - [ ] Validate introspection of views, materialized views, and triggers
+
+3. **Cross-Database Type Mapping Validation**:
+   - [ ] Test edge cases in type conversion between database systems
+   - [ ] Verify handling of database-specific types (PostgreSQL arrays, MySQL JSON)
+   - [ ] Test preservation of precision and scale for decimal types
+   - [ ] Validate timezone-aware timestamp handling across databases
+
+4. **Performance and Memory Efficiency**:
+   - [ ] Test introspection performance on databases with 1000+ tables
+   - [ ] Verify memory usage stays reasonable during large schema discovery
+   - [ ] Test concurrent introspection operations across multiple databases
+   - [ ] Validate caching effectiveness for repeated schema queries
+
+**Acceptance Criteria**:
+- [ ] Complex schema patterns discovered accurately across all databases
+- [ ] Edge cases handled gracefully with proper error reporting
+- [ ] Type mapping preserves semantic meaning across database boundaries
+- [ ] Performance scales acceptably with schema size and complexity
+
+**Testing**: Advanced schema discovery with large-scale and edge case validation
+
+### Task 4.9: Phase 4 Schema Diff & Migration Readiness Verification (~150 lines, 2 hours)
+**Estimated effort**: 2 hours | **Files**: Schema comparison and migration preparation
+
+**Final verification of schema diffing capabilities and migration readiness**:
+
+**Schema Diff and Migration Readiness**:
+1. **Schema Comparison Algorithm Testing**:
+   - [ ] Test accurate detection of table additions, deletions, and modifications
+   - [ ] Verify column change detection (type changes, null constraints, defaults)
+   - [ ] Test index and constraint change detection across all database types
+   - [ ] Validate foreign key relationship change detection and analysis
+
+2. **Cross-Database Schema Migration Analysis**:
+   - [ ] Test feasibility analysis for SQLite → PostgreSQL migrations
+   - [ ] Verify MySQL → PostgreSQL schema conversion capabilities
+   - [ ] Test bidirectional schema comparison and compatibility analysis
+   - [ ] Validate detection of database-specific features that don't translate
+
+3. **Migration Planning Integration**:
+   - [ ] Verify schema introspection data feeds properly into migration planners
+   - [ ] Test that schema diffs generate actionable migration operations
+   - [ ] Validate dependency ordering for complex schema changes
+   - [ ] Ensure data preservation requirements are properly identified
+
+4. **Schema Validation and Consistency**:
+   - [ ] Test detection of inconsistent foreign key relationships
+   - [ ] Verify identification of orphaned indexes and constraints
+   - [ ] Test validation of naming conventions and schema best practices
+   - [ ] Validate detection of potential performance issues in schema design
+
+**Acceptance Criteria**:
+- [ ] Schema comparison algorithms produce accurate and complete diffs
+- [ ] Cross-database migration analysis identifies all compatibility issues
+- [ ] Migration planning integration works seamlessly with schema introspection
+- [ ] Schema validation catches common design issues and inconsistencies
+
+**Testing**: Schema diffing and migration planning integration validation
 
 ---
 

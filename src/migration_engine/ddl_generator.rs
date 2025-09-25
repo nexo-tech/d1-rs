@@ -14,7 +14,7 @@ use crate::migration_engine::{
 };
 use crate::introspection::{
     UnifiedTableSchema, UnifiedColumnSchema, UnifiedIndexSchema, UnifiedConstraintSchema,
-    UnifiedColumnType, UnifiedTableType, UnifiedIndexType
+    UnifiedColumnType
 };
 use sea_query::{
     Alias, ColumnDef, Table, Index, SqliteQueryBuilder, ColumnType, StringLen, IntoIden
@@ -116,8 +116,6 @@ pub struct DDLStatistics {
 pub struct DDLGenerator {
     /// Target database dialect
     dialect: DatabaseDialect,
-    /// Column type conversion cache for performance
-    type_cache: HashMap<String, ColumnType>,
 }
 
 impl DDLGenerator {
@@ -125,7 +123,6 @@ impl DDLGenerator {
     pub fn new(dialect: DatabaseDialect) -> Self {
         Self {
             dialect,
-            type_cache: HashMap::new(),
         }
     }
 
@@ -619,31 +616,6 @@ impl DDLGenerator {
         }
     }
 
-    /// Convert column type to string representation for SQL
-    fn column_type_to_string(&self, column_type: &UnifiedColumnType) -> Result<String, DDLError> {
-        let result = match column_type {
-            UnifiedColumnType::Boolean => "BOOLEAN",
-            UnifiedColumnType::SmallInt => "SMALLINT",
-            UnifiedColumnType::Integer => "INTEGER",
-            UnifiedColumnType::BigInt => "BIGINT",
-            UnifiedColumnType::Real => "REAL",
-            UnifiedColumnType::Double => "DOUBLE",
-            UnifiedColumnType::Decimal => "DECIMAL",
-            UnifiedColumnType::Char => "CHAR",
-            UnifiedColumnType::VarChar => "VARCHAR",
-            UnifiedColumnType::Text => "TEXT",
-            UnifiedColumnType::Blob => "BLOB",
-            UnifiedColumnType::Json => "JSON",
-            UnifiedColumnType::Date => "DATE",
-            UnifiedColumnType::Time => "TIME",
-            UnifiedColumnType::DateTime => "DATETIME",
-            UnifiedColumnType::Timestamp => "TIMESTAMP",
-            UnifiedColumnType::Uuid => "UUID",
-            UnifiedColumnType::Other(custom_type) => custom_type,
-        };
-        
-        Ok(result.to_string())
-    }
 
     /// Estimate CREATE TABLE execution duration
     fn estimate_create_table_duration(&self, schema: &UnifiedTableSchema) -> u64 {
@@ -690,7 +662,6 @@ impl DDLGenerator {
 mod tests {
     use super::*;
     use crate::introspection::{UnifiedColumnType, UnifiedTableType, UnifiedIndexType};
-    use std::collections::HashMap;
 
     #[test]
     fn test_ddl_generator_creation() {
@@ -807,19 +778,6 @@ mod tests {
         assert_eq!(DDLOperationType::CreateIndex.display_name(), "CREATE INDEX");
     }
 
-    #[test]
-    fn test_column_type_string_conversion() {
-        let generator = DDLGenerator::new(DatabaseDialect::SQLite);
-        
-        let result = generator.column_type_to_string(&UnifiedColumnType::Integer);
-        assert_eq!(result.unwrap(), "INTEGER");
-        
-        let result = generator.column_type_to_string(&UnifiedColumnType::VarChar);
-        assert_eq!(result.unwrap(), "VARCHAR");
-        
-        let result = generator.column_type_to_string(&UnifiedColumnType::DateTime);
-        assert_eq!(result.unwrap(), "DATETIME");
-    }
 
     #[test]
     fn test_duration_estimation() {
