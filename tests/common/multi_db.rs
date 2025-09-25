@@ -60,6 +60,7 @@ impl TestDatabase {
 }
 
 /// Database client wrapper that provides unified interface across all backends
+#[derive(Clone)]
 pub struct TestClient {
     database: TestDatabase,
     client: SQLiteClient,
@@ -296,15 +297,15 @@ impl TestDataSeeder {
         Ok(())
     }
 
-    fn get_insert_user_sql(&self) -> String {
+    pub fn get_insert_user_sql(&self) -> String {
         "INSERT INTO test_users (email, name, is_active, score) VALUES (?, ?, ?, ?)".to_string()
     }
 
-    fn get_insert_post_sql(&self) -> String {
+    pub fn get_insert_post_sql(&self) -> String {
         "INSERT INTO test_posts (user_id, title, content, is_published, views) VALUES (?, ?, ?, ?, ?)".to_string()
     }
 
-    fn bool_value(&self, value: bool) -> Value {
+    pub fn bool_value(&self, value: bool) -> Value {
         match self.client.dialect() {
             DatabaseDialect::SQLite => Value::Number(if value { 1 } else { 0 }.into()),
             #[cfg(feature = "postgres")]
