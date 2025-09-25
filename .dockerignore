@@ -1,0 +1,49 @@
+# Git and version control
+.git
+.gitignore
+.github
+.gitattributes
+
+# Development and build artifacts
+target/
+Cargo.lock
+**/*.rs.bk
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation and README files (keep essential ones)
+docs/
+*.md
+!README.md
+
+# Test and development files
+tests/
+examples/
+benches/
+
+# CI/CD files (not needed in container)
+.github/
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+.directory
+
+# Rust-specific
+**/*.pdb
+.cargo/
+rust-toolchain*
