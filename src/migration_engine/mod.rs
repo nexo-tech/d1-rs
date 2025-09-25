@@ -6,6 +6,7 @@
 pub mod differ;
 pub mod ddl_generator;
 pub mod executor;
+pub mod rollback;
 
 pub use differ::{
     MigrationOperation, MigrationPlan, SafetyLevel, SchemaDiffer, 
@@ -21,6 +22,10 @@ pub use ddl_generator::{
 pub use executor::{
     MigrationExecutor, MigrationExecutionError, MigrationExecutionResult,
     MigrationExecutionConfig, ExecutionStatistics
+};
+
+pub use rollback::{
+    RollbackGenerator, RollbackPlan, RollbackError, DataLossRisk
 };
 
 // Re-export from introspection for convenience
