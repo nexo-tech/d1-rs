@@ -54,6 +54,7 @@ impl TestDatabase {
         }
     }
 
+    #[allow(dead_code)]
     pub fn available() -> Vec<TestDatabase> {
         vec![TestDatabase::SQLite]
     }
@@ -322,6 +323,7 @@ pub struct MultiDatabaseTestRunner {
 }
 
 impl MultiDatabaseTestRunner {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             databases: vec![TestDatabase::SQLite],
