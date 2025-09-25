@@ -5,6 +5,7 @@
 
 pub mod differ;
 pub mod ddl_generator;
+pub mod executor;
 
 pub use differ::{
     MigrationOperation, MigrationPlan, SafetyLevel, SchemaDiffer, 
@@ -15,6 +16,11 @@ pub use differ::{
 pub use ddl_generator::{
     DDLGenerator, DDLStatement, DDLOperationType, DDLGenerationResult,
     DDLStatistics, DDLError
+};
+
+pub use executor::{
+    MigrationExecutor, MigrationExecutionError, MigrationExecutionResult,
+    MigrationExecutionConfig, ExecutionStatistics
 };
 
 // Re-export from introspection for convenience

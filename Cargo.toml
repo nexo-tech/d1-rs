@@ -19,6 +19,7 @@ regex = "1.0"
 sea-query = "0.31"
 sqlx = { version = "0.7", optional = true, default-features = false }
 thiserror = "1.0"
+rand = "0.8"
 
 # D1/WASM dependencies (only on wasm32 targets)
 [target.'cfg(target_arch = "wasm32")'.dependencies]

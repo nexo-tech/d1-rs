@@ -71,6 +71,11 @@ impl SafetyLevel {
             (Safe, Safe) => Safe,
         }
     }
+
+    /// Check if this safety level represents destructive operations
+    pub fn is_destructive(self) -> bool {
+        matches!(self, SafetyLevel::Destructive)
+    }
 }
 
 /// Table-level migration operations
