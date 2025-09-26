@@ -6,9 +6,10 @@
 use d1_rs::backends::DatabaseBackend;
 use d1_rs::dialects::DatabaseDialect;
 use sea_query::{
-    ColumnDef, CreateTableStatement, DropTableStatement, ForeignKey, ForeignKeyAction,
-    Index, Iden, InsertStatement, Query, SqliteQueryBuilder, Table,
+    ColumnDef, ForeignKey, ForeignKeyAction,
+    Index, Iden, Query, SqliteQueryBuilder, Table, IntoIden,
 };
+use d1_rs::backends::QueryResult;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -24,6 +25,7 @@ pub struct TestFixtureManager {
 
 /// Complete test fixture specification
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TestFixture {
     pub name: String,
     pub description: String,
@@ -61,6 +63,7 @@ enum Posts {
 }
 
 #[derive(Iden)]
+#[allow(dead_code)]
 enum TypeTest {
     Table,
     Id,
@@ -107,7 +110,7 @@ impl TestFixtureManager {
             
         // Execute setup queries
         for (sql, params) in &fixture.setup_queries {
-            backend.execute(sql, params).await?;
+            backend.execute_query(sql, params).await?;
         }
         
         // Insert test data
@@ -129,7 +132,7 @@ impl TestFixtureManager {
             
         // Execute teardown queries
         for (sql, params) in &fixture.teardown_queries {
-            let _ = backend.execute(sql, params).await; // Ignore errors for cleanup
+            let _ = backend.execute_query(sql, params).await; // Ignore errors for cleanup
         }
         
         Ok(())
@@ -243,9 +246,10 @@ impl TestFixtureManager {
                     )
                     .col(ColumnDef::new(Users::Name).text().not_null())
                     .col(ColumnDef::new(Users::Email).text().not_null().unique_key())
-                    .col(ColumnDef::new(Users::CreatedAt).datetime().not_null())
+                    .col(ColumnDef::new(Users::CreatedAt).date_time().not_null())
                     .to_owned()
             },
+            #[cfg(feature = "postgres")]
             DatabaseDialect::PostgreSQL => {
                 Table::create()
                     .table(Users::Table)
@@ -262,6 +266,7 @@ impl TestFixtureManager {
                     .col(ColumnDef::new(Users::CreatedAt).timestamp().not_null())
                     .to_owned()
             },
+            #[cfg(feature = "mysql")]
             DatabaseDialect::MySQL => {
                 Table::create()
                     .table(Users::Table)
@@ -275,7 +280,7 @@ impl TestFixtureManager {
                     )
                     .col(ColumnDef::new(Users::Name).string_len(255).not_null())
                     .col(ColumnDef::new(Users::Email).string_len(255).not_null().unique_key())
-                    .col(ColumnDef::new(Users::CreatedAt).datetime().not_null())
+                    .col(ColumnDef::new(Users::CreatedAt).date_time().not_null())
                     .to_owned()
             },
         };
@@ -296,7 +301,7 @@ impl TestFixtureManager {
                     .col(ColumnDef::new(Posts::Title).text().not_null())
                     .col(ColumnDef::new(Posts::Content).text())
                     .col(ColumnDef::new(Posts::UserId).integer().not_null())
-                    .col(ColumnDef::new(Posts::CreatedAt).datetime().not_null())
+                    .col(ColumnDef::new(Posts::CreatedAt).date_time().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_posts_user_id")
@@ -306,6 +311,7 @@ impl TestFixtureManager {
                     )
                     .to_owned()
             },
+            #[cfg(feature = "postgres")]
             DatabaseDialect::PostgreSQL => {
                 Table::create()
                     .table(Posts::Table)
@@ -330,6 +336,7 @@ impl TestFixtureManager {
                     )
                     .to_owned()
             },
+            #[cfg(feature = "mysql")]
             DatabaseDialect::MySQL => {
                 Table::create()
                     .table(Posts::Table)
@@ -344,7 +351,7 @@ impl TestFixtureManager {
                     .col(ColumnDef::new(Posts::Title).string_len(255).not_null())
                     .col(ColumnDef::new(Posts::Content).text())
                     .col(ColumnDef::new(Posts::UserId).integer().not_null())
-                    .col(ColumnDef::new(Posts::CreatedAt).datetime().not_null())
+                    .col(ColumnDef::new(Posts::CreatedAt).date_time().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_posts_user_id")
@@ -357,8 +364,10 @@ impl TestFixtureManager {
         };
         
         // Build setup queries
-        let (users_sql, users_values) = users_table.build_sqlx(SqliteQueryBuilder); // Works for all dialects
-        let (posts_sql, posts_values) = posts_table.build_sqlx(SqliteQueryBuilder);
+        let users_sql = users_table.build(SqliteQueryBuilder); // Works for all dialects
+        let posts_sql = posts_table.build(SqliteQueryBuilder);
+        let users_values = vec![];
+        let posts_values = vec![];
         
         setup.push((users_sql, users_values));
         setup.push((posts_sql, posts_values));
@@ -367,8 +376,10 @@ impl TestFixtureManager {
         let drop_posts = Table::drop().table(Posts::Table).if_exists().to_owned();
         let drop_users = Table::drop().table(Users::Table).if_exists().to_owned();
         
-        let (drop_posts_sql, drop_posts_values) = drop_posts.build_sqlx(SqliteQueryBuilder);
-        let (drop_users_sql, drop_users_values) = drop_users.build_sqlx(SqliteQueryBuilder);
+        let drop_posts_sql = drop_posts.build(SqliteQueryBuilder);
+        let drop_users_sql = drop_users.build(SqliteQueryBuilder);
+        let drop_posts_values = vec![];
+        let drop_users_values = vec![];
         
         teardown.push((drop_posts_sql, drop_posts_values));
         teardown.push((drop_users_sql, drop_users_values));
@@ -395,13 +406,14 @@ impl TestFixtureManager {
                     )
                     .col(ColumnDef::new(TypeTest::TextCol).text())
                     .col(ColumnDef::new(TypeTest::IntegerCol).integer())
-                    .col(ColumnDef::new(TypeTest::RealCol).real())
+                    .col(ColumnDef::new(TypeTest::RealCol).float())
                     .col(ColumnDef::new(TypeTest::BlobCol).blob())
                     .col(ColumnDef::new(TypeTest::BooleanCol).boolean())
                     .col(ColumnDef::new(TypeTest::DateCol).date())
-                    .col(ColumnDef::new(TypeTest::DatetimeCol).datetime())
+                    .col(ColumnDef::new(TypeTest::DatetimeCol).date_time())
                     .to_owned()
             },
+            #[cfg(feature = "postgres")]
             DatabaseDialect::PostgreSQL => {
                 let mut table_builder = Table::create()
                     .table(TypeTest::Table)
@@ -415,7 +427,7 @@ impl TestFixtureManager {
                     )
                     .col(ColumnDef::new(TypeTest::TextCol).text())
                     .col(ColumnDef::new(TypeTest::IntegerCol).integer())
-                    .col(ColumnDef::new(TypeTest::RealCol).real())
+                    .col(ColumnDef::new(TypeTest::RealCol).float())
                     .col(ColumnDef::new(TypeTest::BlobCol).binary())
                     .col(ColumnDef::new(TypeTest::BooleanCol).boolean())
                     .col(ColumnDef::new(TypeTest::DateCol).date())
@@ -427,6 +439,7 @@ impl TestFixtureManager {
                 table_builder.col(ColumnDef::new(TypeTest::UuidCol).uuid());
                 table_builder
             },
+            #[cfg(feature = "mysql")]
             DatabaseDialect::MySQL => {
                 let mut table_builder = Table::create()
                     .table(TypeTest::Table)
@@ -444,7 +457,7 @@ impl TestFixtureManager {
                     .col(ColumnDef::new(TypeTest::BlobCol).blob())
                     .col(ColumnDef::new(TypeTest::BooleanCol).boolean())
                     .col(ColumnDef::new(TypeTest::DateCol).date())
-                    .col(ColumnDef::new(TypeTest::DatetimeCol).datetime())
+                    .col(ColumnDef::new(TypeTest::DatetimeCol).date_time())
                     .to_owned();
                     
                 // Add MySQL-specific columns
@@ -453,12 +466,14 @@ impl TestFixtureManager {
             },
         };
         
-        let (sql, values) = table.build_sqlx(SqliteQueryBuilder);
+        let sql = table.build(SqliteQueryBuilder);
+        let values = vec![];
         setup.push((sql, values));
         
         // Teardown
         let drop_table = Table::drop().table(TypeTest::Table).if_exists().to_owned();
-        let (drop_sql, drop_values) = drop_table.build_sqlx(SqliteQueryBuilder);
+        let drop_sql = drop_table.build(SqliteQueryBuilder);
+        let drop_values = vec![];
         teardown.push((drop_sql, drop_values));
         
         (setup, teardown)
@@ -483,9 +498,10 @@ impl TestFixtureManager {
                     )
                     .col(ColumnDef::new(PerformanceTest::Data).text().not_null())
                     .col(ColumnDef::new(PerformanceTest::Value).integer().not_null())
-                    .col(ColumnDef::new(PerformanceTest::CreatedAt).datetime().default(sea_query::Expr::current_timestamp()))
+                    .col(ColumnDef::new(PerformanceTest::CreatedAt).date_time().default(sea_query::Expr::current_timestamp()))
                     .to_owned()
             },
+            #[cfg(feature = "postgres")]
             DatabaseDialect::PostgreSQL => {
                 Table::create()
                     .table(PerformanceTest::Table)
@@ -502,6 +518,7 @@ impl TestFixtureManager {
                     .col(ColumnDef::new(PerformanceTest::CreatedAt).timestamp().default(sea_query::Expr::current_timestamp()))
                     .to_owned()
             },
+            #[cfg(feature = "mysql")]
             DatabaseDialect::MySQL => {
                 Table::create()
                     .table(PerformanceTest::Table)
@@ -515,12 +532,13 @@ impl TestFixtureManager {
                     )
                     .col(ColumnDef::new(PerformanceTest::Data).text().not_null())
                     .col(ColumnDef::new(PerformanceTest::Value).integer().not_null())
-                    .col(ColumnDef::new(PerformanceTest::CreatedAt).datetime().default(sea_query::Expr::current_timestamp()))
+                    .col(ColumnDef::new(PerformanceTest::CreatedAt).date_time().default(sea_query::Expr::current_timestamp()))
                     .to_owned()
             },
         };
         
-        let (table_sql, table_values) = table.build_sqlx(SqliteQueryBuilder);
+        let table_sql = table.build(SqliteQueryBuilder);
+        let table_values = vec![];
         setup.push((table_sql, table_values));
         
         // Create index for performance testing
@@ -530,12 +548,14 @@ impl TestFixtureManager {
             .col(PerformanceTest::Value)
             .to_owned();
         
-        let (index_sql, index_values) = index.build_sqlx(SqliteQueryBuilder);
+        let index_sql = index.build(SqliteQueryBuilder);
+        let index_values = vec![];
         setup.push((index_sql, index_values));
         
         // Teardown
         let drop_table = Table::drop().table(PerformanceTest::Table).if_exists().to_owned();
-        let (drop_sql, drop_values) = drop_table.build_sqlx(SqliteQueryBuilder);
+        let drop_sql = drop_table.build(SqliteQueryBuilder);
+        let drop_values = vec![];
         teardown.push((drop_sql, drop_values));
         
         (setup, teardown)
@@ -554,10 +574,14 @@ impl TestFixtureManager {
         
         // Database-specific columns
         match self.dialect {
+            #[cfg(feature = "postgres")]
+            #[cfg(feature = "postgres")]
             DatabaseDialect::PostgreSQL => {
                 data.insert("json_col".to_string(), json!({"key": "value"}));
                 data.insert("uuid_col".to_string(), json!("123e4567-e89b-12d3-a456-426614174000"));
             },
+            #[cfg(feature = "mysql")]
+            #[cfg(feature = "mysql")]
             DatabaseDialect::MySQL => {
                 data.insert("json_col".to_string(), json!({"key": "value"}));
             },
@@ -589,32 +613,32 @@ impl TestFixtureManager {
         let mut insert = Query::insert();
         insert.into_table(sea_query::Alias::new(&record.table));
         
-        // Add columns and values
-        for (column, value) in &record.data {
-            insert.column(sea_query::Alias::new(column));
-        }
+        // Add columns and values using the new sea-query API
+        let columns: Vec<sea_query::DynIden> = record.data.keys()
+            .map(|col| sea_query::Alias::new(col).into_iden())
+            .collect();
         
-        let values: Vec<sea_query::Value> = record.data.values().map(|v| {
+        let values: Vec<sea_query::SimpleExpr> = record.data.values().map(|v| {
             match v {
-                Value::String(s) => sea_query::Value::String(Some(Box::new(s.clone()))),
+                Value::String(s) => sea_query::SimpleExpr::Value(sea_query::Value::String(Some(Box::new(s.clone())))),
                 Value::Number(n) => {
                     if let Some(i) = n.as_i64() {
-                        sea_query::Value::BigInt(Some(i))
+                        sea_query::SimpleExpr::Value(sea_query::Value::BigInt(Some(i)))
                     } else if let Some(f) = n.as_f64() {
-                        sea_query::Value::Double(Some(f))
+                        sea_query::SimpleExpr::Value(sea_query::Value::Double(Some(f)))
                     } else {
-                        sea_query::Value::String(Some(Box::new(n.to_string())))
+                        sea_query::SimpleExpr::Value(sea_query::Value::String(Some(Box::new(n.to_string()))))
                     }
                 },
-                Value::Bool(b) => sea_query::Value::Bool(Some(*b)),
-                Value::Null => sea_query::Value::String(None),
-                _ => sea_query::Value::String(Some(Box::new(v.to_string()))),
+                Value::Bool(b) => sea_query::SimpleExpr::Value(sea_query::Value::Bool(Some(*b))),
+                Value::Null => sea_query::SimpleExpr::Value(sea_query::Value::String(None)),
+                _ => sea_query::SimpleExpr::Value(sea_query::Value::String(Some(Box::new(v.to_string())))),
             }
         }).collect();
         
-        insert.values(values)?;
+        insert.columns(columns).values(values)?;
         
-        let (sql, params) = insert.build_sqlx(SqliteQueryBuilder);
+        let (sql, params) = insert.build(SqliteQueryBuilder);
         let json_params: Vec<Value> = params.into_iter().map(|p| {
             match p {
                 sea_query::Value::String(Some(s)) => Value::String(*s),
@@ -625,7 +649,7 @@ impl TestFixtureManager {
             }
         }).collect();
         
-        backend.execute(&sql, &json_params).await?;
+        backend.execute_query(&sql, &json_params).await?;
         Ok(())
     }
 }
@@ -644,40 +668,11 @@ macro_rules! with_test_fixture {
     }};
 }
 
-#[macro_export]
-macro_rules! test_all_databases {
-    ($test_name:ident, $test_body:expr) => {
-        #[tokio::test]
-        async fn $test_name() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-            // SQLite
-            {
-                let backend = d1_rs::backends::sqlite::SQLiteClient::new_in_memory().await?;
-                $test_body(backend).await?;
-            }
-            
-            // PostgreSQL (if available)
-            #[cfg(feature = "postgres")]
-            if let Ok(url) = std::env::var("POSTGRES_TEST_URL") {
-                let backend = d1_rs::backends::postgres::PostgreSQLClient::new(&url).await?;
-                $test_body(backend).await?;
-            }
-            
-            // MySQL (if available)
-            #[cfg(feature = "mysql")]
-            if let Ok(url) = std::env::var("MYSQL_TEST_URL") {
-                let backend = d1_rs::backends::mysql::MySQLClient::new(&url).await?;
-                $test_body(backend).await?;
-            }
-            
-            Ok(())
-        }
-    };
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use d1_rs::backends::sqlite::SQLiteClient;
+    use d1_rs::backends::SQLiteBackend;
     
     #[tokio::test]
     async fn test_fixture_manager_creation() {
@@ -690,20 +685,22 @@ mod tests {
     
     #[tokio::test]
     async fn test_users_posts_fixture() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let backend = SQLiteClient::new_in_memory().await?;
+        let backend = SQLiteBackend::new_in_memory().await?;
         let manager = TestFixtureManager::new(backend.dialect());
         
         manager.setup_fixture("users_posts", &backend).await?;
         
         // Verify users were inserted
-        let result = backend.execute("SELECT COUNT(*) as count FROM users", &[]).await?;
-        let count = result.into_simple_entity::<i64>().unwrap();
-        assert_eq!(count, 2);
+        let result = backend.execute_query("SELECT COUNT(*) as count FROM users", &[]).await?;
+        let rows = result.into_rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("count"), Some(&serde_json::Value::Number(2.into())));
         
         // Verify posts were inserted
-        let result = backend.execute("SELECT COUNT(*) as count FROM posts", &[]).await?;
-        let count = result.into_simple_entity::<i64>().unwrap();
-        assert_eq!(count, 1);
+        let result = backend.execute_query("SELECT COUNT(*) as count FROM posts", &[]).await?;
+        let rows = result.into_rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("count"), Some(&serde_json::Value::Number(1.into())));
         
         manager.teardown_fixture("users_posts", &backend).await?;
         Ok(())
@@ -711,18 +708,19 @@ mod tests {
     
     #[tokio::test]
     async fn test_type_testing_fixture() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let backend = SQLiteClient::new_in_memory().await?;
+        let backend = SQLiteBackend::new_in_memory().await?;
         let manager = TestFixtureManager::new(backend.dialect());
         
         manager.setup_fixture("type_testing", &backend).await?;
         
         // Verify test data was inserted
-        let result = backend.execute("SELECT COUNT(*) as count FROM type_test", &[]).await?;
-        let count = result.into_simple_entity::<i64>().unwrap();
-        assert_eq!(count, 1);
+        let result = backend.execute_query("SELECT COUNT(*) as count FROM type_test", &[]).await?;
+        let rows = result.into_rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("count"), Some(&serde_json::Value::Number(1.into())));
         
         // Verify specific data
-        let result = backend.execute("SELECT text_col, integer_col FROM type_test WHERE id = 1", &[]).await?;
+        let result = backend.execute_query("SELECT text_col, integer_col FROM type_test WHERE id = 1", &[]).await?;
         let rows = result.into_rows();
         assert_eq!(rows.len(), 1);
         
@@ -732,16 +730,17 @@ mod tests {
     
     #[tokio::test]
     async fn test_performance_fixture_setup() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let backend = SQLiteClient::new_in_memory().await?;
+        let backend = SQLiteBackend::new_in_memory().await?;
         let manager = TestFixtureManager::new(backend.dialect());
         
         // Test with smaller dataset for speed
         manager.setup_fixture("performance_large", &backend).await?;
         
         // Verify large dataset was inserted
-        let result = backend.execute("SELECT COUNT(*) as count FROM performance_test", &[]).await?;
-        let count = result.into_simple_entity::<i64>().unwrap();
-        assert_eq!(count, 10000);
+        let result = backend.execute_query("SELECT COUNT(*) as count FROM performance_test", &[]).await?;
+        let rows = result.into_rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("count"), Some(&serde_json::Value::Number(10000.into())));
         
         manager.teardown_fixture("performance_large", &backend).await?;
         Ok(())
@@ -749,7 +748,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_fixture_not_found() {
-        let backend = SQLiteClient::new_in_memory().await.unwrap();
+        let backend = SQLiteBackend::new_in_memory().await.unwrap();
         let manager = TestFixtureManager::new(backend.dialect());
         
         let result = manager.setup_fixture("nonexistent", &backend).await;

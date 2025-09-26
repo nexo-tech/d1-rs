@@ -14,9 +14,11 @@ use crate::auto_migration::{
 use crate::auto_migration::introspector::DatabaseSchema as UnifiedDatabaseSchema;
 
 #[cfg(feature = "postgres")]
+#[allow(unused_imports)]
 use crate::introspection::postgres::PostgreSQLIntrospector;
 
 #[cfg(feature = "mysql")]
+#[allow(unused_imports)]
 use crate::introspection::mysql::MySQLIntrospector;
 use crate::dialects::DatabaseDialect;
 use crate::backends::DatabaseBackend;

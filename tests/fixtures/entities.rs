@@ -4,7 +4,6 @@
 /// for cross-database compatibility testing.
 
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, NaiveDateTime};
 
 /// User entity for relationship testing
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -16,6 +15,7 @@ pub struct TestUser {
 }
 
 impl TestUser {
+    #[allow(dead_code)]
     pub fn new(name: String, email: String) -> Self {
         Self {
             id: None,
@@ -55,6 +55,7 @@ pub struct TestPost {
 }
 
 impl TestPost {
+    #[allow(dead_code)]
     pub fn new(title: String, content: Option<String>, user_id: i64) -> Self {
         Self {
             id: None,
@@ -153,6 +154,7 @@ impl TestPerformanceEntity {
 /// Entity relationship helpers
 impl TestUser {
     /// Get all posts for this user (simulated)
+    #[allow(dead_code)]
     pub fn sample_posts(&self) -> Vec<TestPost> {
         if let Some(user_id) = self.id {
             match user_id {
@@ -167,6 +169,7 @@ impl TestUser {
 
 impl TestPost {
     /// Get the user who created this post (simulated)
+    #[allow(dead_code)]
     pub fn sample_user(&self) -> Option<TestUser> {
         match self.user_id {
             1 => Some(TestUser::john_doe()),
