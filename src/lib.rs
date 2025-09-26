@@ -890,7 +890,7 @@ mod backend_exports_tests {
     fn test_postgresql_client_type_alias() {
         // Test that PostgreSQLClient is properly defined when postgres feature is enabled
         let _type_name = std::any::type_name::<PostgreSQLClient>();
-        assert_eq!(_type_name, "d1_rs::db::DatabaseClient<d1_rs::backends::postgres::PostgreSQLBackend>");
+        assert_eq!(_type_name, "d1_rs::db::DatabaseClient<d1_rs::backends::postgres::postgres_impl::PostgreSQLBackend>");
     }
 
     #[cfg(feature = "mysql")]

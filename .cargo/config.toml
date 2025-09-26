@@ -4,20 +4,20 @@
 rustflags = [
   "-C", "link-arg=-Wl,-dead_strip",
   "-C", "link-arg=-Wl,-no_compact_unwind",
-  "-L", "framework=/nix/store/xkncazpf21ql7daw70hdjd0g3snv4i9r-apple-framework-CoreFoundation-11.0.0/Library/Frameworks",
-  "-L", "framework=/nix/store/i7dzlp60aafc9zl9qgzr3zrhby067gfz-apple-framework-Security-11.0.0/Library/Frameworks", 
-  "-L", "framework=/nix/store/q75j88knb9d2cm6mv1379mv314fdx37q-apple-framework-SystemConfiguration-11.0.0/Library/Frameworks",
-  "-L", "/nix/store/6mkvrsyrv5b331782qh68qp9asv7hz5z-libiconv-99/lib",
+  "-L", "framework=/nix/store/8zhnci3ic36fqlv1vpsg01k220gn7nr0-CoreFoundation-11.0/Library/Frameworks",
+  "-L", "framework=/nix/store/jr7qp85kg6iszhmdfhx9zq6lp82lfclg-Security-11.0/Library/Frameworks", 
+  "-L", "framework=/nix/store/cwwl08w8h5apg7nwdy4kgl5rhq8jm1cl-SystemConfiguration-11.0/Library/Frameworks",
+  "-L", "/nix/store/xpq5yfmc3hphz0l2vj25kc4abld6nnan-libiconv-109/lib",
 ]
 
 [target.x86_64-apple-darwin]  
 rustflags = [
   "-C", "link-arg=-Wl,-dead_strip",
   "-C", "link-arg=-Wl,-no_compact_unwind",
-  "-L", "framework=/nix/store/xkncazpf21ql7daw70hdjd0g3snv4i9r-apple-framework-CoreFoundation-11.0.0/Library/Frameworks",
-  "-L", "framework=/nix/store/i7dzlp60aafc9zl9qgzr3zrhby067gfz-apple-framework-Security-11.0.0/Library/Frameworks",
-  "-L", "framework=/nix/store/q75j88knb9d2cm6mv1379mv314fdx37q-apple-framework-SystemConfiguration-11.0.0/Library/Frameworks",
-  "-L", "/nix/store/6mkvrsyrv5b331782qh68qp9asv7hz5z-libiconv-99/lib",
+  "-L", "framework=/nix/store/8zhnci3ic36fqlv1vpsg01k220gn7nr0-CoreFoundation-11.0/Library/Frameworks",
+  "-L", "framework=/nix/store/jr7qp85kg6iszhmdfhx9zq6lp82lfclg-Security-11.0/Library/Frameworks",
+  "-L", "framework=/nix/store/cwwl08w8h5apg7nwdy4kgl5rhq8jm1cl-SystemConfiguration-11.0/Library/Frameworks",
+  "-L", "/nix/store/xpq5yfmc3hphz0l2vj25kc4abld6nnan-libiconv-109/lib",
 ]
 
 

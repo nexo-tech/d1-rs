@@ -9,9 +9,9 @@
 
 mod common;
 
-use common::database_manager::TestDatabaseManager;
+use common::database_manager::{TestDatabaseManager, AnyDatabaseBackend};
 use d1_rs::dialects::DatabaseDialect;
-use d1_rs::backends::{DatabaseBackend, SQLiteBackend, QueryResult};
+use d1_rs::backends::{DatabaseBackend, QueryResult};
 use serde_json::Value;
 
 /// Test that TestDatabaseManager correctly identifies available databases
@@ -34,8 +34,9 @@ async fn test_database_manager_initialization() -> Result<(), Box<dyn std::error
     Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
 }
 
-// Test basic connectivity across all available databases
-test_multi_database!(test_basic_connectivity, |client: SQLiteBackend, dialect| async move {
+// Test basic connectivity across all available databases (requires all database features)
+#[cfg(all(feature = "postgres", feature = "mysql"))]
+test_multi_database!(test_basic_connectivity, |client: AnyDatabaseBackend, dialect| async move {
     // Test basic query execution
     let result = client.execute_query("SELECT 1 as test_value", &[]).await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
@@ -47,8 +48,9 @@ test_multi_database!(test_basic_connectivity, |client: SQLiteBackend, dialect| a
     Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
 });
 
-// Test table creation across all databases
-test_multi_database!(test_table_creation, |client: SQLiteBackend, dialect| async move {
+// Test table creation across all databases (requires all database features)
+#[cfg(all(feature = "postgres", feature = "mysql"))]
+test_multi_database!(test_table_creation, |client: AnyDatabaseBackend, dialect| async move {
     // Create a simple test table (currently all using SQLite syntax since backends aren't fully implemented)
     let create_sql = "CREATE TABLE multi_db_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)";
     

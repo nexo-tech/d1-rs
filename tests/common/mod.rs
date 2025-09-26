@@ -4,6 +4,11 @@ use d1_rs::backends::QueryResult;
 use serde::{Deserialize, Serialize};
 
 pub mod multi_db;
+pub mod database_manager;
+
+// Add fixtures module path for the tests directory
+#[path = "../fixtures/mod.rs"]
+pub mod fixtures;
 
 // Test model definitions
 #[derive(Debug, Serialize, Deserialize, Clone, Entity, PartialEq)]

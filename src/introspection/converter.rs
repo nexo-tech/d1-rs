@@ -206,10 +206,10 @@ impl SchemaConverter {
             t if t.starts_with("BYTEA") => UnifiedColumnType::Blob,
             t if t.starts_with("JSON") => UnifiedColumnType::Json,
             t if t.starts_with("UUID") => UnifiedColumnType::Uuid,
+            "TIMESTAMPTZ" => UnifiedColumnType::Timestamp,
+            t if t.starts_with("TIMESTAMP") => UnifiedColumnType::DateTime,
             t if t.starts_with("DATE") => UnifiedColumnType::Date,
             t if t.starts_with("TIME") => UnifiedColumnType::Time,
-            t if t.starts_with("TIMESTAMP") => UnifiedColumnType::DateTime,
-            "TIMESTAMPTZ" => UnifiedColumnType::Timestamp,
             _ => UnifiedColumnType::Other(pg_type.to_string()),
         }
     }

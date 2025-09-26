@@ -2,7 +2,7 @@
   description = "d1-rs multi-database development environment";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -64,7 +64,7 @@
             postgresql.dev
             
             # MySQL development libraries  
-            mysql80.dev
+            mysql80.static
             libmysqlclient
             
             # Additional utilities
@@ -86,7 +86,7 @@
             export PATH="$HOME/.cargo/bin:$PATH"
             export LDFLAGS="-L${pkgs.bzip2}/lib -L${pkgs.sqlite.out}/lib -L${pkgs.libiconv}/lib $LDFLAGS"
             export CPPFLAGS="-I${pkgs.bzip2}/include -I${pkgs.sqlite.dev}/include -I${pkgs.libiconv}/include $CPPFLAGS"
-            export PKG_CONFIG_PATH="${pkgs.sqlite.dev}/lib/pkgconfig:${pkgs.postgresql.dev}/lib/pkgconfig:${pkgs.mysql80.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
+            export PKG_CONFIG_PATH="${pkgs.sqlite.dev}/lib/pkgconfig:${pkgs.postgresql.dev}/lib/pkgconfig:${pkgs.mysql80}/lib/pkgconfig:$PKG_CONFIG_PATH"
             
             # Claude Code timeout settings
             export BASH_DEFAULT_TIMEOUT_MS="1800000"  # 30 minutes

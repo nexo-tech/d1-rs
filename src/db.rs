@@ -3,6 +3,7 @@ use crate::backends::{DatabaseBackend, QueryResult};
 use crate::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::collections::HashMap;
+#[cfg(any(target_arch = "wasm32", feature = "sqlite"))]
 use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
@@ -10,16 +11,16 @@ use worker::wasm_bindgen::JsValue;
 #[cfg(target_arch = "wasm32")]
 use worker::d1::D1Database;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "sqlite")]
 use rusqlite::{Connection, params_from_iter};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "sqlite")]
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct D1Client {
     #[cfg(target_arch = "wasm32")]
     db: Arc<D1Database>,
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "sqlite")]
     db: Arc<Mutex<Connection>>,
 }
 
@@ -29,12 +30,12 @@ impl D1Client {
         Self { db: Arc::new(db) }
     }
     
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "sqlite")]
     pub fn new_sqlite(conn: Connection) -> Self {
         Self { db: Arc::new(Mutex::new(conn)) }
     }
     
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "sqlite")]
     pub async fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()
             .map_err(|e| D1RsError::Database(e.to_string()))?;
@@ -42,15 +43,21 @@ impl D1Client {
     }
     
 
+    #[cfg_attr(not(any(target_arch = "wasm32", feature = "sqlite")), allow(unused_variables))]
     pub async fn execute(&self, sql: &str, params: &[Value]) -> Result<D1QueryResult> {
         #[cfg(target_arch = "wasm32")]
         {
-            self.execute_d1(sql, params).await
+            return self.execute_d1(sql, params).await;
         }
         
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
-            self.execute_sqlite(sql, params).await
+            return self.execute_sqlite(sql, params).await;
+        }
+        
+        #[cfg(not(any(target_arch = "wasm32", feature = "sqlite")))]
+        {
+            Err(D1RsError::Database("D1Client requires either wasm32 target or sqlite feature".to_string()))
         }
     }
     
@@ -88,7 +95,7 @@ impl D1Client {
         Ok(D1QueryResult { rows })
     }
     
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "sqlite")]
     async fn execute_sqlite(&self, sql: &str, params: &[Value]) -> Result<D1QueryResult> {
         use rusqlite::types::ToSqlOutput;
         
@@ -294,7 +301,7 @@ impl<B: DatabaseBackend> DatabaseClient<B> {
 // Specific implementation for SQLite backend
 impl DatabaseClient<crate::backends::SQLiteBackend> {
     /// Create an in-memory SQLite DatabaseClient for testing
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "sqlite")]
     pub async fn new_in_memory() -> Result<Self> {
         let backend = crate::backends::SQLiteBackend::new_in_memory().await?;
         Ok(DatabaseClient::new(backend))

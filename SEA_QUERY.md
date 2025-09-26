@@ -67,6 +67,7 @@ This document outlines the comprehensive plan to migrate d1-rs from SQLite-centr
 - [x] **Task 6.4**: CI/CD Integration & GitHub Actions (~400 lines, 6-8 hours) ✅
 - [x] **Task 6.5**: Test Data Management & Fixtures (~300 lines, 4-5 hours) ✅
 - [ ] **Task 6.6**: Phase 6 Completion Verification & Cleanup (~200 lines, 3-4 hours)
+- [x] **Task 6.7**: Multi-Database Test Execution Setup (~400 lines, 5-6 hours) ✅
 
 ### **Phase 7: Documentation & Optimization (Week 9)**
 - [ ] **Task 7.1**: Documentation Updates (~200 lines, 2-3 hours)
@@ -3881,356 +3882,6 @@ TEST_PARALLEL_JOBS=4
 
 ---
 
-### Task 6.4: CI/CD Integration & GitHub Actions (~400 lines, 6-8 hours)
-**Estimated effort**: 6-8 hours | **Files**: `.github/workflows/ci.yml` (new), `.github/workflows/release.yml` (new)
-
-**Create comprehensive CI/CD pipeline with multi-database testing**:
-```yaml
-# .github/workflows/ci.yml
-name: CI
-
-on:
-  push:
-    branches: [ main, dev ]
-  pull_request:
-    branches: [ main, dev ]
-
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
-
-jobs:
-  test:
-    name: Test Suite
-    runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        rust: [stable, beta]
-        database: [sqlite, postgres, mysql, all]
-        
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: d1rs_user
-          POSTGRES_PASSWORD: d1rs_pass
-          POSTGRES_DB: d1rs_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-          
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root_pass
-          MYSQL_DATABASE: d1rs_test
-          MYSQL_USER: d1rs_user
-          MYSQL_PASSWORD: d1rs_pass
-        options: >-
-          --health-cmd="mysqladmin ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=3
-        ports:
-          - 3306:3306
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: ${{ matrix.rust }}
-        profile: minimal
-        override: true
-        components: rustfmt, clippy
-        
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libpq-dev libmysqlclient-dev libsqlite3-dev
-        
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
-        
-    - name: Setup database environment
-      run: |
-        echo "POSTGRES_TEST_URL=postgresql://d1rs_user:d1rs_pass@localhost:5432/d1rs_test" >> $GITHUB_ENV
-        echo "MYSQL_TEST_URL=mysql://d1rs_user:d1rs_pass@localhost:3306/d1rs_test" >> $GITHUB_ENV
-        echo "SQLITE_TEST_URL=sqlite::memory:" >> $GITHUB_ENV
-        
-    - name: Wait for databases
-      run: |
-        # Wait for PostgreSQL
-        until pg_isready -h localhost -p 5432 -U d1rs_user; do
-          sleep 1
-        done
-        
-        # Wait for MySQL
-        until mysqladmin ping -h localhost -P 3306 -u d1rs_user -pd1rs_pass --silent; do
-          sleep 1
-        done
-        
-    - name: Check formatting
-      run: cargo fmt -- --check
-      
-    - name: Run clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
-      
-    - name: Build
-      run: |
-        case ${{ matrix.database }} in
-          sqlite)
-            cargo build --verbose
-            ;;
-          postgres)
-            cargo build --verbose --features postgres
-            ;;  
-          mysql)
-            cargo build --verbose --features mysql
-            ;;
-          all)
-            cargo build --verbose --features postgres,mysql
-            ;;
-        esac
-        
-    - name: Run tests
-      run: |
-        case ${{ matrix.database }} in
-          sqlite)
-            cargo test --verbose
-            ;;
-          postgres)
-            cargo test --verbose --features postgres
-            ;;
-          mysql) 
-            cargo test --verbose --features mysql
-            ;;
-          all)
-            cargo test --verbose --features postgres,mysql
-            ;;
-        esac
-
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions-rs/audit-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-
-  coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: d1rs_user
-          POSTGRES_PASSWORD: d1rs_pass
-          POSTGRES_DB: d1rs_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-          
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root_pass
-          MYSQL_DATABASE: d1rs_test
-          MYSQL_USER: d1rs_user
-          MYSQL_PASSWORD: d1rs_pass
-        ports:
-          - 3306:3306
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libpq-dev libmysqlclient-dev libsqlite3-dev
-        
-    - name: Install cargo-tarpaulin
-      uses: actions-rs/install@v0.1
-      with:
-        crate: cargo-tarpaulin
-        version: latest
-        
-    - name: Setup database environment
-      run: |
-        echo "POSTGRES_TEST_URL=postgresql://d1rs_user:d1rs_pass@localhost:5432/d1rs_test" >> $GITHUB_ENV
-        echo "MYSQL_TEST_URL=mysql://d1rs_user:d1rs_pass@localhost:3306/d1rs_test" >> $GITHUB_ENV
-        echo "SQLITE_TEST_URL=sqlite::memory:" >> $GITHUB_ENV
-        
-    - name: Generate code coverage
-      run: cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml
-      
-    - name: Upload to codecov.io
-      uses: codecov/codecov-action@v3
-      with:
-        fail_ci_if_error: false
-
-  performance:
-    name: Performance Benchmarks
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: d1rs_user  
-          POSTGRES_PASSWORD: d1rs_pass
-          POSTGRES_DB: d1rs_bench
-        ports:
-          - 5432:5432
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libpq-dev libsqlite3-dev
-        
-    - name: Run benchmarks
-      run: cargo bench --features postgres
-      
-    - name: Store benchmark results
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        name: D1-RS Benchmark
-        tool: 'cargo'
-        output-file-path: target/criterion/benchmark.json
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        auto-push: true
-```
-
-```yaml
-# .github/workflows/release.yml
-name: Release
-
-on:
-  push:
-    tags:
-      - 'v*'
-
-env:
-  CARGO_TERM_COLOR: always
-
-jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
-        draft: false
-        prerelease: false
-
-  publish-crate:
-    name: Publish to crates.io
-    runs-on: ubuntu-latest
-    needs: create-release
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-        
-    - name: Login to crates.io
-      run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
-      
-    - name: Publish d1-rs-derive
-      run: |
-        cd d1-rs-derive
-        cargo publish
-        
-    - name: Wait for derive crate
-      run: sleep 60
-      
-    - name: Publish d1-rs
-      run: cargo publish
-
-  docker-build:
-    name: Build Docker Images
-    runs-on: ubuntu-latest
-    needs: create-release
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Build and push
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: |
-          ghcr.io/${{ github.repository }}:latest
-          ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-```
-
-**Acceptance criteria**:
-- [x] Multi-database CI pipeline testing SQLite, PostgreSQL, MySQL ✅
-- [x] Matrix testing across Rust stable/beta versions ✅
-- [x] Security auditing and code coverage reporting ✅
-- [x] Performance benchmarking on main branch ✅
-- [x] Automated releases to crates.io with proper versioning ✅
-
-**Testing**: CI pipeline validation with all database combinations
-
----
-
 ### Task 6.5: Test Data Management & Fixtures (~300 lines, 4-5 hours)
 **Estimated effort**: 4-5 hours | **Files**: `tests/fixtures/mod.rs` (new), `tests/test_data/` (new directory)
 
@@ -4688,6 +4339,394 @@ test_all_databases!(test_user_crud, |backend| async {
 - [x] Automatic setup/teardown of test environments ✅
 
 **Testing**: Fixture validation across all supported databases
+
+---
+
+### Task 6.7: Multi-Database Test Execution Setup (~400 lines, 5-6 hours)
+**Estimated effort**: 5-6 hours | **Files**: `docker-compose.test.yml` (new), `justfile` (update), `tests/common/multi_db.rs` (update)
+
+**Setup comprehensive multi-database testing infrastructure with simple commands**:
+
+```yaml
+# docker-compose.test.yml - Test database containers
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:15
+    container_name: d1rs-postgres-test
+    environment:
+      POSTGRES_USER: d1rs_user
+      POSTGRES_PASSWORD: d1rs_pass
+      POSTGRES_DB: d1rs_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./tests/sql/postgres:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U d1rs_user -d d1rs_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - d1rs-test
+
+  mysql-test:
+    image: mysql:8.0
+    container_name: d1rs-mysql-test
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass
+      MYSQL_DATABASE: d1rs_test
+      MYSQL_USER: d1rs_user
+      MYSQL_PASSWORD: d1rs_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_test_data:/var/lib/mysql
+      - ./tests/sql/mysql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "d1rs_user", "-pd1rs_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - d1rs-test
+
+volumes:
+  postgres_test_data:
+  mysql_test_data:
+
+networks:
+  d1rs-test:
+    driver: bridge
+```
+
+```bash
+# justfile updates - Multi-database test commands
+
+# Start all test databases
+start-test-dbs:
+    @echo "🐳 Starting test database containers..."
+    docker-compose -f docker-compose.test.yml up -d
+    @echo "⏳ Waiting for databases to be ready..."
+    @sleep 10
+    @echo "✅ Test databases are ready!"
+
+# Stop all test databases  
+stop-test-dbs:
+    @echo "🛑 Stopping test database containers..."
+    docker-compose -f docker-compose.test.yml down
+    @echo "✅ Test databases stopped!"
+
+# Clean test database volumes
+clean-test-dbs:
+    @echo "🧹 Cleaning test database volumes..."
+    docker-compose -f docker-compose.test.yml down -v
+    docker volume prune -f
+    @echo "✅ Test databases cleaned!"
+
+# Run tests on SQLite (default, fastest)
+test:
+    @echo "🚀 Running tests on SQLite (default)..."
+    cargo nextest run --target $(rustc -vV | sed -n 's|host: ||p')
+
+# Run tests on PostgreSQL
+test-postgres: start-test-dbs
+    @echo "🐘 Running tests on PostgreSQL..."
+    @export POSTGRES_TEST_URL="postgresql://d1rs_user:d1rs_pass@localhost:5433/d1rs_test" && \
+    export DATABASE_URL="$${POSTGRES_TEST_URL}" && \
+    cargo nextest run --target $(rustc -vV | sed -n 's|host: ||p') --features postgres
+    @echo "✅ PostgreSQL tests completed!"
+
+# Run tests on MySQL
+test-mysql: start-test-dbs
+    @echo "🐬 Running tests on MySQL..."
+    @export MYSQL_TEST_URL="mysql://d1rs_user:d1rs_pass@localhost:3307/d1rs_test" && \
+    export DATABASE_URL="$${MYSQL_TEST_URL}" && \
+    cargo nextest run --target $(rustc -vV | sed -n 's|host: ||p') --features mysql
+    @echo "✅ MySQL tests completed!"
+
+# Run tests on all three databases sequentially
+test-all-dbs: clean-test-dbs start-test-dbs
+    @echo "🎯 Running comprehensive tests on ALL databases..."
+    @echo "\n=== 1/3: SQLite Tests ==="
+    just test
+    @echo "\n=== 2/3: PostgreSQL Tests ==="
+    @export POSTGRES_TEST_URL="postgresql://d1rs_user:d1rs_pass@localhost:5433/d1rs_test" && \
+    export DATABASE_URL="$${POSTGRES_TEST_URL}" && \
+    cargo nextest run --target $(rustc -vV | sed -n 's|host: ||p') --features postgres
+    @echo "\n=== 3/3: MySQL Tests ==="
+    @export MYSQL_TEST_URL="mysql://d1rs_user:d1rs_pass@localhost:3307/d1rs_test" && \
+    export DATABASE_URL="$${MYSQL_TEST_URL}" && \
+    cargo nextest run --target $(rustc -vV | sed -n 's|host: ||p') --features mysql
+    just stop-test-dbs
+    @echo "\n✅ All database tests completed successfully!"
+
+# Run performance benchmarks on all databases
+bench-all-dbs: start-test-dbs
+    @echo "📊 Running performance benchmarks on all databases..."
+    @echo "\n=== SQLite Benchmarks ==="
+    cargo bench --features sqlite
+    @echo "\n=== PostgreSQL Benchmarks ==="
+    @export POSTGRES_TEST_URL="postgresql://d1rs_user:d1rs_pass@localhost:5433/d1rs_test" && \
+    cargo bench --features postgres
+    @echo "\n=== MySQL Benchmarks ==="
+    @export MYSQL_TEST_URL="mysql://d1rs_user:d1rs_pass@localhost:3307/d1rs_test" && \
+    cargo bench --features mysql
+    just stop-test-dbs
+    @echo "✅ All benchmarks completed!"
+
+# Health check for all databases
+check-test-dbs:
+    @echo "🔍 Checking database health..."
+    @echo "PostgreSQL:" && docker exec d1rs-postgres-test pg_isready -U d1rs_user -d d1rs_test || echo "❌ PostgreSQL not ready"
+    @echo "MySQL:" && docker exec d1rs-mysql-test mysqladmin ping -h localhost -u d1rs_user -pd1rs_pass --silent && echo "✅ MySQL ready" || echo "❌ MySQL not ready"
+    @echo "✅ Database health check completed!"
+
+# Show database logs
+logs-postgres:
+    docker logs d1rs-postgres-test --tail 50 -f
+
+logs-mysql:
+    docker logs d1rs-mysql-test --tail 50 -f
+```
+
+```rust
+// tests/common/database_manager.rs - Enhanced multi-database management
+use d1_rs::{
+    backends::{DatabaseBackend, sqlite::SQLiteClient},
+    dialects::DatabaseDialect,
+};
+use std::collections::HashMap;
+use std::env;
+use tokio::time::{timeout, Duration};
+
+/// Comprehensive database manager for multi-database testing
+pub struct TestDatabaseManager {
+    available_databases: Vec<DatabaseDialect>,
+    connection_urls: HashMap<DatabaseDialect, String>,
+}
+
+impl TestDatabaseManager {
+    /// Initialize with all available databases
+    pub fn new() -> Self {
+        let mut manager = Self {
+            available_databases: vec![DatabaseDialect::SQLite], // Always available
+            connection_urls: HashMap::new(),
+        };
+        
+        // Check for PostgreSQL availability
+        if let Ok(postgres_url) = env::var("POSTGRES_TEST_URL") {
+            manager.available_databases.push(DatabaseDialect::PostgreSQL);
+            manager.connection_urls.insert(DatabaseDialect::PostgreSQL, postgres_url);
+        }
+        
+        // Check for MySQL availability  
+        if let Ok(mysql_url) = env::var("MYSQL_TEST_URL") {
+            manager.available_databases.push(DatabaseDialect::MySQL);
+            manager.connection_urls.insert(DatabaseDialect::MySQL, mysql_url);
+        }
+        
+        println!("Available test databases: {:?}", manager.available_databases);
+        manager
+    }
+    
+    /// Get all available database dialects
+    pub fn available_dialects(&self) -> &[DatabaseDialect] {
+        &self.available_databases
+    }
+    
+    /// Create database client for specific dialect
+    pub async fn create_client(&self, dialect: DatabaseDialect) -> Result<Box<dyn DatabaseBackend>, Box<dyn std::error::Error + Send + Sync>> {
+        match dialect {
+            DatabaseDialect::SQLite => {
+                let client = SQLiteClient::new_in_memory().await?;
+                Ok(Box::new(client))
+            },
+            DatabaseDialect::PostgreSQL => {
+                #[cfg(feature = "postgres")]
+                {
+                    let url = self.connection_urls.get(&dialect)
+                        .ok_or("PostgreSQL URL not configured")?;
+                    let client = d1_rs::backends::postgres::PostgreSQLClient::new(url).await?;
+                    Ok(Box::new(client))
+                }
+                #[cfg(not(feature = "postgres"))]
+                Err("PostgreSQL feature not enabled".into())
+            },
+            DatabaseDialect::MySQL => {
+                #[cfg(feature = "mysql")]
+                {
+                    let url = self.connection_urls.get(&dialect)
+                        .ok_or("MySQL URL not configured")?;
+                    let client = d1_rs::backends::mysql::MySQLClient::new(url).await?;
+                    Ok(Box::new(client))
+                }
+                #[cfg(not(feature = "mysql"))]
+                Err("MySQL feature not enabled".into())
+            },
+        }
+    }
+    
+    /// Wait for database to be ready (with timeout)
+    pub async fn wait_for_database(&self, dialect: DatabaseDialect, timeout_secs: u64) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let timeout_duration = Duration::from_secs(timeout_secs);
+        
+        timeout(timeout_duration, async {
+            loop {
+                match self.create_client(dialect).await {
+                    Ok(client) => {
+                        // Try a simple query to verify connection
+                        match client.execute("SELECT 1", &[]).await {
+                            Ok(_) => {
+                                println!("✅ {} database is ready!", dialect);
+                                return Ok(());
+                            },
+                            Err(e) => {
+                                println!("⏳ Waiting for {} database... ({})", dialect, e);
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        println!("⏳ Waiting for {} database... ({})", dialect, e);
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+            }
+        }).await.map_err(|_| format!("Timeout waiting for {} database", dialect))?
+    }
+    
+    /// Run test function across all available databases
+    pub async fn run_on_all_databases<F, Fut>(&self, test_fn: F) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+    where
+        F: Fn(Box<dyn DatabaseBackend>, DatabaseDialect) -> Fut + Clone,
+        Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>>,
+    {
+        for &dialect in &self.available_databases {
+            println!("🔄 Running test on {:?}", dialect);
+            let client = self.create_client(dialect).await?;
+            test_fn(client, dialect).await?;
+            println!("✅ Test completed on {:?}", dialect);
+        }
+        Ok(())
+    }
+    
+    /// Run test function on specific database only if available
+    pub async fn run_on_database<F, Fut>(&self, dialect: DatabaseDialect, test_fn: F) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+    where
+        F: Fn(Box<dyn DatabaseBackend>) -> Fut,
+        Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>>,
+    {
+        if !self.available_databases.contains(&dialect) {
+            println!("⏭️  Skipping {:?} - not available", dialect);
+            return Ok(());
+        }
+        
+        println!("🔄 Running test on {:?}", dialect);
+        let client = self.create_client(dialect).await?;
+        test_fn(client).await?;
+        println!("✅ Test completed on {:?}", dialect);
+        Ok(())
+    }
+}
+
+/// Enhanced test macro for multi-database testing
+#[macro_export]
+macro_rules! test_multi_database {
+    ($test_name:ident, $test_body:expr) => {
+        #[tokio::test]
+        async fn $test_name() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            let manager = TestDatabaseManager::new();
+            manager.run_on_all_databases($test_body).await
+        }
+    };
+}
+
+/// Database-specific test macro
+#[macro_export]
+macro_rules! test_database {
+    ($test_name:ident, $dialect:expr, $test_body:expr) => {
+        #[tokio::test]
+        async fn $test_name() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            let manager = TestDatabaseManager::new();
+            manager.run_on_database($dialect, $test_body).await
+        }
+    };
+}
+```
+
+```sql
+-- tests/sql/postgres/01_extensions.sql
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- tests/sql/postgres/02_functions.sql  
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- tests/sql/mysql/01_init.sql
+SET GLOBAL sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO';
+```
+
+```rust
+// Integration tests using the new system
+#[cfg(test)]
+mod multi_database_tests {
+    use super::*;
+    
+    test_multi_database!(test_basic_crud_all_dbs, |client, dialect| async {
+        // Test runs on all available databases
+        with_test_fixture!("users_posts", client, {
+            let result = client.execute("SELECT COUNT(*) FROM users", &[]).await?;
+            let count = result.into_simple_entity::<i64>()?;
+            assert_eq!(count, 2, "Failed on {:?}", dialect);
+            Ok(())
+        })
+    });
+    
+    test_database!(test_postgres_specific, DatabaseDialect::PostgreSQL, |client| async {
+        // Test runs only on PostgreSQL (skipped if not available)
+        client.execute("SELECT version()", &[]).await?;
+        Ok(())
+    });
+    
+    test_database!(test_mysql_specific, DatabaseDialect::MySQL, |client| async {
+        // Test runs only on MySQL (skipped if not available)
+        client.execute("SELECT @@version", &[]).await?;
+        Ok(())
+    });
+}
+```
+
+**Acceptance criteria**:
+- [ ] Docker Compose setup for PostgreSQL and MySQL test databases
+- [ ] Just commands for running tests on specific databases
+- [ ] Environment variable configuration for database URLs
+- [ ] Database initialization scripts for PostgreSQL and MySQL  
+- [ ] Enhanced test macros for multi-database testing
+- [ ] Health checks and connection timeout handling
+- [ ] Proper database cleanup and volume management
+- [ ] Performance benchmarking across all databases
+- [ ] Zero compilation warnings and all tests pass on all databases
+
+**Testing**: Multi-database test execution with `just test-all-dbs`
+
+**Commands to implement**:
+- `just start-test-dbs` - Start PostgreSQL and MySQL containers
+- `just stop-test-dbs` - Stop test database containers  
+- `just clean-test-dbs` - Clean database volumes
+- `just test` - Run tests on SQLite (default, fastest)
+- `just test-postgres` - Run tests on PostgreSQL
+- `just test-mysql` - Run tests on MySQL
+- `just test-all-dbs` - Run tests on all three databases
+- `just bench-all-dbs` - Run benchmarks on all databases
+- `just check-test-dbs` - Health check for all databases
 
 ---
 

@@ -1,0 +1,87 @@
+# Docker Compose configuration for d1-rs multi-database testing
+# Provides PostgreSQL and MySQL test databases for comprehensive testing
+
+services:
+  postgres-test:
+    image: postgres:15
+    container_name: d1rs-postgres-test
+    environment:
+      POSTGRES_USER: d1rs_user
+      POSTGRES_PASSWORD: d1rs_pass
+      POSTGRES_DB: d1rs_test
+      # Fast startup optimizations for testing
+      POSTGRES_SHARED_BUFFERS: 128MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 512MB
+      POSTGRES_LOG_STATEMENT: none
+      POSTGRES_LOG_MIN_DURATION_STATEMENT: -1
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./tests/sql/postgres:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U d1rs_user -d d1rs_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    networks:
+      - d1rs-test
+    command: >
+      postgres
+      -c shared_preload_libraries=''
+      -c log_statement=none
+      -c log_min_duration_statement=-1
+      -c max_connections=50
+      -c shared_buffers=128MB
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+
+  mysql-test:
+    image: mysql:8.0
+    container_name: d1rs-mysql-test
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass
+      MYSQL_DATABASE: d1rs_test
+      MYSQL_USER: d1rs_user
+      MYSQL_PASSWORD: d1rs_pass
+      # Fast startup optimizations for testing
+      MYSQL_INNODB_BUFFER_POOL_SIZE: 128M
+      MYSQL_INNODB_LOG_BUFFER_SIZE: 32M
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_test_data:/var/lib/mysql
+      - ./tests/sql/mysql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "d1rs_user", "-pd1rs_pass"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    networks:
+      - d1rs-test
+    command: >
+      --authentication-policy=mysql_native_password
+      --innodb-buffer-pool-size=128M
+      --innodb-log-buffer-size=32M
+      --general-log=0
+      --slow-query-log=0
+      --max-connections=50
+      --skip-log-bin
+      --innodb-flush-log-at-trx-commit=0
+      --sync-binlog=0
+
+volumes:
+  postgres_test_data:
+    driver: local
+  mysql_test_data:
+    driver: local
+
+networks:
+  d1rs-test:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

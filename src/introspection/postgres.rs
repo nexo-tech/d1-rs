@@ -649,8 +649,6 @@ pub struct PostgreSQLIntrospector;
 #[cfg(test)]
 #[cfg(feature = "postgres")]
 mod tests {
-    use super::*;
-    use crate::dialects::DatabaseDialect;
     
     #[tokio::test]
     async fn test_postgresql_introspector_basic_functionality() {

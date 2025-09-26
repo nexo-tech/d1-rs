@@ -260,11 +260,12 @@ impl TestDatabaseManager {
     /// Create database client for specific dialect
     /// 
     /// Creates the appropriate backend based on the dialect and available features.
-    /// Returns SQLite backend for all dialects currently since we only have SQLite implemented.
-    pub async fn create_client(&self, dialect: DatabaseDialect) -> Result<SQLiteBackend, Box<dyn std::error::Error + Send + Sync>> {
+    /// Returns the appropriate backend for each supported database dialect.
+    pub async fn create_client(&self, dialect: DatabaseDialect) -> Result<AnyDatabaseBackend, Box<dyn std::error::Error + Send + Sync>> {
         match dialect {
             DatabaseDialect::SQLite => {
-                self.create_sqlite_client().await
+                let backend = self.create_sqlite_client().await?;
+                Ok(AnyDatabaseBackend::SQLite(backend))
             },
             #[cfg(feature = "postgres")]
             DatabaseDialect::PostgreSQL => {
@@ -347,7 +348,7 @@ impl TestDatabaseManager {
     /// conditional logic if needed.
     pub async fn run_on_all_databases<F, Fut>(&self, test_fn: F) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
     where
-        F: Fn(SQLiteBackend, DatabaseDialect) -> Fut + Clone,
+        F: Fn(AnyDatabaseBackend, DatabaseDialect) -> Fut + Clone,
         Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>>,
     {
         let mut errors = Vec::new();
@@ -369,6 +370,16 @@ impl TestDatabaseManager {
                     }
                 },
                 Err(e) => {
+                    // Check if this is a connection failure - skip gracefully instead of failing
+                    let error_str = e.to_string().to_lowercase();
+                    if error_str.contains("connection refused") || 
+                       error_str.contains("could not connect") || 
+                       error_str.contains("connection failed") ||
+                       error_str.contains("timeout") {
+                        println!("⏭️  Skipping {:?} - database not available: {}", dialect, e);
+                        continue;
+                    }
+                    
                     let error_msg = format!("Failed to create client for {:?}: {}", dialect, e);
                     println!("❌ {}", error_msg);
                     errors.push(error_msg);
@@ -391,7 +402,7 @@ impl TestDatabaseManager {
     #[allow(dead_code)]
     pub async fn run_on_database<F, Fut>(&self, dialect: DatabaseDialect, test_fn: F) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
     where
-        F: Fn(SQLiteBackend) -> Fut,
+        F: Fn(AnyDatabaseBackend) -> Fut,
         Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>>,
     {
         if !self.is_available(dialect) {
@@ -520,13 +531,13 @@ pub struct TestUtils;
 
 impl TestUtils {
     /// Setup test client for specific database type with error handling
-    pub async fn setup_test_client_with_manager(dialect: DatabaseDialect) -> Result<SQLiteBackend, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn setup_test_client_with_manager(dialect: DatabaseDialect) -> Result<AnyDatabaseBackend, Box<dyn std::error::Error + Send + Sync>> {
         let manager = TestDatabaseManager::new();
         manager.create_client(dialect).await
     }
     
     /// Verify table exists in database (database-agnostic)
-    pub async fn table_exists(client: &SQLiteBackend, table_name: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn table_exists(client: &AnyDatabaseBackend, table_name: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         // This would need to be implemented with sea-query for database-agnostic table checking
         // For now, use a simple approach that works across databases
         let result = client.execute_query(
@@ -541,16 +552,23 @@ impl TestUtils {
     }
     
     /// Get row count from table (database-agnostic)
-    pub async fn get_row_count(client: &SQLiteBackend, table_name: &str) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_row_count(client: &AnyDatabaseBackend, table_name: &str) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
         let result = client.execute_query(
             &format!("SELECT COUNT(*) as count FROM {}", table_name), 
             &[]
         ).await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         
-        let count = result.extract_count()
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-        Ok(count)
+        // Extract count from the first row
+        let rows = result.into_rows();
+        if let Some(row) = rows.first() {
+            if let Some(Value::Number(n)) = row.get("count") {
+                if let Some(count) = n.as_i64() {
+                    return Ok(count);
+                }
+            }
+        }
+        Err("Failed to extract count from query result".into())
     }
 }
 

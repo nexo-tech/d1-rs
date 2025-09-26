@@ -233,7 +233,7 @@ async fn test_cross_database_constraint_validation() {
             Value::Number(0.into()),
         ];
         
-        let _fk_result = seeder.client.execute(&seeder.get_insert_post_sql(), &invalid_fk_params).await;
+        let fk_result = seeder.client.execute(&seeder.get_insert_post_sql(), &invalid_fk_params).await;
         // Note: SQLite might not enforce FK constraints by default, so we check if it's supported
         match seeder.client.dialect() {
             DatabaseDialect::SQLite => {

@@ -433,7 +433,150 @@ impl TestUtils {
     }
 }
 
-/// Macro for running a test across all available databases
+/// Enhanced test macro for multi-database testing with TestDatabaseManager
+#[macro_export]
+macro_rules! test_multi_database {
+    ($test_name:ident, $test_body:expr) => {
+        #[tokio::test]
+        async fn $test_name() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            use crate::common::database_manager::TestDatabaseManager;
+            
+            let manager = TestDatabaseManager::new();
+            
+            manager.run_on_all_databases(|client, dialect| async move {
+                println!("🔄 Running {} on {:?}", stringify!($test_name), dialect);
+                $test_body(client, dialect).await?;
+                println!("✅ Completed {} on {:?}", stringify!($test_name), dialect);
+                Ok(())
+            }).await?;
+            
+            println!("✅ {} passed on all databases", stringify!($test_name));
+            Ok(())
+        }
+    };
+}
+
+/// Run test on all available databases sequentially (using newer TestDatabaseManager)
+#[macro_export]
+macro_rules! test_all_databases_new {
+    ($test_name:ident, $test_body:expr) => {
+        #[tokio::test]
+        async fn $test_name() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            use crate::common::database_manager::TestDatabaseManager;
+            
+            let manager = TestDatabaseManager::new();
+            
+            for &dialect in manager.available_dialects() {
+                println!("🔄 Running {} on {:?}", stringify!($test_name), dialect);
+                let client = manager.create_client(dialect).await?;
+                $test_body(client).await?;
+                println!("✅ Completed {} on {:?}", stringify!($test_name), dialect);
+            }
+            
+            println!("✅ {} passed on all databases", stringify!($test_name));
+            Ok(())
+        }
+    };
+}
+
+/// Test on specific database if available, skip if not
+#[macro_export]
+macro_rules! test_database_if_available {
+    ($test_name:ident, $dialect:expr, $test_body:expr) => {
+        #[tokio::test]
+        async fn $test_name() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            use crate::common::database_manager::TestDatabaseManager;
+            
+            let manager = TestDatabaseManager::new();
+            
+            manager.run_on_database($dialect, $test_body).await?;
+            
+            Ok(())
+        }
+    };
+}
+
+/// Enhanced fixture macro that works with TestDatabaseManager
+#[macro_export]
+macro_rules! with_multi_db_fixture {
+    ($fixture_name:expr, $test_code:block) => {{
+        use crate::common::database_manager::TestDatabaseManager;
+        use crate::common::fixtures::TestFixtureManager;
+        
+        let db_manager = TestDatabaseManager::new();
+        
+        db_manager.run_on_all_databases(|client, dialect| async move {
+            println!("🔧 Setting up fixture '{}' on {:?}", $fixture_name, dialect);
+            
+            let fixture_manager = TestFixtureManager::new(dialect);
+            fixture_manager.setup_fixture($fixture_name, client.as_ref()).await?;
+            
+            let result = async move $test_code.await;
+            
+            println!("🧹 Tearing down fixture '{}' on {:?}", $fixture_name, dialect);
+            let _ = fixture_manager.teardown_fixture($fixture_name, client.as_ref()).await;
+            
+            result
+        }).await
+    }};
+}
+
+/// Benchmark test across all databases
+#[macro_export]
+macro_rules! bench_all_databases {
+    ($bench_name:ident, $test_body:expr) => {
+        #[tokio::test]
+        async fn $bench_name() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            use crate::common::database_manager::TestDatabaseManager;
+            use std::time::Instant;
+            
+            let manager = TestDatabaseManager::new();
+            
+            for &dialect in manager.available_dialects() {
+                println!("📊 Benchmarking {} on {:?}", stringify!($bench_name), dialect);
+                
+                let client = manager.create_client(dialect).await?;
+                
+                let start = Instant::now();
+                $test_body(client).await?;
+                let duration = start.elapsed();
+                
+                println!("⏱️  {} on {:?}: {:?}", stringify!($bench_name), dialect, duration);
+            }
+            
+            Ok(())
+        }
+    };
+}
+
+/// Conditional compilation test macros for specific database features
+#[cfg(feature = "postgres")]
+#[macro_export]
+macro_rules! test_postgres_only {
+    ($test_name:ident, $test_body:expr) => {
+        test_database_if_available!($test_name, DatabaseDialect::PostgreSQL, $test_body);
+    };
+}
+
+#[cfg(feature = "mysql")]
+#[macro_export]
+macro_rules! test_mysql_only {
+    ($test_name:ident, $test_body:expr) => {
+        test_database_if_available!($test_name, DatabaseDialect::MySQL, $test_body);
+    };
+}
+
+/// Always available SQLite test
+#[macro_export]
+macro_rules! test_sqlite_only {
+    ($test_name:ident, $test_body:expr) => {
+        test_database_if_available!($test_name, DatabaseDialect::SQLite, $test_body);
+    };
+}
+
+/// Legacy compatibility macros (for backwards compatibility with existing tests)
+
+/// Macro for running a test across all available databases (legacy)
 #[macro_export]
 macro_rules! multi_db_test {
     ($test_name:ident, $test_fn:expr) => {
@@ -449,7 +592,7 @@ macro_rules! multi_db_test {
     };
 }
 
-/// Macro for setting up a test client with data
+/// Macro for setting up a test client with data (legacy)
 #[macro_export]
 macro_rules! setup_test_db_with_data {
     ($database:expr) => {
@@ -457,7 +600,7 @@ macro_rules! setup_test_db_with_data {
     };
 }
 
-/// Macro for setting up a test client without data
+/// Macro for setting up a test client without data (legacy)
 #[macro_export]
 macro_rules! setup_test_db {
     ($database:expr) => {

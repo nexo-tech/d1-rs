@@ -20,6 +20,12 @@ use sea_query::{
     Alias, ColumnDef, Table, Index, SqliteQueryBuilder, ColumnType, StringLen, IntoIden
 };
 
+#[cfg(feature = "postgres")]
+use sea_query::PostgresQueryBuilder;
+
+#[cfg(feature = "mysql")]
+use sea_query::MysqlQueryBuilder;
+
 /// Comprehensive error types for DDL generation operations
 #[derive(Debug, Error, Clone, PartialEq)]
 pub enum DDLError {
@@ -468,9 +474,13 @@ impl DDLGenerator {
             },
             #[cfg(feature = "postgres")]
             DatabaseDialect::PostgreSQL => {
-                Ok(format!("ALTER TABLE {} ALTER COLUMN {} TYPE {}", 
-                    _table_name, new_column.name, 
-                    self.column_type_to_string(&new_column.column_type)?))
+                let column_type = self.convert_unified_type_to_sea_query(&new_column.column_type)?;
+                let column_def = ColumnDef::new_with_type(Alias::new(&new_column.name), column_type);
+                let alter_table = Table::alter()
+                    .table(Alias::new(_table_name))
+                    .modify_column(column_def.clone())
+                    .to_owned();
+                Ok(alter_table.to_string(PostgresQueryBuilder))
             },
             #[cfg(feature = "mysql")]
             DatabaseDialect::MySQL => {

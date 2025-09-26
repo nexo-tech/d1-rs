@@ -4,11 +4,12 @@ use crate::{D1RsError, Entity};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
+#[cfg(any(target_arch = "wasm32", feature = "sqlite"))]
 use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
 use worker::d1::D1Database;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "sqlite")]
 use {rusqlite::Connection, tokio::sync::Mutex};
 
 /// SQLite backend implementation that wraps existing D1Client logic
@@ -21,7 +22,7 @@ use {rusqlite::Connection, tokio::sync::Mutex};
 pub struct SQLiteBackend {
     #[cfg(target_arch = "wasm32")]
     db: Arc<D1Database>,
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "sqlite")]
     db: Arc<Mutex<Connection>>,
 }
 
@@ -33,13 +34,13 @@ impl SQLiteBackend {
     }
     
     /// Create a new SQLiteBackend from a rusqlite Connection (native target)
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "sqlite")]
     pub fn new_sqlite(conn: Connection) -> Self {
         Self { db: Arc::new(Mutex::new(conn)) }
     }
     
     /// Create an in-memory SQLite database for testing (native target)
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "sqlite")]
     pub async fn new_in_memory() -> Result<Self, D1RsError> {
         let conn = rusqlite::Connection::open_in_memory()
             .map_err(|e| D1RsError::Database(e.to_string()))?;
@@ -225,6 +226,7 @@ impl DatabaseBackend for SQLiteBackend {
     type QueryResult = SQLiteQueryResult;
     type Error = D1RsError;
     
+    #[cfg_attr(not(any(target_arch = "wasm32", feature = "sqlite")), allow(unused_variables))]
     async fn execute_query(
         &self, 
         sql: &str, 
@@ -235,10 +237,10 @@ impl DatabaseBackend for SQLiteBackend {
             // For WASM, use existing D1Client logic
             let client = crate::db::D1Client::new((*self.db).clone());
             let result = client.execute(sql, params).await?;
-            Ok(SQLiteQueryResult::new(result))
+            return Ok(SQLiteQueryResult::new(result));
         }
         
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             // For native, implement directly using the connection
             use rusqlite::params_from_iter;
@@ -324,8 +326,13 @@ impl DatabaseBackend for SQLiteBackend {
                 let d1_result = crate::db::D1QueryResult { 
                     rows: vec![Value::Object(obj)]
                 };
-                Ok(SQLiteQueryResult::new(d1_result))
+                return Ok(SQLiteQueryResult::new(d1_result));
             }
+        }
+        
+        #[cfg(not(any(target_arch = "wasm32", feature = "sqlite")))]
+        {
+            Err(crate::D1RsError::Database("SQLiteBackend requires either wasm32 target or sqlite feature".to_string()))
         }
     }
     
@@ -341,10 +348,19 @@ impl DatabaseBackend for SQLiteBackend {
     
     fn connection_info(&self) -> String {
         #[cfg(target_arch = "wasm32")]
-        return "D1Database (Cloudflare Workers)".to_string();
+        {
+            return "D1Database (Cloudflare Workers)".to_string();
+        }
         
-        #[cfg(not(target_arch = "wasm32"))]
-        return "SQLite (rusqlite)".to_string();
+        #[cfg(feature = "sqlite")]
+        {
+            return "SQLite (rusqlite)".to_string();
+        }
+        
+        #[cfg(not(any(target_arch = "wasm32", feature = "sqlite")))]
+        {
+            "SQLite (unavailable - no features enabled)".to_string()
+        }
     }
     
     async fn ping(&self) -> std::result::Result<(), Self::Error> {
@@ -361,7 +377,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sqlite_backend_creation() {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             let backend = SQLiteBackend::new_in_memory().await;
             assert!(backend.is_ok());
@@ -374,7 +390,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_sqlite_backend_ping() {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             let backend = SQLiteBackend::new_in_memory().await.unwrap();
             let result = backend.ping().await;
@@ -384,7 +400,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_sqlite_backend_basic_query() {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             let backend = SQLiteBackend::new_in_memory().await.unwrap();
             
@@ -403,7 +419,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_sqlite_backend_schema_operations() {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             let backend = SQLiteBackend::new_in_memory().await.unwrap();
             
@@ -436,7 +452,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_sqlite_query_result_extract_methods() {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             let backend = SQLiteBackend::new_in_memory().await.unwrap();
             
@@ -475,7 +491,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_sqlite_query_result_into_hashmap() {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             let backend = SQLiteBackend::new_in_memory().await.unwrap();
             
@@ -501,7 +517,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_sqlite_query_result_column_operations() {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             let backend = SQLiteBackend::new_in_memory().await.unwrap();
             
@@ -530,7 +546,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sqlite_query_result_empty_result() {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             let backend = SQLiteBackend::new_in_memory().await.unwrap();
             
@@ -556,7 +572,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_sqlite_backend_parameter_binding() {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(feature = "sqlite")]
         {
             let backend = SQLiteBackend::new_in_memory().await.unwrap();
             
