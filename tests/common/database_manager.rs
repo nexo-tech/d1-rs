@@ -262,35 +262,71 @@ impl TestDatabaseManager {
     /// Creates the appropriate backend based on the dialect and available features.
     /// Returns the appropriate backend for each supported database dialect.
     pub async fn create_client(&self, dialect: DatabaseDialect) -> Result<AnyDatabaseBackend, Box<dyn std::error::Error + Send + Sync>> {
-        match dialect {
+        let backend = match dialect {
             DatabaseDialect::SQLite => {
+                println!("🗄️  Using SQLite in-memory backend");
                 let backend = self.create_sqlite_client().await?;
-                Ok(AnyDatabaseBackend::SQLite(backend))
+                AnyDatabaseBackend::SQLite(backend)
             },
             #[cfg(feature = "postgres")]
             DatabaseDialect::PostgreSQL => {
                 if let Some(url) = self.connection_urls.get(&dialect) {
-                    println!("🐘 Creating PostgreSQL client with URL: {}", 
-                        url.split('@').nth(0).unwrap_or("***").split(':').take(2).collect::<Vec<_>>().join(":"));
+                    println!("🐘 Using PostgreSQL backend: {}", self.mask_credentials(url));
                     let backend = PostgreSQLBackend::new(url).await
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                    Ok(AnyDatabaseBackend::PostgreSQL(backend))
+                    AnyDatabaseBackend::PostgreSQL(backend)
                 } else {
-                    Err("PostgreSQL URL not configured. Set POSTGRES_TEST_URL environment variable.".into())
+                    return Err("PostgreSQL URL not configured. Set POSTGRES_TEST_URL environment variable.".into());
                 }
             },
             #[cfg(feature = "mysql")]
             DatabaseDialect::MySQL => {
                 if let Some(url) = self.connection_urls.get(&dialect) {
-                    println!("🐬 Creating MySQL client with URL: {}", 
-                        url.split('@').nth(0).unwrap_or("***").split(':').take(2).collect::<Vec<_>>().join(":"));
+                    println!("🐬 Using MySQL backend: {}", self.mask_credentials(url));
                     let backend = MySQLBackend::new(url).await
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                    Ok(AnyDatabaseBackend::MySQL(backend))
+                    AnyDatabaseBackend::MySQL(backend)
                 } else {
-                    Err("MySQL URL not configured. Set MYSQL_TEST_URL environment variable.".into())
+                    return Err("MySQL URL not configured. Set MYSQL_TEST_URL environment variable.".into());
                 }
             },
+        };
+        
+        // Backend verification to prevent cross-contamination
+        assert_eq!(backend.dialect(), dialect);
+        Ok(backend)
+    }
+    
+    /// Mask credentials in database URLs for secure logging
+    /// 
+    /// Replaces sensitive information like passwords and usernames with masked values
+    /// to prevent credential exposure in logs while preserving connection information.
+    #[cfg_attr(not(any(feature = "postgres", feature = "mysql")), allow(dead_code))]
+    fn mask_credentials(&self, url: &str) -> String {
+        if let Some(scheme_end) = url.find("://") {
+            let scheme = &url[..scheme_end + 3];
+            let rest = &url[scheme_end + 3..];
+            
+            if let Some(at_pos) = rest.find('@') {
+                let credentials = &rest[..at_pos];
+                let host_and_path = &rest[at_pos..];
+                
+                // Mask the credentials part
+                let masked_creds = if let Some(colon_pos) = credentials.find(':') {
+                    let username = &credentials[..colon_pos];
+                    format!("{}:***", username)
+                } else {
+                    "***".to_string()
+                };
+                
+                format!("{}{}{}", scheme, masked_creds, host_and_path)
+            } else {
+                // No credentials in URL, return as-is
+                url.to_string()
+            }
+        } else {
+            // Not a standard URL format, return as-is
+            url.to_string()
         }
     }
     
