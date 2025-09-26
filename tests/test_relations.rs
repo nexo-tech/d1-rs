@@ -1,8 +1,12 @@
+mod common;
+
 use chrono::{DateTime, Utc};
 use d1_rs::SchemaMigration;
 use d1_rs::backends::QueryResult;
 use d1_rs::*;
+use d1_rs::dialects::DatabaseDialect;
 use serde::{Deserialize, Serialize};
+use common::query_helpers::{build_select_query, table};
 
 // Test entities with much cleaner relation definitions
 #[derive(Debug, Serialize, Deserialize, Clone, Entity, PartialEq)]
@@ -239,13 +243,26 @@ async fn test_new_relations_api_schema_creation() {
         .await
         .expect("Failed to execute migration");
 
-    // Verify tables were created
-    let tables_result = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-        &[]
-    ).await.expect("Failed to query tables");
+    // Verify tables were created by testing direct queries
+    // Try to query the users table to verify it exists
+    let (select_sql, select_params) = build_select_query(
+        table("users"),
+        vec![], // SELECT *
+        DatabaseDialect::SQLite
+    );
+    let users_result = db.execute(&select_sql, &select_params).await;
+    assert!(users_result.is_ok(), "Users table should exist");
+    
+    // Try to query the posts table to verify it exists
+    let (select_sql, select_params) = build_select_query(
+        table("posts"),
+        vec![], // SELECT *
+        DatabaseDialect::SQLite
+    );
+    let posts_result = db.execute(&select_sql, &select_params).await;
+    assert!(posts_result.is_ok(), "Posts table should exist");
 
-    assert!(tables_result.rows().len() >= 2);
+    // Tables verification is done by successful queries above
 }
 
 #[tokio::test]
@@ -715,15 +732,23 @@ async fn test_migration_auto_generation() {
         .await
         .expect("Failed to execute auto-generated migration");
 
-    // Verify that tables were created
-    let tables = db
-        .execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
-            &[],
-        )
-        .await
-        .expect("Failed to query tables");
+    // Verify that tables were created by testing direct queries
+    let (select_sql, select_params) = build_select_query(
+        table("users"),
+        vec![], // SELECT *
+        DatabaseDialect::SQLite
+    );
+    let users_result = db.execute(&select_sql, &select_params).await;
+    assert!(users_result.is_ok(), "Users table should exist");
+    
+    let (select_sql, select_params) = build_select_query(
+        table("posts"),
+        vec![], // SELECT *
+        DatabaseDialect::SQLite
+    );
+    let posts_result = db.execute(&select_sql, &select_params).await;
+    assert!(posts_result.is_ok(), "Posts table should exist");
 
-    assert!(tables.rows().len() >= 2);
+    // Table verification is done by successful queries above
 }
 

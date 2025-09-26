@@ -4,26 +4,40 @@ use d1_rs::backends::QueryResult;
 use common::*;
 use d1_rs::*;
 use d1_rs::Entity;
-use serde_json::Value;
+use d1_rs::dialects::DatabaseDialect;
+use common::query_helpers::{
+    build_select_query_with_where, build_insert_query,
+    table, column, eq_condition
+};
+use sea_query::Value as SeaValue;
 
 #[tokio::test]
 async fn test_boolean_to_integer_conversion_on_insert() {
     let db = setup_test_db().await;
     
-    // Insert with boolean values - ORM should convert to integers for SQLite
-    let sql = "INSERT INTO test_users (email, name, is_active) VALUES (?, ?, ?)";
-    let result = db.execute(sql, &[
-        Value::String("bool_test@example.com".to_string()),
-        Value::String("Bool Test".to_string()),
-        Value::Bool(true),  // This should be converted to 1
-    ]).await;
+    // Insert with boolean values using sea-query helpers
+    let (insert_sql, insert_params) = build_insert_query(
+        table("test_users"),
+        vec![column("email"), column("name"), column("is_active")],
+        vec![
+            SeaValue::String(Some(Box::new("bool_test@example.com".to_string()))),
+            SeaValue::String(Some(Box::new("Bool Test".to_string()))),
+            SeaValue::Bool(Some(true)),  // This should be converted to 1
+        ],
+        DatabaseDialect::SQLite
+    );
+    let result = db.execute(&insert_sql, &insert_params).await;
     
     assert!(result.is_ok(), "Failed to insert with boolean: {:?}", result);
     
-    // Debug: check if user was inserted at all
-    let raw_result = db.execute("SELECT * FROM test_users WHERE email = ?", &[
-        Value::String("bool_test@example.com".to_string())
-    ]).await.expect("Failed to query raw");
+    // Debug: check if user was inserted at all using sea-query helpers
+    let (select_sql, select_params) = build_select_query_with_where(
+        table("test_users"),
+        vec![], // SELECT *
+        vec![eq_condition(column("email"), SeaValue::String(Some(Box::new("bool_test@example.com".to_string()))))],
+        DatabaseDialect::SQLite
+    );
+    let raw_result = db.execute(&select_sql, &select_params).await.expect("Failed to query raw");
     
     println!("Raw query result: {:?}", raw_result.rows());
     assert!(!raw_result.rows().is_empty(), "No user was inserted!");
@@ -50,13 +64,18 @@ async fn test_boolean_to_integer_conversion_on_insert() {
 async fn test_integer_to_boolean_conversion_on_read() {
     let db = setup_test_db().await;
     
-    // Insert directly with integers (as SQLite stores them)
-    let sql = "INSERT INTO test_users (email, name, is_active) VALUES (?, ?, ?)";
-    db.execute(sql, &[
-        Value::String("int_test@example.com".to_string()),
-        Value::String("Int Test".to_string()),
-        Value::Number(0.into()),  // SQLite stores false as 0
-    ]).await.expect("Failed to insert");
+    // Insert directly with integers using sea-query helpers
+    let (insert_sql, insert_params) = build_insert_query(
+        table("test_users"),
+        vec![column("email"), column("name"), column("is_active")],
+        vec![
+            SeaValue::String(Some(Box::new("int_test@example.com".to_string()))),
+            SeaValue::String(Some(Box::new("Int Test".to_string()))),
+            SeaValue::Int(Some(0)),  // SQLite stores false as 0
+        ],
+        DatabaseDialect::SQLite
+    );
+    db.execute(&insert_sql, &insert_params).await.expect("Failed to insert");
     
     // Query should convert integer back to boolean
     let user = TestUser::query()

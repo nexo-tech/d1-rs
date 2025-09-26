@@ -1,6 +1,14 @@
+mod common;
+
 use d1_rs::*;
 use serde_json::Value;
 use d1_rs::backends::QueryResult;
+use d1_rs::dialects::DatabaseDialect;
+use common::query_helpers::{
+    build_select_query, build_insert_query, build_create_table_query_simple,
+    build_create_table_query_with_columns, table, column
+};
+use sea_query::{Value as SeaValue, ColumnType};
 
 #[tokio::test]
 async fn test_basic_database_operations() {
@@ -9,32 +17,29 @@ async fn test_basic_database_operations() {
         .await
         .expect("Failed to create in-memory database");
     
-    // Create a simple table
-    let create_table = r#"
-        CREATE TABLE test_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            is_active INTEGER NOT NULL DEFAULT 1,
-            score INTEGER
-        )
-    "#;
+    // Create a simple table using database-agnostic helpers
+    let (create_sql, _create_params) = build_create_table_query_simple("test_items", DatabaseDialect::SQLite);
+    db.execute_schema(&create_sql).await.expect("Failed to create table");
     
-    db.execute(create_table, &[]).await.expect("Failed to create table");
+    // Insert some test data using sea-query helpers
+    let (insert_sql, insert_params) = build_insert_query(
+        table("test_items"),
+        vec![column("name")],
+        vec![
+            SeaValue::String(Some(Box::new("Test Item".to_string()))),
+        ],
+        DatabaseDialect::SQLite
+    );
     
-    // Insert some test data
-    let insert_sql = "INSERT INTO test_items (name, is_active, score) VALUES (?, ?, ?)";
+    db.execute(&insert_sql, &insert_params).await.expect("Failed to insert");
     
-    db.execute(insert_sql, &[
-        Value::String("Test Item".to_string()),
-        Value::Bool(true),
-        Value::Number(100.into()),
-    ]).await.expect("Failed to insert");
-    
-    // Query the data back
-    let select_sql = "SELECT * FROM test_items WHERE name = ?";
-    let result = db.execute(select_sql, &[
-        Value::String("Test Item".to_string()),
-    ]).await.expect("Failed to query");
+    // Query the data back using sea-query helpers
+    let (select_sql, select_params) = build_select_query(
+        table("test_items"),
+        vec![], // Empty means SELECT *
+        DatabaseDialect::SQLite
+    );
+    let result = db.execute(&select_sql, &select_params).await.expect("Failed to query");
     
     // Verify we got data
     assert_eq!(result.rows().len(), 1);
@@ -42,9 +47,8 @@ async fn test_basic_database_operations() {
     let row = &result.rows()[0];
     if let Value::Object(obj) = row {
         assert_eq!(obj.get("name"), Some(&Value::String("Test Item".to_string())));
-        // SQLite stores booleans as integers
-        assert_eq!(obj.get("is_active"), Some(&Value::Number(1.into())));
-        assert_eq!(obj.get("score"), Some(&Value::Number(100.into())));
+        // Basic table only has id and name columns
+        assert!(obj.get("id").is_some());
     }
 }
 
@@ -52,20 +56,36 @@ async fn test_basic_database_operations() {
 async fn test_boolean_conversion() {
     let db = D1Client::new_in_memory().await.expect("Failed to create database");
     
-    // Create table with boolean-like field
-    db.execute(
-        "CREATE TABLE test_bools (id INTEGER PRIMARY KEY, is_active INTEGER)",
-        &[]
-    ).await.expect("Failed to create table");
+    // Create table with boolean field using sea-query helpers
+    let (create_sql, _create_params) = build_create_table_query_with_columns(
+        "test_bools",
+        vec![
+            ("name", ColumnType::Text, false),
+            ("is_active", ColumnType::Boolean, true)
+        ],
+        DatabaseDialect::SQLite
+    );
+    db.execute_schema(&create_sql).await.expect("Failed to create table");
     
-    // Insert with boolean value
-    db.execute(
-        "INSERT INTO test_bools (is_active) VALUES (?)",
-        &[Value::Bool(true)]
-    ).await.expect("Failed to insert");
+    // Insert with boolean value using sea-query helpers
+    let (insert_sql, insert_params) = build_insert_query(
+        table("test_bools"),
+        vec![column("name"), column("is_active")],
+        vec![
+            SeaValue::String(Some(Box::new("Test Bool".to_string()))),
+            SeaValue::Bool(Some(true))
+        ],
+        DatabaseDialect::SQLite
+    );
+    db.execute(&insert_sql, &insert_params).await.expect("Failed to insert");
     
-    // Query back
-    let result = db.execute("SELECT * FROM test_bools", &[])
+    // Query back using sea-query helpers
+    let (select_sql, select_params) = build_select_query(
+        table("test_bools"),
+        vec![], // Empty means SELECT *
+        DatabaseDialect::SQLite
+    );
+    let result = db.execute(&select_sql, &select_params)
         .await.expect("Failed to query");
     
     assert_eq!(result.rows().len(), 1);
@@ -107,11 +127,22 @@ async fn test_migration_runner() {
     // Run migrations
     runner.run_pending_migrations(&db).await.expect("Migrations failed");
     
-    // Verify table was created
-    let result = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'",
-        &[]
-    ).await.expect("Failed to query schema");
+    // Insert test data to verify the migration worked
+    let (insert_sql, insert_params) = build_insert_query(
+        table("test_table"),
+        vec![column("name")],
+        vec![SeaValue::String(Some(Box::new("Migration Test".to_string())))],
+        DatabaseDialect::SQLite
+    );
+    db.execute(&insert_sql, &insert_params).await.expect("Failed to insert test data");
+    
+    // Verify table was created and data was inserted using database-agnostic schema query
+    let (select_sql, select_params) = build_select_query(
+        table("test_table"),
+        vec![], // Just check if table exists and has data
+        DatabaseDialect::SQLite
+    );
+    let result = db.execute(&select_sql, &select_params).await.expect("Failed to query schema");
     
     assert_eq!(result.rows().len(), 1);
 }

@@ -8,7 +8,8 @@ use d1_rs::dialects::DatabaseDialect;
 use d1_rs::backends::{DatabaseBackend, QueryResult};
 use sea_query::{
     Query, Expr, Value as SeaValue, Order, Alias, DynIden, 
-    SqliteQueryBuilder, SimpleExpr, Asterisk, IntoIden
+    SqliteQueryBuilder, SimpleExpr, Asterisk, IntoIden,
+    Table as SeaTable, ColumnDef, ColumnType
 };
 
 #[cfg(feature = "postgres")]
@@ -287,6 +288,76 @@ pub fn build_create_table_query_simple(
             "CREATE TABLE {} (id INT AUTO_INCREMENT PRIMARY KEY, name TEXT NOT NULL)",
             table_name
         ),
+    };
+    
+    (sql, vec![])
+}
+
+/// Build a database-agnostic CREATE TABLE query with custom columns using sea-query
+pub fn build_create_table_query_with_columns(
+    table_name: &str,
+    columns: Vec<(&str, ColumnType, bool)>, // (name, type, not_null)
+    dialect: DatabaseDialect
+) -> (String, Vec<Value>) {
+    let mut create_table = SeaTable::create();
+    create_table.table(Alias::new(table_name));
+    
+    // Add primary key id column
+    match dialect {
+        DatabaseDialect::SQLite => {
+            create_table.col(
+                ColumnDef::new(Alias::new("id"))
+                    .integer()
+                    .not_null()
+                    .auto_increment()
+                    .primary_key()
+            );
+        },
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => {
+            create_table.col(
+                ColumnDef::new(Alias::new("id"))
+                    .integer()
+                    .not_null()
+                    .auto_increment()
+                    .primary_key()
+            );
+        },
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => {
+            create_table.col(
+                ColumnDef::new(Alias::new("id"))
+                    .integer()
+                    .not_null()
+                    .auto_increment()
+                    .primary_key()
+            );
+        },
+    }
+    
+    // Add custom columns
+    for (col_name, col_type, not_null) in columns {
+        let mut col_def = ColumnDef::new(Alias::new(col_name));
+        match col_type {
+            ColumnType::Text => col_def.text(),
+            ColumnType::Integer => col_def.integer(),
+            ColumnType::Boolean => col_def.boolean(),
+            ColumnType::Float => col_def.float(),
+            ColumnType::Double => col_def.double(),
+            _ => col_def.text(), // Default fallback
+        };
+        if not_null {
+            col_def.not_null();
+        }
+        create_table.col(col_def);
+    }
+    
+    let sql = match dialect {
+        DatabaseDialect::SQLite => create_table.build(SqliteQueryBuilder),
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => create_table.build(PostgresQueryBuilder),
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => create_table.build(MysqlQueryBuilder),
     };
     
     (sql, vec![])
