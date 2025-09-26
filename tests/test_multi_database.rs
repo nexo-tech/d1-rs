@@ -9,6 +9,11 @@ use serde_json::Value;
 
 mod common;
 use common::multi_db::*;
+use common::query_helpers::{
+    build_count_query_with_where, build_select_query_with_where, build_select_query,
+    table, column
+};
+use sea_query::{Value as SeaValue, Expr, Alias};
 
 #[tokio::test]
 async fn test_multi_database_basic_operations() {
@@ -28,11 +33,13 @@ async fn test_multi_database_basic_operations() {
         let post_count = TestUtils::count_records(&seeder.client, "test_posts").await?;
         assert_eq!(post_count, 3, "Should have 3 test posts");
         
-        // Test query functionality
-        let result = seeder.client.query(
-            "SELECT COUNT(*) as count FROM test_users WHERE is_active = ?", 
-            &[Value::Number(1.into())]
-        ).await?;
+        // Test query functionality using database-agnostic helper
+        let (count_sql, count_params) = build_count_query_with_where(
+            table("test_users"),
+            vec![Expr::col(Alias::new("is_active")).eq(SeaValue::Bool(Some(true)))],
+            seeder.client.dialect()
+        );
+        let result = seeder.client.query(&count_sql, &count_params).await?;
         
         let rows = result.into_rows();
         assert!(!rows.is_empty(), "Query should return results");
@@ -77,10 +84,14 @@ async fn test_cross_database_data_consistency() {
         let client = TestUtils::setup_test_client_with_data(database.clone()).await
             .expect(&format!("Failed to setup {} test client", database.name()));
             
-        // Query active users
-        let active_users_sql = "SELECT COUNT(*) as count FROM test_users WHERE is_active = 1";
+        // Query active users using database-agnostic helper
+        let (active_users_sql, active_users_params) = build_count_query_with_where(
+            table("test_users"),
+            vec![Expr::col(Alias::new("is_active")).eq(SeaValue::Bool(Some(true)))],
+            client.dialect()
+        );
         
-        let result = client.query(active_users_sql, &[]).await
+        let result = client.query(&active_users_sql, &active_users_params).await
             .expect(&format!("Failed to query active users on {}", database.name()));
             
         let rows = result.into_rows();
@@ -116,17 +127,27 @@ async fn test_database_specific_boolean_handling() {
         let seeder = TestDataSeeder::new(client);
         seeder.seed_test_users().await?;
         
-        // Test boolean true query
-        let true_sql = "SELECT name FROM test_users WHERE is_active = 1";
+        // Test boolean true query using database-agnostic helper
+        let (true_sql, true_params) = build_select_query_with_where(
+            table("test_users"),
+            vec![column("name")],
+            vec![Expr::col(Alias::new("is_active")).eq(SeaValue::Bool(Some(true)))],
+            seeder.client.dialect()
+        );
         
-        let result = seeder.client.query(true_sql, &[]).await?;
+        let result = seeder.client.query(&true_sql, &true_params).await?;
         let active_users = result.into_rows();
         assert_eq!(active_users.len(), 2, "Should have 2 active users (Alice and Charlie)");
         
-        // Test boolean false query
-        let false_sql = "SELECT name FROM test_users WHERE is_active = 0";
+        // Test boolean false query using database-agnostic helper
+        let (false_sql, false_params) = build_select_query_with_where(
+            table("test_users"),
+            vec![column("name")],
+            vec![Expr::col(Alias::new("is_active")).eq(SeaValue::Bool(Some(false)))],
+            seeder.client.dialect()
+        );
         
-        let result = seeder.client.query(false_sql, &[]).await?;
+        let result = seeder.client.query(&false_sql, &false_params).await?;
         let inactive_users = result.into_rows();
         assert_eq!(inactive_users.len(), 1, "Should have 1 inactive user (Bob)");
         
@@ -211,11 +232,17 @@ async fn test_error_handling_across_databases() {
         let client = TestClient::new(database.clone()).await
             .expect(&format!("Failed to create {} client", database.name()));
             
-        // Try to query non-existent table - should fail gracefully
-        let result = client.query("SELECT * FROM non_existent_table", &[]).await;
+        // Try to query non-existent table - should fail gracefully using database-agnostic helper
+        let (select_sql, select_params) = build_select_query(
+            table("non_existent_table"),
+            vec![column("*")],
+            client.dialect()
+        );
+        let result = client.query(&select_sql, &select_params).await;
         assert!(result.is_err(), "Query to non-existent table should fail on {}", database.name());
         
         // Try to insert into non-existent table - should fail gracefully
+        // Note: This intentionally uses raw SQL as it's testing error handling with invalid syntax
         let result = client.execute("INSERT INTO non_existent_table VALUES (1)", &[]).await;
         assert!(result.is_err(), "Insert to non-existent table should fail on {}", database.name());
         

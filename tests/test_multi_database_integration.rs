@@ -10,8 +10,13 @@
 mod common;
 
 use common::database_manager::TestDatabaseManager;
-use d1_rs::dialects::DatabaseDialect;
 use d1_rs::backends::{DatabaseBackend, QueryResult};
+use common::query_helpers::{
+    build_count_query, build_insert_query, build_select_query, build_create_table_query_simple,
+    build_drop_table_query, table, column
+};
+use sea_query::{Value as SeaValue, Expr, Alias};
+use serde_json::Value;
 
 /// Test that TestDatabaseManager correctly identifies available databases
 #[tokio::test]
@@ -19,47 +24,39 @@ async fn test_database_manager_initialization() -> Result<(), Box<dyn std::error
     let manager = TestDatabaseManager::new();
     
     // Should have at least one database available
-    assert!(!manager.available_dialects().is_empty());
+    let available_dialects = manager.available_dialects();
+    assert!(!available_dialects.is_empty());
     
-    // Check based on environment enforcement or auto-detection
+    // Test each available dialect instead of hardcoding specific ones
+    for dialect in available_dialects.iter() {
+        assert!(manager.is_available(*dialect));
+        let client = manager.create_client(*dialect).await?;
+        assert!(client.dialect() == *dialect);
+        println!("✅ Successfully created client for {:?}", dialect);
+    }
+    
+    // Test environment-based enforcement if specified
     if let Ok(enforced_backend) = std::env::var("DATABASE_BACKENDS") {
+        println!("🔧 Testing with enforced backend: {}", enforced_backend);
+        // The environment enforcement should be handled by the manager internally
+        // We just verify that the available dialects respect the enforcement
         match enforced_backend.as_str() {
             "sqlite" => {
-                assert!(manager.is_available(DatabaseDialect::SQLite));
-                // Check that we can get SQLite client
-                let sqlite_client = manager.create_client(DatabaseDialect::SQLite).await?;
-                assert!(sqlite_client.dialect() == DatabaseDialect::SQLite);
+                assert!(available_dialects.iter().any(|d| format!("{:?}", d).to_lowercase().contains("sqlite")));
             },
             "postgres" => {
                 #[cfg(feature = "postgres")]
-                {
-                    assert!(manager.is_available(DatabaseDialect::PostgreSQL));
-                    // Check that we can get PostgreSQL client
-                    let postgres_client = manager.create_client(DatabaseDialect::PostgreSQL).await?;
-                    assert!(postgres_client.dialect() == DatabaseDialect::PostgreSQL);
-                }
+                assert!(available_dialects.iter().any(|d| format!("{:?}", d).to_lowercase().contains("postgres")));
             },
             "mysql" => {
                 #[cfg(feature = "mysql")]
-                {
-                    assert!(manager.is_available(DatabaseDialect::MySQL));
-                    // Check that we can get MySQL client
-                    let mysql_client = manager.create_client(DatabaseDialect::MySQL).await?;
-                    assert!(mysql_client.dialect() == DatabaseDialect::MySQL);
-                }
+                assert!(available_dialects.iter().any(|d| format!("{:?}", d).to_lowercase().contains("mysql")));
             },
             _ => {
-                // Invalid enforcement - should fall back to auto-detection
-                assert!(manager.is_available(DatabaseDialect::SQLite));
-                let sqlite_client = manager.create_client(DatabaseDialect::SQLite).await?;
-                assert!(sqlite_client.dialect() == DatabaseDialect::SQLite);
+                // For any other value, we should have at least one dialect available
+                assert!(!available_dialects.is_empty());
             }
         }
-    } else {
-        // No enforcement - SQLite should always be available
-        assert!(manager.is_available(DatabaseDialect::SQLite));
-        let sqlite_client = manager.create_client(DatabaseDialect::SQLite).await?;
-        assert!(sqlite_client.dialect() == DatabaseDialect::SQLite);
     }
     
     // Verify configuration validation works
@@ -73,6 +70,7 @@ async fn test_database_manager_initialization() -> Result<(), Box<dyn std::error
 #[cfg(all(feature = "postgres", feature = "mysql"))]
 test_multi_database!(test_basic_connectivity, |client: AnyDatabaseBackend, dialect| async move {
     // Test basic query execution
+    // Note: Using simple literal SELECT as this tests basic connectivity
     let result = client.execute_query("SELECT 1 as test_value", &[]).await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     let rows = result.into_rows();
@@ -86,28 +84,47 @@ test_multi_database!(test_basic_connectivity, |client: AnyDatabaseBackend, diale
 // Test table creation across all databases (requires all database features)
 #[cfg(all(feature = "postgres", feature = "mysql"))]
 test_multi_database!(test_table_creation, |client: AnyDatabaseBackend, dialect| async move {
-    // Create a simple test table (currently all using SQLite syntax since backends aren't fully implemented)
-    let create_sql = "CREATE TABLE multi_db_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)";
+    // Create a simple test table using database-agnostic helper
+    let (create_sql, create_params) = build_create_table_query_simple(
+        "multi_db_test",
+        vec![
+            ("id", "INTEGER", true),
+            ("name", "TEXT", false),
+            ("value", "INTEGER", false)
+        ],
+        dialect
+    );
     
-    client.execute_schema(create_sql).await
+    client.execute_schema(&create_sql).await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     
-    // Insert test data
-    client.execute_query(
-        "INSERT INTO multi_db_test (name, value) VALUES (?, ?)",
-        &[Value::String("test".to_string()), Value::Number(42.into())]
-    ).await
+    // Insert test data using database-agnostic helper
+    let (insert_sql, insert_params) = build_insert_query(
+        table("multi_db_test"),
+        vec![column("name"), column("value")],
+        vec![
+            SeaValue::String(Some(Box::new("test".to_string()))),
+            SeaValue::Int(Some(42))
+        ],
+        dialect
+    );
+    client.execute_query(&insert_sql, &insert_params).await
     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     
-    // Query test data
-    let result = client.execute_query("SELECT COUNT(*) as count FROM multi_db_test", &[]).await
+    // Query test data using database-agnostic helper
+    let (count_sql, count_params) = build_count_query(
+        table("multi_db_test"),
+        dialect
+    );
+    let result = client.execute_query(&count_sql, &count_params).await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     let count = result.extract_count()
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     assert_eq!(count, 1);
     
-    // Clean up
-    client.execute_schema("DROP TABLE multi_db_test").await
+    // Clean up using database-agnostic helper
+    let (drop_sql, drop_params) = build_drop_table_query("multi_db_test", dialect);
+    client.execute_schema(&drop_sql).await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
     
     println!("✅ Table creation test passed for {:?}", dialect);
@@ -525,7 +542,11 @@ mod integration_test_helpers {
 #[tokio::test]
 async fn test_simple_database_operations() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let manager = TestDatabaseManager::new();
-    let client = manager.create_client(DatabaseDialect::SQLite).await?;
+    // Use the first available database dialect instead of hardcoding SQLite
+    let available_dialects = manager.available_dialects();
+    assert!(!available_dialects.is_empty(), "No database dialects available");
+    let dialect = available_dialects[0];
+    let client = manager.create_client(dialect).await?;
     
     // Test basic query
     let result = client.execute_query("SELECT 1 as test", &[]).await

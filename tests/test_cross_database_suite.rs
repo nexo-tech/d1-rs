@@ -4,13 +4,18 @@
 /// across SQLite, PostgreSQL, and MySQL backends, ensuring true database agnosticism.
 
 use d1_rs::backends::QueryResult;
-use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 
 mod common;
 use common::multi_db::*;
+use common::query_helpers::{
+    build_select_query_with_where, build_select_query, build_count_query_with_where,
+    build_count_query, build_insert_query, build_update_query, build_delete_query,
+    table, column
+};
+use sea_query::{Value as SeaValue, Expr, Alias};
 
 /// Cross-database CRUD consistency validator
 /// Ensures identical CRUD operations produce identical results across all database backends
@@ -36,9 +41,14 @@ async fn test_cross_database_crud_consistency() {
         let rows = result.into_rows();
         assert!(!rows.is_empty(), "INSERT should return data");
         
-        // Test READ consistency - exact same query should give same structure
-        let read_sql = "SELECT id, email, name, is_active, score FROM test_users WHERE email = ?";
-        let read_result = seeder.client.query(read_sql, &[Value::String("consistency@test.com".to_string())]).await?;
+        // Test READ consistency - exact same query should give same structure using database-agnostic helper
+        let (read_sql, read_params) = build_select_query_with_where(
+            table("test_users"),
+            vec![column("id"), column("email"), column("name"), column("is_active"), column("score")],
+            vec![Expr::col(Alias::new("email")).eq(SeaValue::String(Some(Box::new("consistency@test.com".to_string()))))],
+            seeder.client.dialect()
+        );
+        let read_result = seeder.client.query(&read_sql, &read_params).await?;
         let read_rows = read_result.into_rows();
         assert_eq!(read_rows.len(), 1, "Should find exactly one user");
         
@@ -46,24 +56,29 @@ async fn test_cross_database_crud_consistency() {
         assert_eq!(user_row.get("email").unwrap(), &Value::String("consistency@test.com".to_string()));
         assert_eq!(user_row.get("name").unwrap(), &Value::String("Consistency Test User".to_string()));
         
-        // Test UPDATE consistency
+        // Test UPDATE consistency using standard SQL (database-agnostic)
         let update_sql = "UPDATE test_users SET score = ? WHERE email = ?";
-        let _update_result = seeder.client.execute(update_sql, &[
+        let update_params = vec![
             Value::Number(200.into()),
             Value::String("consistency@test.com".to_string())
-        ]).await?;
+        ];
+        let _update_result = seeder.client.execute(update_sql, &update_params).await?;
         
-        // Verify update worked consistently
-        let verify_result = seeder.client.query(read_sql, &[Value::String("consistency@test.com".to_string())]).await?;
+        // Verify update worked consistently using database-agnostic helper
+        let verify_result = seeder.client.query(&read_sql, &read_params).await?;
         let verify_rows = verify_result.into_rows();
         let updated_score = verify_rows[0].get("score").unwrap();
         assert_eq!(updated_score, &Value::Number(200.into()));
         
-        // Test DELETE consistency
-        let delete_sql = "DELETE FROM test_users WHERE email = ?";
-        seeder.client.execute(delete_sql, &[Value::String("consistency@test.com".to_string())]).await?;
+        // Test DELETE consistency using database-agnostic helper
+        let (delete_sql, delete_params) = build_delete_query(
+            table("test_users"),
+            vec![Expr::col(Alias::new("email")).eq(SeaValue::String(Some(Box::new("consistency@test.com".to_string()))))],
+            seeder.client.dialect()
+        );
+        seeder.client.execute(&delete_sql, &delete_params).await?;
         
-        let final_result = seeder.client.query(read_sql, &[Value::String("consistency@test.com".to_string())]).await?;
+        let final_result = seeder.client.query(&read_sql, &read_params).await?;
         assert_eq!(final_result.into_rows().len(), 0, "User should be deleted");
         
         Ok(())
@@ -97,9 +112,14 @@ async fn test_cross_database_data_type_consistency() {
             
             seeder.client.execute(&seeder.get_insert_user_sql(), &user_params).await?;
             
-            // Query back and verify boolean handling
-            let query_sql = "SELECT is_active FROM test_users WHERE email = ?";
-            let result = seeder.client.query(query_sql, &[Value::String(email.clone())]).await?;
+            // Query back and verify boolean handling using database-agnostic helper
+            let (query_sql, query_params) = build_select_query_with_where(
+                table("test_users"),
+                vec![column("is_active")],
+                vec![Expr::col(Alias::new("email")).eq(SeaValue::String(Some(Box::new(email.clone()))))],
+                seeder.client.dialect()
+            );
+            let result = seeder.client.query(&query_sql, &query_params).await?;
             let rows = result.into_rows();
             
             assert_eq!(rows.len(), 1, "Should find exactly one user for {}", case_name);
@@ -124,10 +144,13 @@ async fn test_cross_database_data_type_consistency() {
         ];
         
         seeder.client.execute(&seeder.get_insert_user_sql(), &null_params).await?;
-        let null_result = seeder.client.query(
-            "SELECT score FROM test_users WHERE email = ?", 
-            &[Value::String("null@test.com".to_string())]
-        ).await?;
+        let (null_sql, null_query_params) = build_select_query_with_where(
+            table("test_users"),
+            vec![column("score")],
+            vec![Expr::col(Alias::new("email")).eq(SeaValue::String(Some(Box::new("null@test.com".to_string()))))],
+            seeder.client.dialect()
+        );
+        let null_result = seeder.client.query(&null_sql, &null_query_params).await?;
         
         let null_rows = null_result.into_rows();
         assert_eq!(null_rows.len(), 1);
@@ -148,6 +171,8 @@ async fn test_cross_database_complex_queries() {
         seeder.seed_all_data().await?;
         
         // Test JOIN queries
+        // Note: Using standard SQL for complex JOIN query that works identically across all databases
+        // Future enhancement: Create build_join_query helper for sea-query integration
         let join_sql = r#"
             SELECT u.name as user_name, p.title as post_title, p.views
             FROM test_users u
@@ -172,6 +197,8 @@ async fn test_cross_database_complex_queries() {
         }
         
         // Test aggregate functions
+        // Note: Using standard SQL for aggregate query that works identically across all databases
+        // Future enhancement: Create build_aggregate_query helper for sea-query integration
         let count_sql = "SELECT COUNT(*) as total_posts, SUM(views) as total_views FROM test_posts WHERE is_published = ?";
         let count_result = seeder.client.query(count_sql, &[seeder.bool_value(true)]).await?;
         let count_rows = count_result.into_rows();
@@ -185,6 +212,8 @@ async fn test_cross_database_complex_queries() {
         assert!(matches!(total_views, Value::Number(_)), "SUM should return number");
         
         // Test subquery consistency
+        // Note: Using standard SQL for complex subquery that works identically across all databases
+        // Future enhancement: Create build_subquery helper for sea-query integration
         let subquery_sql = r#"
             SELECT name FROM test_users 
             WHERE id IN (
@@ -235,25 +264,25 @@ async fn test_cross_database_constraint_validation() {
         ];
         
         let fk_result = seeder.client.execute(&seeder.get_insert_post_sql(), &invalid_fk_params).await;
-        // Note: SQLite might not enforce FK constraints by default, so we check if it's supported
-        match seeder.client.dialect() {
-            DatabaseDialect::SQLite => {
-                // SQLite FK constraints might not be enabled, so we don't assert failure
-                // but we record the behavior is consistent
-            },
-            #[cfg(feature = "postgres")]
-            DatabaseDialect::PostgreSQL => {
-                assert!(fk_result.is_err(), "Invalid foreign key should fail on PostgreSQL");
-            },
-            #[cfg(feature = "mysql")]
-            DatabaseDialect::MySQL => {
-                assert!(fk_result.is_err(), "Invalid foreign key should fail on MySQL");
-            },
+        // Note: Different databases handle FK constraints differently
+        // We verify behavior is consistent for each dialect
+        let dialect_name = format!("{:?}", seeder.client.dialect()).to_lowercase();
+        if dialect_name.contains("sqlite") {
+            // SQLite FK constraints might not be enabled, so we don't assert failure
+            // but we record the behavior is consistent
+        } else {
+            // PostgreSQL and MySQL should enforce FK constraints
+            assert!(fk_result.is_err(), "Invalid foreign key should fail on {}", dialect_name);
         }
         
-        // Test valid foreign key insertion
-        let get_user_id_sql = "SELECT id FROM test_users WHERE email = ? LIMIT 1";
-        let user_result = seeder.client.query(get_user_id_sql, &[Value::String("alice@example.com".to_string())]).await?;
+        // Test valid foreign key insertion using database-agnostic helper
+        let (get_user_id_sql, get_user_id_params) = build_select_query_with_where(
+            table("test_users"),
+            vec![column("id")],
+            vec![Expr::col(Alias::new("email")).eq(SeaValue::String(Some(Box::new("alice@example.com".to_string()))))],
+            seeder.client.dialect()
+        );
+        let user_result = seeder.client.query(&get_user_id_sql, &get_user_id_params).await?;
         let user_rows = user_result.into_rows();
         assert!(!user_rows.is_empty(), "Should find Alice");
         
@@ -304,10 +333,13 @@ async fn test_cross_database_performance_benchmarks() {
         let select_start = Instant::now();
         for i in 0..50 {
             let email = format!("perf_user_{}@example.com", i * 2);
-            let _ = client.query(
-                "SELECT * FROM test_users WHERE email = ?", 
-                &[Value::String(email)]
-            ).await;
+            let (select_sql, select_params) = build_select_query_with_where(
+                table("test_users"),
+                vec![column("*")],
+                vec![Expr::col(Alias::new("email")).eq(SeaValue::String(Some(Box::new(email))))],
+                client.dialect()
+            );
+            let _ = client.query(&select_sql, &select_params).await;
         }
         let select_duration = select_start.elapsed();
         
@@ -400,39 +432,36 @@ async fn test_cross_database_schema_consistency() {
         let _schema_builder = TestSchemaBuilder::new(client.dialect());
         
         // Create a test table with various column types
-        let test_table_sql = match client.dialect() {
-            DatabaseDialect::SQLite => {
-                "CREATE TABLE schema_test (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    age INTEGER,
-                    salary REAL,
-                    is_active INTEGER DEFAULT 1,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )"
-            },
-            #[cfg(feature = "postgres")]
-            DatabaseDialect::PostgreSQL => {
-                "CREATE TABLE schema_test (
-                    id BIGSERIAL PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    age INTEGER,
-                    salary DECIMAL(10,2),
-                    is_active BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )"
-            },
-            #[cfg(feature = "mysql")]
-            DatabaseDialect::MySQL => {
-                "CREATE TABLE schema_test (
-                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    age INT,
-                    salary DECIMAL(10,2),
-                    is_active BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )"
-            },
+        // Note: Using database-specific SQL for CREATE TABLE as this tests schema compatibility
+        let dialect_name = format!("{:?}", client.dialect()).to_lowercase();
+        let test_table_sql = if dialect_name.contains("postgres") {
+            "CREATE TABLE schema_test (
+                id BIGSERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                age INTEGER,
+                salary DECIMAL(10,2),
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )"
+        } else if dialect_name.contains("mysql") {
+            "CREATE TABLE schema_test (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                age INT,
+                salary DECIMAL(10,2),
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )"
+        } else {
+            // Default to SQLite syntax
+            "CREATE TABLE schema_test (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                age INTEGER,
+                salary REAL,
+                is_active INTEGER DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"
         };
         
         client.execute(test_table_sql, &[]).await

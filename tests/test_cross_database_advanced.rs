@@ -6,12 +6,17 @@
 /// - Advanced ORM feature parity testing
 
 use d1_rs::backends::QueryResult;
-use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::collections::HashMap;
 
 mod common;
 use common::multi_db::*;
+use common::query_helpers::{
+    build_select_query_with_where, build_select_query, build_count_query_with_where,
+    build_count_query, build_insert_query, build_update_query, build_delete_query,
+    table, column
+};
+use sea_query::{Value as SeaValue, Expr, Alias};
 
 /// Query builder cross-database compatibility tests
 /// Validates that query builders produce consistent results across all database backends
@@ -26,18 +31,36 @@ async fn test_cross_database_query_builder_compatibility() {
         
         let seeder = TestDataSeeder::new(client);
         
-        // Test 1: Simple WHERE clause variations
-        let simple_queries = vec![
-            ("active_users", "SELECT name FROM test_users WHERE is_active = ?", vec![seeder.bool_value(true)]),
-            ("inactive_users", "SELECT name FROM test_users WHERE is_active = ?", vec![seeder.bool_value(false)]),
-            ("high_score_users", "SELECT name, score FROM test_users WHERE score > ?", vec![Value::Number(50.into())]),
-            ("specific_email", "SELECT id, name FROM test_users WHERE email LIKE ?", vec![Value::String("%alice%".to_string())]),
+        // Test 1: Simple WHERE clause variations using database-agnostic helpers
+        let simple_test_cases = vec![
+            ("active_users", "is_active", SeaValue::Bool(Some(true))),
+            ("inactive_users", "is_active", SeaValue::Bool(Some(false))),
+            ("high_score_users", "score", SeaValue::Int(Some(50))),
         ];
         
         let mut db_results = HashMap::new();
         
-        for (test_name, sql, params) in simple_queries {
-            let result = seeder.client.query(sql, &params).await
+        for (test_name, field_name, field_value) in simple_test_cases {
+            let columns = if test_name == "high_score_users" {
+                vec![column("name"), column("score")]
+            } else {
+                vec![column("name")]
+            };
+            
+            let condition = if test_name == "high_score_users" {
+                Expr::col(Alias::new(field_name)).gt(field_value)
+            } else {
+                Expr::col(Alias::new(field_name)).eq(field_value)
+            };
+            
+            let (sql, params) = build_select_query_with_where(
+                table("test_users"),
+                columns,
+                vec![condition],
+                seeder.client.dialect()
+            );
+            
+            let result = seeder.client.query(&sql, &params).await
                 .expect(&format!("Query {} should work on {}", test_name, database.name()));
             
             let rows = result.into_rows();
@@ -46,7 +69,17 @@ async fn test_cross_database_query_builder_compatibility() {
             println!("🔍 {} on {}: {} results", test_name, database.name(), rows.len());
         }
         
+        // Test specific email with LIKE - using standard SQL as LIKE syntax is consistent across databases
+        let like_result = seeder.client.query(
+            "SELECT id, name FROM test_users WHERE email LIKE ?",
+            &[Value::String("%alice%".to_string())]
+        ).await.expect("LIKE query should work");
+        let like_rows = like_result.into_rows();
+        db_results.insert("specific_email", like_rows.len());
+        println!("🔍 specific_email on {}: {} results", database.name(), like_rows.len());
+        
         // Test 2: ORDER BY clause consistency
+        // Note: Using standard SQL for ORDER BY as syntax is consistent across databases
         let order_sql = "SELECT name, score FROM test_users WHERE score IS NOT NULL ORDER BY score DESC, name ASC";
         let order_result = seeder.client.query(order_sql, &[]).await
             .expect("ORDER BY should work");
@@ -69,6 +102,7 @@ async fn test_cross_database_query_builder_compatibility() {
         db_results.insert("ordered_users", order_rows.len());
         
         // Test 3: LIMIT and OFFSET consistency
+        // Note: Using standard SQL for LIMIT as syntax is consistent across databases
         let limit_sql = "SELECT name FROM test_users ORDER BY id LIMIT ?";
         let limit_result = seeder.client.query(limit_sql, &[Value::Number(2.into())]).await
             .expect("LIMIT should work");
@@ -78,6 +112,8 @@ async fn test_cross_database_query_builder_compatibility() {
         db_results.insert("limited_users", limit_rows.len());
         
         // Test 4: Aggregate function consistency
+        // Note: Using standard SQL for aggregate functions as syntax is consistent across databases
+        // Future enhancement: Create build_aggregate_query helper for sea-query integration
         let agg_queries = vec![
             ("user_count", "SELECT COUNT(*) as count FROM test_users"),
             ("avg_score", "SELECT AVG(CAST(score AS REAL)) as avg_score FROM test_users WHERE score IS NOT NULL"),
@@ -268,49 +304,34 @@ async fn test_cross_database_migration_validation() {
         let _schema_builder = TestSchemaBuilder::new(client.dialect());
         
         // Test 1: Table creation and modification
-        let migration_table_sql = match client.dialect() {
-            DatabaseDialect::SQLite => {
-                "CREATE TABLE migration_test (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    version INTEGER DEFAULT 1
-                )"
-            },
-            #[cfg(feature = "postgres")]
-            DatabaseDialect::PostgreSQL => {
-                "CREATE TABLE migration_test (
-                    id BIGSERIAL PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    version INTEGER DEFAULT 1
-                )"
-            },
-            #[cfg(feature = "mysql")]
-            DatabaseDialect::MySQL => {
-                "CREATE TABLE migration_test (
-                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    version INT DEFAULT 1
-                )"
-            },
+        let dialect_name = format!("{:?}", client.dialect()).to_lowercase();
+        let migration_table_sql = if dialect_name.contains("postgres") {
+            "CREATE TABLE migration_test (
+                id BIGSERIAL PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                version INTEGER DEFAULT 1
+            )"
+        } else if dialect_name.contains("mysql") {
+            "CREATE TABLE migration_test (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                version INT DEFAULT 1
+            )"
+        } else {
+            // Default to SQLite syntax
+            "CREATE TABLE migration_test (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                version INTEGER DEFAULT 1
+            )"
         };
         
         client.execute(migration_table_sql, &[]).await
             .expect(&format!("Migration table creation should work on {}", database.name()));
         
         // Test 2: Add column (simulated migration)
-        let add_column_sql = match client.dialect() {
-            DatabaseDialect::SQLite => {
-                "ALTER TABLE migration_test ADD COLUMN description TEXT"
-            },
-            #[cfg(feature = "postgres")]
-            DatabaseDialect::PostgreSQL => {
-                "ALTER TABLE migration_test ADD COLUMN description TEXT"
-            },
-            #[cfg(feature = "mysql")]
-            DatabaseDialect::MySQL => {
-                "ALTER TABLE migration_test ADD COLUMN description TEXT"
-            },
-        };
+        // Note: ALTER TABLE ADD COLUMN syntax is consistent across databases
+        let add_column_sql = "ALTER TABLE migration_test ADD COLUMN description TEXT";
         
         client.execute(add_column_sql, &[]).await
             .expect(&format!("ADD COLUMN should work on {}", database.name()));
@@ -337,19 +358,8 @@ async fn test_cross_database_migration_validation() {
         assert_eq!(row.get("description").unwrap(), &Value::String("Testing schema changes".to_string()));
         
         // Test 5: Index creation (if supported)
-        let create_index_sql = match client.dialect() {
-            DatabaseDialect::SQLite => {
-                "CREATE INDEX idx_migration_name ON migration_test(name)"
-            },
-            #[cfg(feature = "postgres")]
-            DatabaseDialect::PostgreSQL => {
-                "CREATE INDEX idx_migration_name ON migration_test(name)"
-            },
-            #[cfg(feature = "mysql")]
-            DatabaseDialect::MySQL => {
-                "CREATE INDEX idx_migration_name ON migration_test(name)"
-            },
-        };
+        // Note: CREATE INDEX syntax is consistent across databases
+        let create_index_sql = "CREATE INDEX idx_migration_name ON migration_test(name)";
         
         client.execute(create_index_sql, &[]).await
             .expect(&format!("CREATE INDEX should work on {}", database.name()));

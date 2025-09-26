@@ -10,7 +10,7 @@ use common::query_helpers::{
     build_insert_query, build_select_query, 
     build_select_query_with_where, build_count_query, build_count_query_with_where, table, column
 };
-use sea_query::{Value as SeaValue};
+use sea_query::{Value as SeaValue, Expr, Alias};
 
 async fn setup_test_db() -> D1Client {
     D1Client::new_in_memory()
