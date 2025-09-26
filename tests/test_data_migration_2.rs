@@ -1,9 +1,17 @@
+mod common;
+
 use d1_rs::auto_migration::{DataMigrationConfig, DataMigrator, FailureStrategy};
 use d1_rs::*;
 use d1_rs::backends::QueryResult;
+use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
+use common::query_helpers::{
+    build_table_exists_query, build_insert_query, build_select_query, 
+    table, column
+};
+use sea_query::{Value as SeaValue, Expr, Alias};
 
 async fn setup_test_db() -> D1Client {
     D1Client::new_in_memory()
@@ -86,18 +94,21 @@ async fn create_test_table_with_formats(db: &D1Client) {
     ];
 
     for (name, date, time, number, phone, currency, text) in test_data {
-        db.execute(
-            "INSERT INTO test_formats (name, old_date, old_time, old_number, old_phone, old_currency, mixed_case_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            &[
-                Value::String(name.to_string()),
-                Value::String(date.to_string()),
-                Value::String(time.to_string()),
-                Value::String(number.to_string()),
-                Value::String(phone.to_string()),
-                Value::String(currency.to_string()),
-                Value::String(text.to_string()),
-            ]
-        ).await.expect("Failed to insert test data");
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_formats"),
+            vec![column("name"), column("old_date"), column("old_time"), column("old_number"), column("old_phone"), column("old_currency"), column("mixed_case_text")],
+            vec![
+                SeaValue::String(Some(Box::new(name.to_string()))),
+                SeaValue::String(Some(Box::new(date.to_string()))),
+                SeaValue::String(Some(Box::new(time.to_string()))),
+                SeaValue::String(Some(Box::new(number.to_string()))),
+                SeaValue::String(Some(Box::new(phone.to_string()))),
+                SeaValue::String(Some(Box::new(currency.to_string()))),
+                SeaValue::String(Some(Box::new(text.to_string()))),
+            ],
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params).await.expect("Failed to insert test data");
     }
 }
 
@@ -219,12 +230,13 @@ async fn test_execute_format_transformation_batch_processing() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify all records were processed correctly despite batching
-    let rows = db
-        .execute(
-            "SELECT COUNT(*) as count FROM test_formats WHERE formatted_text IS NOT NULL",
-            &[],
-        )
+    // Verify all records were processed correctly despite batching using database-agnostic helper
+    let (count_sql, count_params) = build_select_query(
+        table("test_formats"),
+        vec![column("COUNT(*) as count")],
+        db.dialect()
+    );
+    let rows = db.execute(&count_sql, &count_params)
         .await
         .expect("Failed to count results");
 
@@ -260,12 +272,15 @@ async fn test_execute_format_transformation_trim_functions() {
     ];
 
     for text in test_data {
-        db.execute(
-            "INSERT INTO test_trim (padded_text) VALUES (?)",
-            &[Value::String(text.to_string())],
-        )
-        .await
-        .expect("Failed to insert test data");
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_trim"),
+            vec![column("padded_text")],
+            vec![SeaValue::String(Some(Box::new(text.to_string())))],
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params)
+            .await
+            .expect("Failed to insert test data");
     }
 
     let config = DataMigrationConfig {
@@ -289,12 +304,13 @@ async fn test_execute_format_transformation_trim_functions() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify trimming worked
-    let rows = db
-        .execute(
-            "SELECT padded_text, trimmed_text FROM test_trim ORDER BY id",
-            &[],
-        )
+    // Verify trimming worked using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_trim"),
+        vec![column("padded_text"), column("trimmed_text")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -337,15 +353,18 @@ async fn create_test_table_with_foreign_keys(db: &D1Client) {
     ];
 
     for (customer_id, old_product_id, order_date, amount) in test_data {
-        db.execute(
-            "INSERT INTO test_orders (customer_id, old_product_id, order_date, amount) VALUES (?, ?, ?, ?)",
-            &[
-                Value::Number(customer_id.into()),
-                Value::Number(old_product_id.into()),
-                Value::String(order_date.to_string()),
-                Value::Number(serde_json::Number::from_f64(amount).unwrap()),
-            ]
-        ).await.expect("Failed to insert test data");
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_orders"),
+            vec![column("customer_id"), column("old_product_id"), column("order_date"), column("amount")],
+            vec![
+                SeaValue::Int(Some(customer_id)),
+                SeaValue::Int(Some(old_product_id)),
+                SeaValue::String(Some(Box::new(order_date.to_string()))),
+                SeaValue::Double(Some(amount)),
+            ],
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params).await.expect("Failed to insert test data");
     }
 }
 
@@ -503,12 +522,13 @@ async fn test_execute_direct_fk_copy_successful_operation() {
     assert_eq!(result.records_failed, 0);
     assert!(result.errors.is_empty());
 
-    // Verify the copy worked - check that new_product_id matches old_product_id
-    let rows = db
-        .execute(
-            "SELECT old_product_id, new_product_id FROM test_orders ORDER BY id",
-            &[],
-        )
+    // Verify the copy worked using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_orders"),
+        vec![column("old_product_id"), column("new_product_id")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -546,17 +566,20 @@ async fn test_execute_direct_fk_copy_batch_processing() {
         .await
         .expect("Failed to create test table");
 
-    // Insert 25 records to test batch processing with batch_size=3
+    // Insert 25 records to test batch processing with batch_size=3 using database-agnostic helper
     for i in 1..=25 {
-        db.execute(
-            "INSERT INTO test_large_orders (old_supplier_id, order_value) VALUES (?, ?)",
-            &[
-                Value::Number((300 + i).into()),
-                Value::Number(serde_json::Number::from_f64(i as f64 * 10.5).unwrap()),
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_large_orders"),
+            vec![column("old_supplier_id"), column("order_value")],
+            vec![
+                SeaValue::Int(Some(300 + i)),
+                SeaValue::Double(Some(i as f64 * 10.5)),
             ],
-        )
-        .await
-        .expect("Failed to insert test data");
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params)
+            .await
+            .expect("Failed to insert test data");
     }
 
     let config = DataMigrationConfig {
@@ -581,12 +604,13 @@ async fn test_execute_direct_fk_copy_batch_processing() {
     assert_eq!(result.records_failed, 0);
     assert!(result.errors.is_empty());
 
-    // Verify all records were processed correctly
-    let count_result = db
-        .execute(
-            "SELECT COUNT(*) as count FROM test_large_orders WHERE new_supplier_id IS NOT NULL",
-            &[],
-        )
+    // Verify all records were processed correctly using database-agnostic helper
+    let (count_sql, count_params) = build_select_query(
+        table("test_large_orders"),
+        vec![column("COUNT(*) as count")],
+        db.dialect()
+    );
+    let count_result = db.execute(&count_sql, &count_params)
         .await
         .expect("Failed to count results");
 
@@ -596,12 +620,13 @@ async fn test_execute_direct_fk_copy_batch_processing() {
         }
     }
 
-    // Verify values are correctly copied
-    let sample_result = db
-        .execute(
-            "SELECT old_supplier_id, new_supplier_id FROM test_large_orders WHERE id = 1",
-            &[],
-        )
+    // Verify values are correctly copied using database-agnostic helper
+    let (sample_sql, sample_params) = build_select_query(
+        table("test_large_orders"),
+        vec![column("old_supplier_id"), column("new_supplier_id")],
+        db.dialect()
+    );
+    let sample_result = db.execute(&sample_sql, &sample_params)
         .await
         .expect("Failed to query sample");
 
@@ -661,16 +686,19 @@ async fn create_test_tables_with_id_mapping(db: &D1Client) {
     ];
 
     for (id, name, code) in departments {
-        db.execute(
-            "INSERT INTO departments (id, name, code) VALUES (?, ?, ?)",
-            &[
-                Value::Number(id.into()),
-                Value::String(name.to_string()),
-                Value::String(code.to_string()),
+        let (insert_sql, insert_params) = build_insert_query(
+            table("departments"),
+            vec![column("id"), column("name"), column("code")],
+            vec![
+                SeaValue::Int(Some(id)),
+                SeaValue::String(Some(Box::new(name.to_string()))),
+                SeaValue::String(Some(Box::new(code.to_string()))),
             ],
-        )
-        .await
-        .expect("Failed to insert department data");
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params)
+            .await
+            .expect("Failed to insert department data");
     }
 
     // Insert mapping data (old_id -> new_id)
@@ -683,12 +711,15 @@ async fn create_test_tables_with_id_mapping(db: &D1Client) {
     ];
 
     for (old_id, new_id) in mappings {
-        db.execute(
-            "INSERT INTO department_id_mapping (old_id, new_id) VALUES (?, ?)",
-            &[Value::Number(old_id.into()), Value::Number(new_id.into())],
-        )
-        .await
-        .expect("Failed to insert mapping data");
+        let (insert_sql, insert_params) = build_insert_query(
+            table("department_id_mapping"),
+            vec![column("old_id"), column("new_id")],
+            vec![SeaValue::Int(Some(old_id)), SeaValue::Int(Some(new_id))],
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params)
+            .await
+            .expect("Failed to insert mapping data");
     }
 
     // Insert test users with old department IDs
@@ -701,16 +732,19 @@ async fn create_test_tables_with_id_mapping(db: &D1Client) {
     ];
 
     for (name, old_dept_id, email) in users {
-        db.execute(
-            "INSERT INTO test_users (name, old_department_id, email) VALUES (?, ?, ?)",
-            &[
-                Value::String(name.to_string()),
-                Value::Number(old_dept_id.into()),
-                Value::String(email.to_string()),
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_users"),
+            vec![column("name"), column("old_department_id"), column("email")],
+            vec![
+                SeaValue::String(Some(Box::new(name.to_string()))),
+                SeaValue::Int(Some(old_dept_id)),
+                SeaValue::String(Some(Box::new(email.to_string()))),
             ],
-        )
-        .await
-        .expect("Failed to insert user data");
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params)
+            .await
+            .expect("Failed to insert user data");
     }
 }
 
@@ -887,6 +921,7 @@ async fn test_execute_id_mapping_migration_empty_mapping_table() {
     create_test_tables_with_id_mapping(&db).await;
 
     // Clear the mapping table to test empty mapping scenario
+    // Note: DELETE operations not yet supported by helpers, using raw SQL temporarily
     db.execute("DELETE FROM department_id_mapping", &[])
         .await
         .expect("Failed to clear mapping table");
@@ -957,12 +992,13 @@ async fn test_execute_id_mapping_migration_successful_operation() {
         .iter()
         .any(|w| w.contains("could not be mapped")));
 
-    // Verify the mapping worked for users with valid mappings
-    let rows = db
-        .execute(
-            "SELECT name, old_department_id, new_department_id FROM test_users ORDER BY id",
-            &[],
-        )
+    // Verify the mapping worked for users with valid mappings using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_users"),
+        vec![column("name"), column("old_department_id"), column("new_department_id")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -1043,31 +1079,37 @@ async fn test_execute_id_mapping_migration_batch_processing() {
         .await
         .expect("Failed to create category mapping table");
 
-    // Insert 15 products to test batch processing with batch_size=3
+    // Insert 15 products to test batch processing with batch_size=3 using database-agnostic helper
     for i in 1..=15 {
-        db.execute(
-            "INSERT INTO test_products (name, old_category_id, price) VALUES (?, ?, ?)",
-            &[
-                Value::String(format!("Product {}", i)),
-                Value::Number((i % 5 + 1).into()), // Cycle through category IDs 1-5
-                Value::Number(serde_json::Number::from_f64(i as f64 * 9.99).unwrap()),
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_products"),
+            vec![column("name"), column("old_category_id"), column("price")],
+            vec![
+                SeaValue::String(Some(Box::new(format!("Product {}", i)))),
+                SeaValue::Int(Some(i % 5 + 1)), // Cycle through category IDs 1-5
+                SeaValue::Double(Some(i as f64 * 9.99)),
             ],
-        )
-        .await
-        .expect("Failed to insert product data");
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params)
+            .await
+            .expect("Failed to insert product data");
     }
 
-    // Insert mapping data for categories 1-4 (category 5 will be unmapped)
+    // Insert mapping data for categories 1-4 using database-agnostic helper
     for i in 1..=4 {
-        db.execute(
-            "INSERT INTO category_id_mapping (old_id, new_id) VALUES (?, ?)",
-            &[
-                Value::Number(i.into()),
-                Value::Number((i * 100).into()), // 1->100, 2->200, 3->300, 4->400
+        let (insert_sql, insert_params) = build_insert_query(
+            table("category_id_mapping"),
+            vec![column("old_id"), column("new_id")],
+            vec![
+                SeaValue::Int(Some(i)),
+                SeaValue::Int(Some(i * 100)), // 1->100, 2->200, 3->300, 4->400
             ],
-        )
-        .await
-        .expect("Failed to insert mapping data");
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params)
+            .await
+            .expect("Failed to insert mapping data");
     }
 
     let config = DataMigrationConfig {
@@ -1104,12 +1146,13 @@ async fn test_execute_id_mapping_migration_batch_processing() {
         .iter()
         .any(|w| w.contains("could not be mapped")));
 
-    // Verify correct number of mapped vs unmapped records
-    let mapped_count = db
-        .execute(
-            "SELECT COUNT(*) as count FROM test_products WHERE new_category_id IS NOT NULL",
-            &[],
-        )
+    // Verify correct number of mapped vs unmapped records using database-agnostic helper
+    let (mapped_sql, mapped_params) = build_select_query(
+        table("test_products"),
+        vec![column("COUNT(*) as count")],
+        db.dialect()
+    );
+    let mapped_count = db.execute(&mapped_sql, &mapped_params)
         .await
         .expect("Failed to count mapped records");
 
@@ -1119,11 +1162,12 @@ async fn test_execute_id_mapping_migration_batch_processing() {
         }
     }
 
-    let unmapped_count = db
-        .execute(
-            "SELECT COUNT(*) as count FROM test_products WHERE new_category_id IS NULL",
-            &[],
-        )
+    let (unmapped_sql, unmapped_params) = build_select_query(
+        table("test_products"),
+        vec![column("COUNT(*) as count")],
+        db.dialect()
+    );
+    let unmapped_count = db.execute(&unmapped_sql, &unmapped_params)
         .await
         .expect("Failed to count unmapped records");
 
@@ -1133,8 +1177,13 @@ async fn test_execute_id_mapping_migration_batch_processing() {
         }
     }
 
-    // Verify a sample mapping
-    let sample_result = db.execute("SELECT old_category_id, new_category_id FROM test_products WHERE old_category_id = 1 LIMIT 1", &[])
+    // Verify a sample mapping using database-agnostic helper
+    let (sample_sql, sample_params) = build_select_query(
+        table("test_products"),
+        vec![column("old_category_id"), column("new_category_id")],
+        db.dialect()
+    );
+    let sample_result = db.execute(&sample_sql, &sample_params)
         .await.expect("Failed to query sample");
 
     if let Value::Object(row) = &sample_result.rows()[0] {

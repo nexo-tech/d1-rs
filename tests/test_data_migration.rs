@@ -1,9 +1,17 @@
+mod common;
+
 use d1_rs::auto_migration::{DataMigrationConfig, DataMigrator, FailureStrategy};
 use d1_rs::*;
 use d1_rs::backends::QueryResult;
+use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
+use common::query_helpers::{
+    build_table_exists_query, build_insert_query, build_select_query, 
+    table, column
+};
+use sea_query::{Value as SeaValue, Expr, Alias};
 
 async fn setup_test_db() -> D1Client {
     D1Client::new_in_memory()
@@ -42,15 +50,18 @@ async fn create_test_table_with_data(db: &D1Client) {
     ];
 
     for (name, math, english, science) in test_data {
-        db.execute(
-            "INSERT INTO test_scores (student_name, math_score, english_score, science_score) VALUES (?, ?, ?, ?)",
-            &[
-                Value::String(name.to_string()),
-                Value::Number(math.into()),
-                Value::Number(english.into()),
-                Value::Number(science.into()),
-            ]
-        ).await.expect("Failed to insert test data");
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_scores"),
+            vec![column("student_name"), column("math_score"), column("english_score"), column("science_score")],
+            vec![
+                SeaValue::String(Some(Box::new(name.to_string()))),
+                SeaValue::Int(Some(math)),
+                SeaValue::Int(Some(english)),
+                SeaValue::Int(Some(science)),
+            ],
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params).await.expect("Failed to insert test data");
     }
 }
 
@@ -90,8 +101,13 @@ async fn test_execute_aggregation_sum() {
     assert_eq!(result.records_failed, 0);
     assert!(result.errors.is_empty());
 
-    // Verify the aggregation results
-    let rows = db.execute("SELECT student_name, total_score, math_score, english_score, science_score FROM test_scores ORDER BY student_name", &[])
+    // Verify the aggregation results using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_scores"),
+        vec![column("student_name"), column("total_score"), column("math_score"), column("english_score"), column("science_score")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await.expect("Failed to query results");
 
     let expected_totals = vec![
@@ -151,8 +167,13 @@ async fn test_execute_aggregation_average() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify the average calculations
-    let rows = db.execute("SELECT student_name, average_score, math_score, english_score, science_score FROM test_scores ORDER BY student_name", &[])
+    // Verify the average calculations using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_scores"),
+        vec![column("student_name"), column("average_score"), column("math_score"), column("english_score"), column("science_score")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await.expect("Failed to query results");
 
     let expected_averages = vec![
@@ -234,8 +255,13 @@ async fn test_execute_aggregation_max_min() {
     assert!(result.success);
     assert_eq!(result.records_processed, 5);
 
-    // Verify MAX and MIN results
-    let rows = db.execute("SELECT student_name, max_score, min_score, math_score, english_score, science_score FROM test_scores ORDER BY student_name", &[])
+    // Verify MAX and MIN results using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_scores"),
+        vec![column("student_name"), column("max_score"), column("min_score"), column("math_score"), column("english_score"), column("science_score")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await.expect("Failed to query results");
 
     let expected_max_min = vec![
@@ -299,12 +325,13 @@ async fn test_execute_aggregation_string_functions() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify the concatenation results
-    let rows = db
-        .execute(
-            "SELECT student_name, score_summary FROM test_scores WHERE student_name = 'Alice'",
-            &[],
-        )
+    // Verify the concatenation results using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_scores"),
+        vec![column("student_name"), column("score_summary")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -434,12 +461,13 @@ async fn test_execute_aggregation_batch_processing() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify all records were processed correctly despite batching
-    let rows = db
-        .execute(
-            "SELECT COUNT(*) as count FROM test_scores WHERE total_score IS NOT NULL",
-            &[],
-        )
+    // Verify all records were processed correctly despite batching using database-agnostic helper
+    let (count_sql, count_params) = build_select_query(
+        table("test_scores"),
+        vec![column("COUNT(*) as count")],
+        db.dialect()
+    );
+    let rows = db.execute(&count_sql, &count_params)
         .await
         .expect("Failed to count results");
 
@@ -477,15 +505,18 @@ async fn create_test_table_with_categories(db: &D1Client) {
     ];
 
     for (username, status, role) in test_data {
-        db.execute(
-            "INSERT INTO test_users (username, old_status, old_role, department_code) VALUES (?, ?, ?, ?)",
-            &[
-                Value::String(username.to_string()),
-                Value::String(status.to_string()),
-                Value::String(role.to_string()),
-                Value::String("ENG".to_string()),
-            ]
-        ).await.expect("Failed to insert test data");
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_users"),
+            vec![column("username"), column("old_status"), column("old_role"), column("department_code")],
+            vec![
+                SeaValue::String(Some(Box::new(username.to_string()))),
+                SeaValue::String(Some(Box::new(status.to_string()))),
+                SeaValue::String(Some(Box::new(role.to_string()))),
+                SeaValue::String(Some(Box::new("ENG".to_string()))),
+            ],
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params).await.expect("Failed to insert test data");
     }
 }
 
@@ -529,12 +560,13 @@ async fn test_execute_value_mapping_status_codes() {
     assert_eq!(result.records_failed, 0);
     assert!(result.errors.is_empty());
 
-    // Verify the mapping results
-    let rows = db
-        .execute(
-            "SELECT username, old_status, new_status FROM test_users ORDER BY username",
-            &[],
-        )
+    // Verify the mapping results using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_users"),
+        vec![column("username"), column("old_status"), column("new_status")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -602,12 +634,13 @@ async fn test_execute_value_mapping_with_default() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify the mapping results with defaults
-    let rows = db
-        .execute(
-            "SELECT username, old_role, new_role FROM test_users ORDER BY username",
-            &[],
-        )
+    // Verify the mapping results with defaults using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_users"),
+        vec![column("username"), column("old_role"), column("new_role")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -674,12 +707,13 @@ async fn test_execute_value_mapping_no_default() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify that unmapped values keep original value when no default
-    let rows = db
-        .execute(
-            "SELECT department_code, department_name FROM test_users LIMIT 1",
-            &[],
-        )
+    // Verify that unmapped values keep original value when no default using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_users"),
+        vec![column("department_code"), column("department_name")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -822,12 +856,13 @@ async fn test_execute_value_mapping_batch_processing() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify all records were processed correctly despite batching
-    let rows = db
-        .execute(
-            "SELECT COUNT(*) as count FROM test_users WHERE new_status IS NOT NULL",
-            &[],
-        )
+    // Verify all records were processed correctly despite batching using database-agnostic helper
+    let (count_sql, count_params) = build_select_query(
+        table("test_users"),
+        vec![column("COUNT(*) as count")],
+        db.dialect()
+    );
+    let rows = db.execute(&count_sql, &count_params)
         .await
         .expect("Failed to count results");
 
@@ -872,12 +907,13 @@ async fn test_execute_value_mapping_sql_injection_safety() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify that single quotes were properly escaped and values were inserted correctly
-    let rows = db
-        .execute(
-            "SELECT new_status FROM test_users WHERE username = 'alice'",
-            &[],
-        )
+    // Verify that single quotes were properly escaped and values were inserted correctly using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_users"),
+        vec![column("new_status")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -964,18 +1000,21 @@ async fn create_test_table_with_formats(db: &D1Client) {
     ];
 
     for (name, date, time, number, phone, currency, text) in test_data {
-        db.execute(
-            "INSERT INTO test_formats (name, old_date, old_time, old_number, old_phone, old_currency, mixed_case_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            &[
-                Value::String(name.to_string()),
-                Value::String(date.to_string()),
-                Value::String(time.to_string()),
-                Value::String(number.to_string()),
-                Value::String(phone.to_string()),
-                Value::String(currency.to_string()),
-                Value::String(text.to_string()),
-            ]
-        ).await.expect("Failed to insert test data");
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_formats"),
+            vec![column("name"), column("old_date"), column("old_time"), column("old_number"), column("old_phone"), column("old_currency"), column("mixed_case_text")],
+            vec![
+                SeaValue::String(Some(Box::new(name.to_string()))),
+                SeaValue::String(Some(Box::new(date.to_string()))),
+                SeaValue::String(Some(Box::new(time.to_string()))),
+                SeaValue::String(Some(Box::new(number.to_string()))),
+                SeaValue::String(Some(Box::new(phone.to_string()))),
+                SeaValue::String(Some(Box::new(currency.to_string()))),
+                SeaValue::String(Some(Box::new(text.to_string()))),
+            ],
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params).await.expect("Failed to insert test data");
     }
 }
 
@@ -1013,12 +1052,13 @@ async fn test_execute_format_transformation_date_formats() {
     assert_eq!(result.records_failed, 0);
     assert!(result.errors.is_empty());
 
-    // Verify the date transformation results
-    let rows = db
-        .execute(
-            "SELECT name, old_date, new_date FROM test_formats ORDER BY name",
-            &[],
-        )
+    // Verify the date transformation results using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_formats"),
+        vec![column("name"), column("old_date"), column("new_date")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -1083,12 +1123,13 @@ async fn test_execute_format_transformation_number_formats() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify the number transformation results
-    let rows = db
-        .execute(
-            "SELECT name, old_number, new_number FROM test_formats ORDER BY name",
-            &[],
-        )
+    // Verify the number transformation results using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_formats"),
+        vec![column("name"), column("old_number"), column("new_number")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -1153,12 +1194,13 @@ async fn test_execute_format_transformation_phone_formats() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify the phone transformation results (simplified - exact transformation may vary)
-    let rows = db
-        .execute(
-            "SELECT COUNT(*) as count FROM test_formats WHERE new_phone IS NOT NULL",
-            &[],
-        )
+    // Verify the phone transformation results using database-agnostic helper
+    let (count_sql, count_params) = build_select_query(
+        table("test_formats"),
+        vec![column("COUNT(*) as count")],
+        db.dialect()
+    );
+    let rows = db.execute(&count_sql, &count_params)
         .await
         .expect("Failed to count results");
 
@@ -1200,12 +1242,13 @@ async fn test_execute_format_transformation_currency_formats() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify the currency transformation results
-    let rows = db
-        .execute(
-            "SELECT name, old_currency, new_currency FROM test_formats WHERE name = 'alice'",
-            &[],
-        )
+    // Verify the currency transformation results using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_formats"),
+        vec![column("name"), column("old_currency"), column("new_currency")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 
@@ -1254,12 +1297,13 @@ async fn test_execute_format_transformation_case_transformations() {
     assert_eq!(result.records_processed, 5);
     assert_eq!(result.records_failed, 0);
 
-    // Verify the case transformation results
-    let rows = db
-        .execute(
-            "SELECT mixed_case_text, formatted_text FROM test_formats WHERE name = 'alice'",
-            &[],
-        )
+    // Verify the case transformation results using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("test_formats"),
+        vec![column("mixed_case_text"), column("formatted_text")],
+        db.dialect()
+    );
+    let rows = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query results");
 

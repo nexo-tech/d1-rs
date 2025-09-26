@@ -2,7 +2,13 @@ mod common;
 
 use d1_rs::backends::QueryResult;
 use d1_rs::*;
+use d1_rs::dialects::DatabaseDialect;
 use serde::{Serialize, Deserialize};
+use common::query_helpers::{
+    build_table_exists_query, build_select_tables_by_names_query, build_insert_query, 
+    build_select_query, build_delete_migration_query, table, column
+};
+use sea_query::{Value as SeaValue, Expr, Alias};
 
 /// Test entity for comprehensive type-safe migration testing
 #[derive(Entity, Serialize, Deserialize)]
@@ -337,23 +343,33 @@ async fn test_type_safe_migration_integration_with_runner() {
     assert_eq!(applied.len(), 1);
     assert!(applied[0].contains("create_users_type_safe"));
 
-    // Verify table was created correctly
-    let result = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
+    // Verify table was created correctly using database-agnostic helper
+    let (exists_sql, exists_params) = build_table_exists_query("users", db.dialect());
+    let result = db.execute(&exists_sql, &exists_params)
         .await
         .expect("Failed to query tables");
     assert_eq!(result.rows().len(), 1);
 
-    // Test inserting data into the type-safe created table
-    use serde_json::Value;
-    let insert_sql = "INSERT INTO users (email, name, is_active) VALUES (?, ?, ?)";
-    db.execute(insert_sql, &[
-        Value::String("test@example.com".to_string()),
-        Value::String("Test User".to_string()),
-        Value::Bool(true),
-    ]).await.expect("Failed to insert into type-safe table");
+    // Test inserting data into the type-safe created table using database-agnostic helper
+    let (insert_sql, insert_params) = build_insert_query(
+        table("users"),
+        vec![column("email"), column("name"), column("is_active")],
+        vec![
+            SeaValue::String(Some(Box::new("test@example.com".to_string()))),
+            SeaValue::String(Some(Box::new("Test User".to_string()))),
+            SeaValue::Bool(Some(true)),
+        ],
+        db.dialect()
+    );
+    db.execute(&insert_sql, &insert_params).await.expect("Failed to insert into type-safe table");
 
-    // Verify data was inserted
-    let data = db.execute("SELECT * FROM users", &[])
+    // Verify data was inserted using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("users"),
+        vec![], // Empty means SELECT *
+        db.dialect()
+    );
+    let data = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query users");
     assert_eq!(data.rows().len(), 1);
@@ -381,28 +397,44 @@ async fn test_multiple_type_safe_migrations() {
     let applied = runner.run_pending_migrations(&db).await.expect("Failed to run multiple type-safe migrations");
     assert_eq!(applied.len(), 2);
 
-    // Verify both tables exist
-    let tables = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'posts') ORDER BY name",
-        &[]
-    ).await.expect("Failed to query tables");
+    // Verify both tables exist using database-agnostic helper
+    let (tables_sql, tables_params) = build_select_tables_by_names_query(
+        vec!["users", "posts"],
+        db.dialect()
+    );
+    let tables = db.execute(&tables_sql, &tables_params).await.expect("Failed to query tables");
     assert_eq!(tables.rows().len(), 2);
 
     // Verify foreign key relationship works
     use serde_json::Value;
     
-    // Insert user first
-    db.execute("INSERT INTO users (email) VALUES (?)", &[
-        Value::String("user@example.com".to_string()),
-    ]).await.expect("Failed to insert user");
+    // Insert user first using database-agnostic helper
+    let (user_insert_sql, user_insert_params) = build_insert_query(
+        table("users"),
+        vec![column("email")],
+        vec![SeaValue::String(Some(Box::new("user@example.com".to_string())))],
+        db.dialect()
+    );
+    db.execute(&user_insert_sql, &user_insert_params).await.expect("Failed to insert user");
 
-    // Insert post with foreign key
-    db.execute("INSERT INTO posts (user_id, title) VALUES (?, ?)", &[
-        Value::Number(1.into()),
-        Value::String("Test Post".to_string()),
-    ]).await.expect("Failed to insert post");
+    // Insert post with foreign key using database-agnostic helper
+    let (post_insert_sql, post_insert_params) = build_insert_query(
+        table("posts"),
+        vec![column("user_id"), column("title")],
+        vec![
+            SeaValue::Int(Some(1)),
+            SeaValue::String(Some(Box::new("Test Post".to_string()))),
+        ],
+        db.dialect()
+    );
+    db.execute(&post_insert_sql, &post_insert_params).await.expect("Failed to insert post");
 
-    let posts = db.execute("SELECT * FROM posts", &[])
+    let (posts_sql, posts_params) = build_select_query(
+        table("posts"),
+        vec![], // Empty means SELECT *
+        db.dialect()
+    );
+    let posts = db.execute(&posts_sql, &posts_params)
         .await
         .expect("Failed to query posts");
     assert_eq!(posts.rows().len(), 1);
@@ -451,8 +483,9 @@ async fn test_type_safe_migration_rollback() {
     runner.add_migration(Box::new(migration));
     runner.run_pending_migrations(&db).await.expect("Failed to run migration");
 
-    // Verify table exists
-    let tables = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
+    // Verify table exists using database-agnostic helper
+    let (exists_sql, exists_params) = build_table_exists_query("users", db.dialect());
+    let tables = db.execute(&exists_sql, &exists_params)
         .await
         .expect("Failed to query tables");
     assert_eq!(tables.rows().len(), 1);
@@ -465,12 +498,18 @@ async fn test_type_safe_migration_rollback() {
     if let Err(e) = rollback_result {
         // If rollback fails with serialization error, try manual cleanup and retry
         if e.to_string().contains("premature end of input") {
-            // Manual cleanup that often resolves the issue
-            let _ = db.execute("DELETE FROM _migrations WHERE version = 300", &[]).await;
+            // Manual cleanup using database-agnostic helpers
+            let (delete_sql, delete_params) = build_delete_migration_query(
+                Expr::col(Alias::new("version")).eq(300),
+                db.dialect()
+            );
+            let _ = db.execute(&delete_sql, &delete_params).await;
+            // Note: DROP TABLE is not yet abstracted in helpers, using raw SQL for now
             let _ = db.execute("DROP TABLE IF EXISTS users", &[]).await;
             
-            // Since we manually cleaned up, the test goal is achieved
-            let tables_after = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
+            // Since we manually cleaned up, verify using database-agnostic helper
+            let (exists_sql, exists_params) = build_table_exists_query("users", db.dialect());
+            let tables_after = db.execute(&exists_sql, &exists_params)
                 .await
                 .expect("Failed to query tables after manual rollback");
             assert_eq!(tables_after.rows().len(), 0);
@@ -480,8 +519,9 @@ async fn test_type_safe_migration_rollback() {
         }
     }
 
-    // Verify table was dropped (if rollback succeeded normally)
-    let tables_after = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
+    // Verify table was dropped using database-agnostic helper
+    let (exists_sql, exists_params) = build_table_exists_query("users", db.dialect());
+    let tables_after = db.execute(&exists_sql, &exists_params)
         .await
         .expect("Failed to query tables after rollback");
     assert_eq!(tables_after.rows().len(), 0);

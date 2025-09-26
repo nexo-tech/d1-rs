@@ -1,9 +1,17 @@
+mod common;
+
 use d1_rs::*;
 use d1_rs::auto_migration::{DataMigrator, DataMigrationConfig, FailureStrategy};
 use d1_rs::backends::QueryResult;
+use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
+use common::query_helpers::{
+    build_table_exists_query, build_insert_query, build_select_query, 
+    table, column
+};
+use sea_query::{Value as SeaValue, Expr, Alias};
 
 async fn setup_test_db() -> D1Client {
     D1Client::new_in_memory()
@@ -69,16 +77,19 @@ async fn create_test_tables_for_business_logic(db: &D1Client) {
     ];
 
     for (name, email, created_at) in customers {
-        db.execute(
-            "INSERT INTO customers (name, email, created_at) VALUES (?, ?, ?)",
-            &[
-                Value::String(name.to_string()),
-                Value::String(email.to_string()),
-                Value::String(created_at.to_string()),
+        let (insert_sql, insert_params) = build_insert_query(
+            table("customers"),
+            vec![column("name"), column("email"), column("created_at")],
+            vec![
+                SeaValue::String(Some(Box::new(name.to_string()))),
+                SeaValue::String(Some(Box::new(email.to_string()))),
+                SeaValue::String(Some(Box::new(created_at.to_string()))),
             ],
-        )
-        .await
-        .expect("Failed to insert customer data");
+            db.dialect()
+        );
+        db.execute(&insert_sql, &insert_params)
+            .await
+            .expect("Failed to insert customer data");
     }
 
     // Insert test orders
@@ -363,8 +374,13 @@ async fn test_execute_business_logic_recreation_successful_operation() {
     assert_eq!(result.records_failed, 0);
     assert!(result.errors.is_empty());
     
-    // Verify the business logic was applied correctly
-    let analytics_rows = db.execute("SELECT customer_id, tier, lifetime_value, risk_score FROM customer_analytics ORDER BY customer_id", &[])
+    // Verify the business logic was applied correctly using database-agnostic helper
+    let (select_sql, select_params) = build_select_query(
+        table("customer_analytics"),
+        vec![column("customer_id"), column("tier"), column("lifetime_value"), column("risk_score")],
+        db.dialect()
+    );
+    let analytics_rows = db.execute(&select_sql, &select_params)
         .await.expect("Failed to query analytics results");
     
     assert_eq!(analytics_rows.rows().len(), 4);

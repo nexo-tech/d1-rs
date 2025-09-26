@@ -2,7 +2,14 @@ mod common;
 
 use d1_rs::backends::QueryResult;
 use d1_rs::*;
+use d1_rs::dialects::DatabaseDialect;
 use serde::{Serialize, Deserialize};
+use common::query_helpers::{
+    build_table_exists_query, build_select_migrations_query, build_select_tables_by_names_query,
+    build_insert_migration_lock_query, build_select_migration_lock_query, build_select_query,
+    build_insert_query, table, column
+};
+use sea_query::{Value as SeaValue, Expr, Alias};
 
 // 🚀 REVOLUTIONARY: Type-safe test entities for migration testing
 #[derive(Entity, Serialize, Deserialize)]
@@ -157,15 +164,20 @@ async fn test_revolutionary_type_safe_migration_runner() {
         .await
         .expect("Failed to run migrations");
     
-    // Verify table was created with correct schema
-    let result = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='test_users'", &[])
+    // Verify table was created with correct schema using database-agnostic helper
+    let (exists_sql, exists_params) = build_table_exists_query("test_users", db.dialect());
+    let result = db.execute(&exists_sql, &exists_params)
         .await
         .expect("Failed to query tables");
     
     assert_eq!(result.rows().len(), 1);
     
-    // Verify migration was recorded
-    let migrations = db.execute("SELECT * FROM _migrations WHERE name='create_test_users'", &[])
+    // Verify migration was recorded using database-agnostic helper
+    let (migrations_sql, migrations_params) = build_select_migrations_query(
+        Some(Expr::col(Alias::new("name")).eq("create_test_users")),
+        db.dialect()
+    );
+    let migrations = db.execute(&migrations_sql, &migrations_params)
         .await
         .expect("Failed to query migrations");
     
@@ -432,19 +444,20 @@ async fn test_revolutionary_multiple_type_safe_migrations() {
         .await
         .expect("Failed to run migrations");
     
-    // Verify all tables were created with correct schema
-    let tables = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('test_users', 'posts', 'comments') ORDER BY name",
-        &[]
-    ).await.expect("Failed to query tables");
+    // Verify all tables were created with correct schema using database-agnostic helper
+    let (tables_sql, tables_params) = build_select_tables_by_names_query(
+        vec!["test_users", "posts", "comments"],
+        db.dialect()
+    );
+    let tables = db.execute(&tables_sql, &tables_params)
+        .await.expect("Failed to query tables");
     
     assert_eq!(tables.rows().len(), 3);
     
-    // Verify all migrations were recorded
-    let migrations = db.execute(
-        "SELECT name, version FROM _migrations ORDER BY version",
-        &[]
-    ).await.expect("Failed to query migrations");
+    // Verify all migrations were recorded using database-agnostic helper
+    let (migrations_sql, migrations_params) = build_select_migrations_query(None, db.dialect());
+    let migrations = db.execute(&migrations_sql, &migrations_params)
+        .await.expect("Failed to query migrations");
     
     assert_eq!(migrations.rows().len(), 3);
 }
@@ -470,11 +483,13 @@ async fn test_revolutionary_migration_idempotency() {
         .await
         .expect("Failed to run migrations second time");
     
-    // Verify migration was only recorded once
-    let migrations = db.execute(
-        "SELECT * FROM _migrations WHERE name='idempotent_test'",
-        &[]
-    ).await.expect("Failed to query migrations");
+    // Verify migration was only recorded once using database-agnostic helper
+    let (migrations_sql, migrations_params) = build_select_migrations_query(
+        Some(Expr::col(Alias::new("name")).eq("idempotent_test")),
+        db.dialect()
+    );
+    let migrations = db.execute(&migrations_sql, &migrations_params)
+        .await.expect("Failed to query migrations");
     
     assert_eq!(migrations.rows().len(), 1);
 }
@@ -719,25 +734,40 @@ async fn test_revolutionary_complex_type_safe_schema() {
         .await
         .expect("Failed to run migration");
     
-    // Test inserting data into the complex table
+    // Test inserting data into the complex table using sea-query helpers
     use serde_json::Value;
     
-    let insert_sql = r#"
-        INSERT INTO complex_entitys (email, name, age, score, is_active, metadata)
-        VALUES (?, ?, ?, ?, ?, ?)
-    "#;
+    let (insert_sql, insert_params) = build_insert_query(
+        table("complex_entitys"),
+        vec![
+            column("email"), 
+            column("name"), 
+            column("age"), 
+            column("score"), 
+            column("is_active"), 
+            column("metadata")
+        ],
+        vec![
+            SeaValue::String(Some(Box::new("test@example.com".to_string()))),
+            SeaValue::String(Some(Box::new("Test User".to_string()))),
+            SeaValue::Int(Some(25)),
+            SeaValue::Float(Some(98.5)),
+            SeaValue::Bool(Some(true)),
+            SeaValue::String(Some(Box::new(r#"{"key": "value"}"#.to_string()))),
+        ],
+        db.dialect()
+    );
     
-    db.execute(insert_sql, &[
-        Value::String("test@example.com".to_string()),
-        Value::String("Test User".to_string()),
-        Value::Number(25.into()),
-        Value::Number(serde_json::Number::from_f64(98.5).unwrap()),
-        Value::Bool(true),
-        Value::String(r#"{"key": "value"}"#.to_string()),
-    ]).await.expect("Failed to insert into complex table");
+    db.execute(&insert_sql, &insert_params)
+        .await.expect("Failed to insert into complex table");
     
-    // Verify the data was inserted correctly
-    let result = db.execute("SELECT * FROM complex_entitys", &[])
+    // Verify the data was inserted correctly using sea-query helper
+    let (select_sql, select_params) = build_select_query(
+        table("complex_entitys"),
+        vec![], // Empty means SELECT *
+        db.dialect()
+    );
+    let result = db.execute(&select_sql, &select_params)
         .await
         .expect("Failed to query complex table");
     
@@ -849,8 +879,9 @@ async fn test_revolutionary_migration_lock_safety() {
     
     db.execute(create_lock, &[]).await.expect("Failed to create lock table");
     
-    // Insert lock record
-    db.execute("INSERT INTO _migration_lock (id, locked) VALUES (1, 0)", &[])
+    // Insert lock record using database-agnostic helper
+    let (lock_insert_sql, lock_insert_params) = build_insert_migration_lock_query(db.dialect());
+    db.execute(&lock_insert_sql, &lock_insert_params)
         .await
         .expect("Failed to insert lock record");
     
@@ -865,8 +896,9 @@ async fn test_revolutionary_migration_lock_safety() {
         .await
         .expect("Failed to run migration with lock");
     
-    // Verify lock was released
-    let lock_status = db.execute("SELECT locked FROM _migration_lock WHERE id = 1", &[])
+    // Verify lock was released using database-agnostic helper
+    let (lock_select_sql, lock_select_params) = build_select_migration_lock_query(db.dialect());
+    let lock_status = db.execute(&lock_select_sql, &lock_select_params)
         .await
         .expect("Failed to query lock");
     

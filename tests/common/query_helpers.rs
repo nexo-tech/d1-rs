@@ -428,7 +428,7 @@ pub fn build_table_count_query(dialect: DatabaseDialect) -> (String, Vec<Value>)
     match dialect {
         DatabaseDialect::SQLite => {
             let (sql, params) = Query::select()
-                .expr(Expr::asterisk().count())
+                .expr(Expr::col(Asterisk).count())
                 .from(Alias::new("sqlite_master"))
                 .and_where(Expr::col(Alias::new("type")).eq("table"))
                 .and_where(Expr::col(Alias::new("name")).not_like("sqlite_%"))
@@ -438,7 +438,7 @@ pub fn build_table_count_query(dialect: DatabaseDialect) -> (String, Vec<Value>)
         #[cfg(feature = "postgres")]
         DatabaseDialect::PostgreSQL => {
             let (sql, params) = Query::select()
-                .expr(Expr::asterisk().count())
+                .expr(Expr::col(Asterisk).count())
                 .from((Alias::new("information_schema"), Alias::new("tables")))
                 .and_where(Expr::col(Alias::new("table_schema")).eq("public"))
                 .build(PostgresQueryBuilder);
@@ -447,13 +447,170 @@ pub fn build_table_count_query(dialect: DatabaseDialect) -> (String, Vec<Value>)
         #[cfg(feature = "mysql")]
         DatabaseDialect::MySQL => {
             let (sql, params) = Query::select()
-                .expr(Expr::asterisk().count())
+                .expr(Expr::col(Asterisk).count())
                 .from((Alias::new("information_schema"), Alias::new("tables")))
                 .and_where(Expr::col(Alias::new("table_schema")).eq(Expr::cust("DATABASE()")))
                 .build(MysqlQueryBuilder);
             (sql, convert_sea_query_params_to_json(params.0))
         },
     }
+}
+
+/// Build a database-agnostic query to check for migration table existence
+pub fn build_migration_table_exists_query(dialect: DatabaseDialect) -> (String, Vec<Value>) {
+    build_table_exists_query("_migrations", dialect)
+}
+
+/// Build a database-agnostic query to select migration records
+pub fn build_select_migrations_query(
+    where_clause: Option<SimpleExpr>,
+    dialect: DatabaseDialect
+) -> (String, Vec<Value>) {
+    let mut builder = Query::select();
+    builder
+        .columns([Alias::new("name"), Alias::new("version"), Alias::new("executed_at")])
+        .from(Alias::new("_migrations"));
+    
+    if let Some(where_expr) = where_clause {
+        builder.and_where(where_expr);
+    }
+    
+    let (sql, params) = match dialect {
+        DatabaseDialect::SQLite => builder.build(SqliteQueryBuilder),
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => builder.build(PostgresQueryBuilder),
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => builder.build(MysqlQueryBuilder),
+    };
+    
+    (sql, convert_sea_query_params_to_json(params.0))
+}
+
+/// Build a database-agnostic query to insert migration record
+pub fn build_insert_migration_query(
+    name: &str,
+    version: i64,
+    dialect: DatabaseDialect
+) -> (String, Vec<Value>) {
+    let mut query = Query::insert();
+    query
+        .into_table(Alias::new("_migrations"))
+        .columns([Alias::new("name"), Alias::new("version"), Alias::new("executed_at")])
+        .values_panic([
+            SimpleExpr::Value(SeaValue::String(Some(Box::new(name.to_string())))),
+            SimpleExpr::Value(SeaValue::Int(Some(version as i32))),
+            SimpleExpr::Value(SeaValue::String(Some(Box::new("NOW()".to_string()))))
+        ]);
+    
+    let (sql, params) = match dialect {
+        DatabaseDialect::SQLite => query.build(SqliteQueryBuilder),
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => query.build(PostgresQueryBuilder),
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => query.build(MysqlQueryBuilder),
+    };
+    
+    (sql, convert_sea_query_params_to_json(params.0))
+}
+
+/// Build a database-agnostic query to delete migration records
+pub fn build_delete_migration_query(
+    where_clause: SimpleExpr,
+    dialect: DatabaseDialect
+) -> (String, Vec<Value>) {
+    let mut query = Query::delete();
+    query
+        .from_table(Alias::new("_migrations"))
+        .and_where(where_clause);
+    
+    let (sql, params) = match dialect {
+        DatabaseDialect::SQLite => query.build(SqliteQueryBuilder),
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => query.build(PostgresQueryBuilder),
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => query.build(MysqlQueryBuilder),
+    };
+    
+    (sql, convert_sea_query_params_to_json(params.0))
+}
+
+/// Build a database-agnostic query to select multiple tables by name
+pub fn build_select_tables_by_names_query(
+    table_names: Vec<&str>,
+    dialect: DatabaseDialect
+) -> (String, Vec<Value>) {
+    match dialect {
+        DatabaseDialect::SQLite => {
+            let (sql, params) = Query::select()
+                .column(Alias::new("name"))
+                .from(Alias::new("sqlite_master"))
+                .and_where(Expr::col(Alias::new("type")).eq("table"))
+                .and_where(Expr::col(Alias::new("name")).is_in(table_names))
+                .order_by(Alias::new("name"), Order::Asc)
+                .build(SqliteQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        },
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => {
+            let (sql, params) = Query::select()
+                .column(Alias::new("table_name"))
+                .from((Alias::new("information_schema"), Alias::new("tables")))
+                .and_where(Expr::col(Alias::new("table_name")).is_in(table_names))
+                .and_where(Expr::col(Alias::new("table_schema")).eq("public"))
+                .order_by(Alias::new("table_name"), Order::Asc)
+                .build(PostgresQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        },
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => {
+            let (sql, params) = Query::select()
+                .column(Alias::new("table_name"))
+                .from((Alias::new("information_schema"), Alias::new("tables")))
+                .and_where(Expr::col(Alias::new("table_name")).is_in(table_names))
+                .and_where(Expr::col(Alias::new("table_schema")).eq(Expr::cust("DATABASE()")))
+                .order_by(Alias::new("table_name"), Order::Asc)
+                .build(MysqlQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        },
+    }
+}
+
+/// Build a database-agnostic query to check migration lock
+pub fn build_select_migration_lock_query(dialect: DatabaseDialect) -> (String, Vec<Value>) {
+    let mut query = Query::select();
+    query
+        .column(Alias::new("locked"))
+        .from(Alias::new("_migration_lock"))
+        .and_where(Expr::col(Alias::new("id")).eq(1));
+    
+    let (sql, params) = match dialect {
+        DatabaseDialect::SQLite => query.build(SqliteQueryBuilder),
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => query.build(PostgresQueryBuilder),
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => query.build(MysqlQueryBuilder),
+    };
+    
+    (sql, convert_sea_query_params_to_json(params.0))
+}
+
+/// Build a database-agnostic query to insert migration lock
+pub fn build_insert_migration_lock_query(dialect: DatabaseDialect) -> (String, Vec<Value>) {
+    let mut query = Query::insert();
+    query
+        .into_table(Alias::new("_migration_lock"))
+        .columns([Alias::new("id"), Alias::new("locked")])
+        .values_panic([SimpleExpr::Value(SeaValue::Int(Some(1))), SimpleExpr::Value(SeaValue::Int(Some(0)))]);
+    
+    let (sql, params) = match dialect {
+        DatabaseDialect::SQLite => query.build(SqliteQueryBuilder),
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => query.build(PostgresQueryBuilder),
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => query.build(MysqlQueryBuilder),
+    };
+    
+    (sql, convert_sea_query_params_to_json(params.0))
 }
 
 /// Helper to create table identifiers
