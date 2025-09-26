@@ -2,7 +2,6 @@ mod common;
 
 use d1_rs::backends::QueryResult;
 use d1_rs::*;
-use d1_rs::dialects::DatabaseDialect;
 use serde::{Serialize, Deserialize};
 use common::query_helpers::{
     build_table_exists_query, build_select_migrations_query, build_select_tables_by_names_query,
@@ -735,7 +734,6 @@ async fn test_revolutionary_complex_type_safe_schema() {
         .expect("Failed to run migration");
     
     // Test inserting data into the complex table using sea-query helpers
-    use serde_json::Value;
     
     let (insert_sql, insert_params) = build_insert_query(
         table("complex_entitys"),

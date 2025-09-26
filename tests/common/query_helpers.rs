@@ -52,7 +52,7 @@ pub fn convert_sea_query_params_to_json(params: Vec<SeaValue>) -> Vec<Value> {
 /// Build a database-agnostic COUNT query
 pub fn build_count_query(table: DynIden, dialect: DatabaseDialect) -> (String, Vec<Value>) {
     let mut query = Query::select();
-    query.expr(Expr::count(Expr::col(Asterisk))).from(table);
+    query.expr_as(Expr::col(Asterisk).count(), Alias::new("count")).from(table);
     
     let (sql, params) = match dialect {
         DatabaseDialect::SQLite => query.build(SqliteQueryBuilder),
@@ -73,7 +73,7 @@ pub fn build_count_query_with_where(
     dialect: DatabaseDialect
 ) -> (String, Vec<Value>) {
     let mut query = Query::select();
-    query.expr(Expr::count(Expr::col(Asterisk))).from(table);
+    query.expr_as(Expr::col(Asterisk).count(), Alias::new("count")).from(table);
     
     for condition in conditions {
         query.and_where(condition);
@@ -294,6 +294,7 @@ pub fn build_create_table_query_simple(
 }
 
 /// Build a database-agnostic CREATE TABLE query with custom columns using sea-query
+#[allow(dead_code)]
 pub fn build_create_table_query_with_columns(
     table_name: &str,
     columns: Vec<(&str, ColumnType, bool)>, // (name, type, not_null)
@@ -388,6 +389,7 @@ pub fn build_drop_table_query(
 }
 
 /// Build a database-agnostic table existence check query using sea-query
+#[allow(dead_code)]
 pub fn build_table_exists_query(
     table_name: &str,
     dialect: DatabaseDialect
@@ -424,6 +426,7 @@ pub fn build_table_exists_query(
 }
 
 /// Build a database-agnostic query to count all tables using sea-query
+#[allow(dead_code)]
 pub fn build_table_count_query(dialect: DatabaseDialect) -> (String, Vec<Value>) {
     match dialect {
         DatabaseDialect::SQLite => {
@@ -457,11 +460,13 @@ pub fn build_table_count_query(dialect: DatabaseDialect) -> (String, Vec<Value>)
 }
 
 /// Build a database-agnostic query to check for migration table existence
+#[allow(dead_code)]
 pub fn build_migration_table_exists_query(dialect: DatabaseDialect) -> (String, Vec<Value>) {
     build_table_exists_query("_migrations", dialect)
 }
 
 /// Build a database-agnostic query to select migration records
+#[allow(dead_code)]
 pub fn build_select_migrations_query(
     where_clause: Option<SimpleExpr>,
     dialect: DatabaseDialect
@@ -487,6 +492,7 @@ pub fn build_select_migrations_query(
 }
 
 /// Build a database-agnostic query to insert migration record
+#[allow(dead_code)]
 pub fn build_insert_migration_query(
     name: &str,
     version: i64,

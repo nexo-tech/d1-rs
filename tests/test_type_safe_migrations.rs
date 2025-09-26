@@ -2,7 +2,6 @@ mod common;
 
 use d1_rs::backends::QueryResult;
 use d1_rs::*;
-use d1_rs::dialects::DatabaseDialect;
 use serde::{Serialize, Deserialize};
 use common::query_helpers::{
     build_table_exists_query, build_select_tables_by_names_query, build_insert_query, 
@@ -406,7 +405,6 @@ async fn test_multiple_type_safe_migrations() {
     assert_eq!(tables.rows().len(), 2);
 
     // Verify foreign key relationship works
-    use serde_json::Value;
     
     // Insert user first using database-agnostic helper
     let (user_insert_sql, user_insert_params) = build_insert_query(

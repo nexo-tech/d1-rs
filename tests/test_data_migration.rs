@@ -3,15 +3,14 @@ mod common;
 use d1_rs::auto_migration::{DataMigrationConfig, DataMigrator, FailureStrategy};
 use d1_rs::*;
 use d1_rs::backends::QueryResult;
-use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 use common::query_helpers::{
-    build_table_exists_query, build_insert_query, build_select_query, 
-    table, column
+    build_insert_query, build_select_query, 
+    build_count_query, table, column
 };
-use sea_query::{Value as SeaValue, Expr, Alias};
+use sea_query::{Value as SeaValue};
 
 async fn setup_test_db() -> D1Client {
     D1Client::new_in_memory()
@@ -462,9 +461,8 @@ async fn test_execute_aggregation_batch_processing() {
     assert_eq!(result.records_failed, 0);
 
     // Verify all records were processed correctly despite batching using database-agnostic helper
-    let (count_sql, count_params) = build_select_query(
+    let (count_sql, count_params) = build_count_query(
         table("test_scores"),
-        vec![column("COUNT(*) as count")],
         db.dialect()
     );
     let rows = db.execute(&count_sql, &count_params)
@@ -857,9 +855,8 @@ async fn test_execute_value_mapping_batch_processing() {
     assert_eq!(result.records_failed, 0);
 
     // Verify all records were processed correctly despite batching using database-agnostic helper
-    let (count_sql, count_params) = build_select_query(
+    let (count_sql, count_params) = build_count_query(
         table("test_users"),
-        vec![column("COUNT(*) as count")],
         db.dialect()
     );
     let rows = db.execute(&count_sql, &count_params)
@@ -1195,9 +1192,8 @@ async fn test_execute_format_transformation_phone_formats() {
     assert_eq!(result.records_failed, 0);
 
     // Verify the phone transformation results using database-agnostic helper
-    let (count_sql, count_params) = build_select_query(
+    let (count_sql, count_params) = build_count_query(
         table("test_formats"),
-        vec![column("COUNT(*) as count")],
         db.dialect()
     );
     let rows = db.execute(&count_sql, &count_params)

@@ -3,15 +3,14 @@ mod common;
 use d1_rs::*;
 use d1_rs::auto_migration::{DataMigrator, DataMigrationConfig, FailureStrategy};
 use d1_rs::backends::QueryResult;
-use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 use common::query_helpers::{
-    build_table_exists_query, build_insert_query, build_select_query, 
+    build_insert_query, build_select_query, 
     table, column
 };
-use sea_query::{Value as SeaValue, Expr, Alias};
+use sea_query::{Value as SeaValue};
 
 async fn setup_test_db() -> D1Client {
     D1Client::new_in_memory()

@@ -3,15 +3,14 @@ mod common;
 use d1_rs::auto_migration::{DataMigrationConfig, DataMigrator, FailureStrategy};
 use d1_rs::*;
 use d1_rs::backends::QueryResult;
-use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 use common::query_helpers::{
-    build_table_exists_query, build_insert_query, build_select_query, 
-    table, column
+    build_insert_query, build_select_query, 
+    build_select_query_with_where, build_count_query, build_count_query_with_where, table, column
 };
-use sea_query::{Value as SeaValue, Expr, Alias};
+use sea_query::{Value as SeaValue};
 
 async fn setup_test_db() -> D1Client {
     D1Client::new_in_memory()
@@ -231,9 +230,8 @@ async fn test_execute_format_transformation_batch_processing() {
     assert_eq!(result.records_failed, 0);
 
     // Verify all records were processed correctly despite batching using database-agnostic helper
-    let (count_sql, count_params) = build_select_query(
+    let (count_sql, count_params) = build_count_query(
         table("test_formats"),
-        vec![column("COUNT(*) as count")],
         db.dialect()
     );
     let rows = db.execute(&count_sql, &count_params)
@@ -605,9 +603,8 @@ async fn test_execute_direct_fk_copy_batch_processing() {
     assert!(result.errors.is_empty());
 
     // Verify all records were processed correctly using database-agnostic helper
-    let (count_sql, count_params) = build_select_query(
+    let (count_sql, count_params) = build_count_query(
         table("test_large_orders"),
-        vec![column("COUNT(*) as count")],
         db.dialect()
     );
     let count_result = db.execute(&count_sql, &count_params)
@@ -1147,9 +1144,9 @@ async fn test_execute_id_mapping_migration_batch_processing() {
         .any(|w| w.contains("could not be mapped")));
 
     // Verify correct number of mapped vs unmapped records using database-agnostic helper
-    let (mapped_sql, mapped_params) = build_select_query(
+    let (mapped_sql, mapped_params) = build_count_query_with_where(
         table("test_products"),
-        vec![column("COUNT(*) as count")],
+        vec![Expr::col(Alias::new("new_category_id")).is_not_null()],
         db.dialect()
     );
     let mapped_count = db.execute(&mapped_sql, &mapped_params)
@@ -1162,9 +1159,9 @@ async fn test_execute_id_mapping_migration_batch_processing() {
         }
     }
 
-    let (unmapped_sql, unmapped_params) = build_select_query(
+    let (unmapped_sql, unmapped_params) = build_count_query_with_where(
         table("test_products"),
-        vec![column("COUNT(*) as count")],
+        vec![Expr::col(Alias::new("new_category_id")).is_null()],
         db.dialect()
     );
     let unmapped_count = db.execute(&unmapped_sql, &unmapped_params)
@@ -1178,9 +1175,10 @@ async fn test_execute_id_mapping_migration_batch_processing() {
     }
 
     // Verify a sample mapping using database-agnostic helper
-    let (sample_sql, sample_params) = build_select_query(
+    let (sample_sql, sample_params) = build_select_query_with_where(
         table("test_products"),
         vec![column("old_category_id"), column("new_category_id")],
+        vec![Expr::col(Alias::new("old_category_id")).eq(1)],
         db.dialect()
     );
     let sample_result = db.execute(&sample_sql, &sample_params)
