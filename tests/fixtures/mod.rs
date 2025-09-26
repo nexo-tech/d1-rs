@@ -673,6 +673,7 @@ macro_rules! with_test_fixture {
 mod tests {
     use super::*;
     use d1_rs::backends::SQLiteBackend;
+    use crate::common::query_helpers::{build_count_query, build_select_query, table, column};
     
     #[tokio::test]
     async fn test_fixture_manager_creation() {
@@ -690,17 +691,26 @@ mod tests {
         
         manager.setup_fixture("users_posts", &backend).await?;
         
-        // Verify users were inserted
-        let result = backend.execute_query("SELECT COUNT(*) as count FROM users", &[]).await?;
+        // Verify users were inserted using sea-query helper
+        let (sql, params) = build_count_query(table("users"), backend.dialect());
+        let result = backend.execute_query(&sql, &params).await?;
         let rows = result.into_rows();
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].get("count"), Some(&serde_json::Value::Number(2.into())));
+        // Try different possible count column names
+        let count_value = rows[0].get("count")
+            .or_else(|| rows[0].get("COUNT(*)"))
+            .or_else(|| rows[0].get("COUNT"));
+        assert_eq!(count_value, Some(&serde_json::Value::Number(2.into())));
         
-        // Verify posts were inserted
-        let result = backend.execute_query("SELECT COUNT(*) as count FROM posts", &[]).await?;
+        // Verify posts were inserted using sea-query helper
+        let (sql, params) = build_count_query(table("posts"), backend.dialect());
+        let result = backend.execute_query(&sql, &params).await?;
         let rows = result.into_rows();
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].get("count"), Some(&serde_json::Value::Number(1.into())));
+        let count_value = rows[0].get("count")
+            .or_else(|| rows[0].get("COUNT(*)"))
+            .or_else(|| rows[0].get("COUNT"));
+        assert_eq!(count_value, Some(&serde_json::Value::Number(1.into())));
         
         manager.teardown_fixture("users_posts", &backend).await?;
         Ok(())
@@ -713,14 +723,23 @@ mod tests {
         
         manager.setup_fixture("type_testing", &backend).await?;
         
-        // Verify test data was inserted
-        let result = backend.execute_query("SELECT COUNT(*) as count FROM type_test", &[]).await?;
+        // Verify test data was inserted using sea-query helper
+        let (sql, params) = build_count_query(table("type_test"), backend.dialect());
+        let result = backend.execute_query(&sql, &params).await?;
         let rows = result.into_rows();
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].get("count"), Some(&serde_json::Value::Number(1.into())));
+        let count_value = rows[0].get("count")
+            .or_else(|| rows[0].get("COUNT(*)"))
+            .or_else(|| rows[0].get("COUNT"));
+        assert_eq!(count_value, Some(&serde_json::Value::Number(1.into())));
         
-        // Verify specific data
-        let result = backend.execute_query("SELECT text_col, integer_col FROM type_test WHERE id = 1", &[]).await?;
+        // Verify specific data using sea-query helper
+        let (sql, params) = build_select_query(
+            table("type_test"), 
+            vec![column("text_col"), column("integer_col")], 
+            backend.dialect()
+        );
+        let result = backend.execute_query(&sql, &params).await?;
         let rows = result.into_rows();
         assert_eq!(rows.len(), 1);
         
@@ -736,11 +755,15 @@ mod tests {
         // Test with smaller dataset for speed
         manager.setup_fixture("performance_large", &backend).await?;
         
-        // Verify large dataset was inserted
-        let result = backend.execute_query("SELECT COUNT(*) as count FROM performance_test", &[]).await?;
+        // Verify large dataset was inserted using sea-query helper
+        let (sql, params) = build_count_query(table("performance_test"), backend.dialect());
+        let result = backend.execute_query(&sql, &params).await?;
         let rows = result.into_rows();
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].get("count"), Some(&serde_json::Value::Number(10000.into())));
+        let count_value = rows[0].get("count")
+            .or_else(|| rows[0].get("COUNT(*)"))
+            .or_else(|| rows[0].get("COUNT"));
+        assert_eq!(count_value, Some(&serde_json::Value::Number(10000.into())));
         
         manager.teardown_fixture("performance_large", &backend).await?;
         Ok(())

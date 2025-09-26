@@ -22,6 +22,14 @@ use std::env;
 use tokio::time::{timeout, Duration};
 use serde_json::Value;
 
+/// Import query helpers for database-agnostic operations
+use crate::common::query_helpers::{
+    build_count_query, build_create_table_query_simple, 
+    build_insert_query, table, column
+};
+use sea_query::Value as SeaValue;
+use crate::common::query_helpers::QueryAssertions;
+
 /// Unified backend wrapper that can hold any of the three supported database backends
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -401,8 +409,15 @@ impl TestDatabaseManager {
             loop {
                 match self.create_client(dialect).await {
                     Ok(client) => {
-                        // Try a simple query to verify connection
-                        match client.execute_query("SELECT 1 as test", &[]).await {
+                        // Use a simple literal select for connection test
+                        let test_sql = match dialect {
+                            DatabaseDialect::SQLite => "SELECT 1 as test",
+                            #[cfg(feature = "postgres")]
+                            DatabaseDialect::PostgreSQL => "SELECT 1 as test",
+                            #[cfg(feature = "mysql")]
+                            DatabaseDialect::MySQL => "SELECT 1 as test",
+                        };
+                        match client.execute_query(test_sql, &[]).await {
                             Ok(result) => {
                                 // Verify we got the expected result
                                 let rows = result.into_rows();
@@ -628,31 +643,27 @@ impl TestUtils {
     
     /// Verify table exists in database (database-agnostic)
     pub async fn table_exists(client: &AnyDatabaseBackend, table_name: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        // This would need to be implemented with sea-query for database-agnostic table checking
-        // For now, use a simple approach that works across databases
-        let result = client.execute_query(
-            &format!("SELECT COUNT(*) as count FROM {} LIMIT 0", table_name), 
-            &[]
-        ).await;
-        
-        match result {
+        // Use database-agnostic table existence check from query_helpers
+        match QueryAssertions::assert_table_exists(client, table_name, client.dialect()).await {
             Ok(_) => Ok(true),
-            Err(_) => Ok(false), // Table doesn't exist if query fails
+            Err(_) => Ok(false), // Table doesn't exist if assertion fails
         }
     }
     
     /// Get row count from table (database-agnostic)
     pub async fn get_row_count(client: &AnyDatabaseBackend, table_name: &str) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
-        let result = client.execute_query(
-            &format!("SELECT COUNT(*) as count FROM {}", table_name), 
-            &[]
-        ).await
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+        let (sql, params) = build_count_query(table(table_name), client.dialect());
+        let result = client.execute_query(&sql, &params).await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         
-        // Extract count from the first row
+        // Extract count from the first row (try different possible count column names)
         let rows = result.into_rows();
         if let Some(row) = rows.first() {
-            if let Some(Value::Number(n)) = row.get("count") {
+            // Try different possible count column names
+            let count_value = row.get("count")
+                .or_else(|| row.get("COUNT(*)"))
+                .or_else(|| row.get("COUNT"));
+            if let Some(Value::Number(n)) = count_value {
                 if let Some(count) = n.as_i64() {
                     return Ok(count);
                 }
@@ -719,8 +730,9 @@ mod tests {
         let manager = TestDatabaseManager::new();
         let client = manager.create_client(DatabaseDialect::SQLite).await?;
         
-        // Verify we can execute a simple query
-        let result = client.execute_query("SELECT 1 as test", &[]).await
+        // Verify we can execute a simple query using literal for connection test
+        let test_sql = "SELECT 1 as test"; // Simple connection test query
+        let result = client.execute_query(test_sql, &[]).await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         let rows = result.into_rows();
         assert_eq!(rows.len(), 1);
@@ -746,7 +758,8 @@ mod tests {
         // Test that runs successfully on all databases
         manager.run_on_all_databases(|client, dialect| async move {
             println!("Testing on {:?}", dialect);
-            let result = client.execute_query("SELECT 1 as test", &[]).await
+            let test_sql = "SELECT 1 as test"; // Simple connection test query
+            let result = client.execute_query(test_sql, &[]).await
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             let rows = result.into_rows();
             assert!(!rows.is_empty());
@@ -760,11 +773,10 @@ mod tests {
     async fn test_utils_table_operations() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = TestUtils::setup_test_client_with_manager(DatabaseDialect::SQLite).await?;
         
-        // Create a test table
-        client.execute_schema(
-            "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)"
-        ).await
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+        // Create a test table using sea-query helper
+        let (create_sql, _create_params) = build_create_table_query_simple("test_table", client.dialect());
+        client.execute_schema(&create_sql).await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         
         // Verify table exists
         assert!(TestUtils::table_exists(&client, "test_table").await?);
@@ -772,12 +784,15 @@ mod tests {
         // Check initial row count
         assert_eq!(TestUtils::get_row_count(&client, "test_table").await?, 0);
         
-        // Insert data and verify count
-        client.execute_query(
-            "INSERT INTO test_table (name) VALUES (?)", 
-            &[Value::String("test".to_string())]
-        ).await
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+        // Insert data and verify count using sea-query helper
+        let (insert_sql, insert_params) = build_insert_query(
+            table("test_table"),
+            vec![column("name")],
+            vec![SeaValue::String(Some(Box::new("test".to_string())))],
+            client.dialect()
+        );
+        client.execute_query(&insert_sql, &insert_params).await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         
         assert_eq!(TestUtils::get_row_count(&client, "test_table").await?, 1);
         
