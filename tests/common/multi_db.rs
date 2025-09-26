@@ -9,6 +9,7 @@ use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum TestDatabase {
     SQLite,
     #[cfg(feature = "postgres")]

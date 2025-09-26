@@ -196,41 +196,95 @@ impl TestDatabaseManager {
     /// Initialize with all available databases
     /// 
     /// Automatically detects available database backends based on environment variables
-    /// and feature flags. Always includes SQLite for baseline testing.
+    /// and feature flags. Respects DATABASE_BACKENDS environment variable for enforcement.
+    /// If DATABASE_BACKENDS is set, only the specified backend will be available.
     pub fn new() -> Self {
         #[allow(unused_mut)]
         let mut manager = Self {
-            available_databases: vec![DatabaseDialect::SQLite], // Always available
+            available_databases: vec![],
             connection_urls: HashMap::new(),
         };
         
-        // Check for PostgreSQL availability
-        #[allow(unused_variables)]
-        if let Ok(postgres_url) = env::var("POSTGRES_TEST_URL") {
-            #[cfg(feature = "postgres")]
-            {
-                manager.available_databases.push(DatabaseDialect::PostgreSQL);
-                manager.connection_urls.insert(DatabaseDialect::PostgreSQL, postgres_url);
-                println!("🐘 PostgreSQL test database configured");
-            }
-            #[cfg(not(feature = "postgres"))]
-            {
-                println!("⚠️ PostgreSQL URL found but postgres feature not enabled");
+        // Check if DATABASE_BACKENDS environment variable is set for enforcement
+        if let Ok(enforced_backend) = env::var("DATABASE_BACKENDS") {
+            match enforced_backend.as_str() {
+                "sqlite" => {
+                    manager.available_databases.push(DatabaseDialect::SQLite);
+                    println!("🔒 Environment enforcement: SQLite-only mode");
+                },
+                "postgres" => {
+                    #[cfg(feature = "postgres")]
+                    {
+                        if let Ok(postgres_url) = env::var("POSTGRES_TEST_URL") {
+                            manager.available_databases.push(DatabaseDialect::PostgreSQL);
+                            manager.connection_urls.insert(DatabaseDialect::PostgreSQL, postgres_url);
+                            println!("🔒 Environment enforcement: PostgreSQL-only mode");
+                        } else {
+                            println!("⚠️ PostgreSQL enforcement requested but POSTGRES_TEST_URL not set");
+                        }
+                    }
+                    #[cfg(not(feature = "postgres"))]
+                    {
+                        println!("⚠️ PostgreSQL enforcement requested but postgres feature not enabled");
+                    }
+                },
+                "mysql" => {
+                    #[cfg(feature = "mysql")]
+                    {
+                        if let Ok(mysql_url) = env::var("MYSQL_TEST_URL") {
+                            manager.available_databases.push(DatabaseDialect::MySQL);
+                            manager.connection_urls.insert(DatabaseDialect::MySQL, mysql_url);
+                            println!("🔒 Environment enforcement: MySQL-only mode");
+                        } else {
+                            println!("⚠️ MySQL enforcement requested but MYSQL_TEST_URL not set");
+                        }
+                    }
+                    #[cfg(not(feature = "mysql"))]
+                    {
+                        println!("⚠️ MySQL enforcement requested but mysql feature not enabled");
+                    }
+                },
+                _ => {
+                    println!("⚠️ Unknown DATABASE_BACKENDS value: {}. Falling back to auto-detection.", enforced_backend);
+                }
             }
         }
         
-        // Check for MySQL availability  
-        #[allow(unused_variables)]
-        if let Ok(mysql_url) = env::var("MYSQL_TEST_URL") {
-            #[cfg(feature = "mysql")]
-            {
-                manager.available_databases.push(DatabaseDialect::MySQL);
-                manager.connection_urls.insert(DatabaseDialect::MySQL, mysql_url);
-                println!("🐬 MySQL test database configured");
+        // If no enforcement or enforcement failed, fall back to auto-detection
+        if manager.available_databases.is_empty() {
+            println!("🔍 Auto-detecting available databases...");
+            
+            // Always include SQLite for baseline testing
+            manager.available_databases.push(DatabaseDialect::SQLite);
+            
+            // Check for PostgreSQL availability
+            #[allow(unused_variables)]
+            if let Ok(postgres_url) = env::var("POSTGRES_TEST_URL") {
+                #[cfg(feature = "postgres")]
+                {
+                    manager.available_databases.push(DatabaseDialect::PostgreSQL);
+                    manager.connection_urls.insert(DatabaseDialect::PostgreSQL, postgres_url);
+                    println!("🐘 PostgreSQL test database configured");
+                }
+                #[cfg(not(feature = "postgres"))]
+                {
+                    println!("⚠️ PostgreSQL URL found but postgres feature not enabled");
+                }
             }
-            #[cfg(not(feature = "mysql"))]
-            {
-                println!("⚠️ MySQL URL found but mysql feature not enabled");
+            
+            // Check for MySQL availability  
+            #[allow(unused_variables)]
+            if let Ok(mysql_url) = env::var("MYSQL_TEST_URL") {
+                #[cfg(feature = "mysql")]
+                {
+                    manager.available_databases.push(DatabaseDialect::MySQL);
+                    manager.connection_urls.insert(DatabaseDialect::MySQL, mysql_url);
+                    println!("🐬 MySQL test database configured");
+                }
+                #[cfg(not(feature = "mysql"))]
+                {
+                    println!("⚠️ MySQL URL found but mysql feature not enabled");
+                }
             }
         }
         
@@ -616,9 +670,46 @@ mod tests {
     async fn test_database_manager_initialization() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let manager = TestDatabaseManager::new();
         
-        // Should always have SQLite available
-        assert!(manager.is_available(DatabaseDialect::SQLite));
+        // Should have at least one database available
         assert!(!manager.available_dialects().is_empty());
+        
+        // Check based on environment enforcement or auto-detection
+        if let Ok(enforced_backend) = std::env::var("DATABASE_BACKENDS") {
+            match enforced_backend.as_str() {
+                "sqlite" => {
+                    assert!(manager.is_available(DatabaseDialect::SQLite));
+                    #[cfg(feature = "postgres")]
+                    assert!(!manager.is_available(DatabaseDialect::PostgreSQL));
+                    #[cfg(feature = "mysql")]
+                    assert!(!manager.is_available(DatabaseDialect::MySQL));
+                },
+                "postgres" => {
+                    #[cfg(feature = "postgres")]
+                    {
+                        assert!(manager.is_available(DatabaseDialect::PostgreSQL));
+                        assert!(!manager.is_available(DatabaseDialect::SQLite));
+                        #[cfg(feature = "mysql")]
+                        assert!(!manager.is_available(DatabaseDialect::MySQL));
+                    }
+                },
+                "mysql" => {
+                    #[cfg(feature = "mysql")]
+                    {
+                        assert!(manager.is_available(DatabaseDialect::MySQL));
+                        assert!(!manager.is_available(DatabaseDialect::SQLite));
+                        #[cfg(feature = "postgres")]
+                        assert!(!manager.is_available(DatabaseDialect::PostgreSQL));
+                    }
+                },
+                _ => {
+                    // Invalid enforcement - should fall back to auto-detection
+                    assert!(manager.is_available(DatabaseDialect::SQLite));
+                }
+            }
+        } else {
+            // No enforcement - SQLite should always be available
+            assert!(manager.is_available(DatabaseDialect::SQLite));
+        }
         
         Ok(())
     }

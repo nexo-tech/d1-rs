@@ -206,6 +206,7 @@ async fn test_cross_database_complex_queries() {
 /// Cross-database constraint validation
 /// Ensures database constraints work consistently across all backends
 #[tokio::test]
+#[allow(unused_variables)]
 async fn test_cross_database_constraint_validation() {
     let runner = MultiDatabaseTestRunner::new();
     

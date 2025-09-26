@@ -9,23 +9,58 @@
 
 mod common;
 
-use common::database_manager::{TestDatabaseManager, AnyDatabaseBackend};
+use common::database_manager::TestDatabaseManager;
 use d1_rs::dialects::DatabaseDialect;
 use d1_rs::backends::{DatabaseBackend, QueryResult};
-use serde_json::Value;
 
 /// Test that TestDatabaseManager correctly identifies available databases
 #[tokio::test]
 async fn test_database_manager_initialization() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let manager = TestDatabaseManager::new();
     
-    // SQLite should always be available
-    assert!(manager.is_available(DatabaseDialect::SQLite));
+    // Should have at least one database available
     assert!(!manager.available_dialects().is_empty());
     
-    // Check that we can get SQLite client
-    let sqlite_client = manager.create_client(DatabaseDialect::SQLite).await?;
-    assert!(sqlite_client.dialect() == DatabaseDialect::SQLite);
+    // Check based on environment enforcement or auto-detection
+    if let Ok(enforced_backend) = std::env::var("DATABASE_BACKENDS") {
+        match enforced_backend.as_str() {
+            "sqlite" => {
+                assert!(manager.is_available(DatabaseDialect::SQLite));
+                // Check that we can get SQLite client
+                let sqlite_client = manager.create_client(DatabaseDialect::SQLite).await?;
+                assert!(sqlite_client.dialect() == DatabaseDialect::SQLite);
+            },
+            "postgres" => {
+                #[cfg(feature = "postgres")]
+                {
+                    assert!(manager.is_available(DatabaseDialect::PostgreSQL));
+                    // Check that we can get PostgreSQL client
+                    let postgres_client = manager.create_client(DatabaseDialect::PostgreSQL).await?;
+                    assert!(postgres_client.dialect() == DatabaseDialect::PostgreSQL);
+                }
+            },
+            "mysql" => {
+                #[cfg(feature = "mysql")]
+                {
+                    assert!(manager.is_available(DatabaseDialect::MySQL));
+                    // Check that we can get MySQL client
+                    let mysql_client = manager.create_client(DatabaseDialect::MySQL).await?;
+                    assert!(mysql_client.dialect() == DatabaseDialect::MySQL);
+                }
+            },
+            _ => {
+                // Invalid enforcement - should fall back to auto-detection
+                assert!(manager.is_available(DatabaseDialect::SQLite));
+                let sqlite_client = manager.create_client(DatabaseDialect::SQLite).await?;
+                assert!(sqlite_client.dialect() == DatabaseDialect::SQLite);
+            }
+        }
+    } else {
+        // No enforcement - SQLite should always be available
+        assert!(manager.is_available(DatabaseDialect::SQLite));
+        let sqlite_client = manager.create_client(DatabaseDialect::SQLite).await?;
+        assert!(sqlite_client.dialect() == DatabaseDialect::SQLite);
+    }
     
     // Verify configuration validation works
     manager.validate_configuration().await?;

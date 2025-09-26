@@ -757,8 +757,6 @@ pub struct MySQLIntrospector;
 #[cfg(test)]
 #[cfg(feature = "mysql")]
 mod tests {
-    use super::*;
-    use crate::dialects::DatabaseDialect;
     
     #[tokio::test]
     async fn test_mysql_introspector_basic_functionality() {

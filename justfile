@@ -3,6 +3,8 @@ test:
     @echo "🚀 Running ALL D1 ORM tests with nextest (fast parallel execution)..."
     @pkill -f "rustc|cargo" > /dev/null 2>&1 || true
     @sleep 1
+    @export DATABASE_BACKENDS=sqlite && \
+    export TEST_DATABASE_TYPE="sqlite" && \
     cargo nextest run --target $(rustc -vV | sed -n 's|host: ||p')
 
 # Legacy cargo test (slower but sometimes needed for compatibility)
@@ -122,7 +124,8 @@ clean-test-dbs:
 # Run tests on PostgreSQL
 test-postgres: start-postgres-only
     @echo "🐘 Running tests on PostgreSQL..."
-    @export POSTGRES_TEST_URL="postgresql://d1rs_user:d1rs_pass@localhost:5434/d1rs_test" && \
+    @export DATABASE_BACKENDS=postgres && \
+    export POSTGRES_TEST_URL="postgresql://d1rs_user:d1rs_pass@localhost:5434/d1rs_test" && \
     export DATABASE_URL="$$POSTGRES_TEST_URL" && \
     export TEST_DATABASE_TYPE="postgres" && \
     cargo nextest run --target $(rustc -vV | sed -n 's|host: ||p') --features postgres
@@ -131,7 +134,8 @@ test-postgres: start-postgres-only
 # Run tests on MySQL  
 test-mysql: start-mysql-only
     @echo "🐬 Running tests on MySQL..."
-    @export MYSQL_TEST_URL="mysql://d1rs_user:d1rs_pass@localhost:3308/d1rs_test" && \
+    @export DATABASE_BACKENDS=mysql && \
+    export MYSQL_TEST_URL="mysql://d1rs_user:d1rs_pass@localhost:3308/d1rs_test" && \
     export DATABASE_URL="$$MYSQL_TEST_URL" && \
     export TEST_DATABASE_TYPE="mysql" && \
     cargo nextest run --target $(rustc -vV | sed -n 's|host: ||p') --features mysql
