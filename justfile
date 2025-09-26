@@ -93,6 +93,19 @@ start-postgres-only:
     @timeout 30 bash -c 'until pg_isready -h localhost -p 5434 -U d1rs_user >/dev/null 2>&1; do echo "⏳ PostgreSQL starting..."; sleep 1; done' || (echo "❌ PostgreSQL failed to start" && exit 1)
     @echo "✅ PostgreSQL ready!"
 
+# Start MySQL only (for MySQL tests)
+start-mysql-only:
+    @echo "🐳 Starting MySQL container..."
+    @if ! docker ps | grep -q "d1rs-mysql-test"; then \
+        echo "📦 Starting MySQL container..."; \
+        docker compose -f docker-compose.test.yml up -d mysql-test; \
+    else \
+        echo "📦 MySQL already running, skipping start..."; \
+    fi
+    @echo "🐬 Checking MySQL readiness..."
+    @timeout 30 bash -c 'while ! docker exec d1rs-mysql-test mysqladmin ping -h localhost -u d1rs_user -pd1rs_pass --silent >/dev/null 2>&1; do echo "⏳ MySQL starting..."; sleep 2; done' || (echo "❌ MySQL failed to start" && exit 1)
+    @echo "✅ MySQL ready!"
+
 # Stop all test databases
 stop-test-dbs:
     @echo "🛑 Stopping test database containers..."
@@ -116,7 +129,7 @@ test-postgres: start-postgres-only
     @echo "✅ PostgreSQL tests completed!"
 
 # Run tests on MySQL  
-test-mysql: start-test-dbs
+test-mysql: start-mysql-only
     @echo "🐬 Running tests on MySQL..."
     @export MYSQL_TEST_URL="mysql://d1rs_user:d1rs_pass@localhost:3308/d1rs_test" && \
     export DATABASE_URL="$$MYSQL_TEST_URL" && \

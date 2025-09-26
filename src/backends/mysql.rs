@@ -515,29 +515,65 @@ mod mysql_impl {
             if let Some(url) = get_test_url() {
                 let backend = MySQLBackend::new(&url).await.expect("Failed to create backend");
                 
-                // Create a test table
-                let create_result = backend
-                    .execute_schema("CREATE TEMPORARY TABLE test_mysql_schema (id INT PRIMARY KEY, name VARCHAR(255))")
-                    .await;
+                use sea_query::{MysqlQueryBuilder, Query, Table, ColumnDef, Alias};
+                
+                // Create a test table using sea-query
+                let table_name = format!("test_mysql_schema_{}", chrono::Utc::now().timestamp_millis());
+                let create_table = Table::create()
+                    .table(Alias::new(&table_name))
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Alias::new("id"))
+                            .integer()
+                            .not_null()
+                            .primary_key()
+                    )
+                    .col(
+                        ColumnDef::new(Alias::new("name"))
+                            .string_len(255)
+                    )
+                    .build(MysqlQueryBuilder);
+                    
+                let create_result = backend.execute_schema(&create_table).await;
                 assert!(create_result.is_ok(), "Schema creation failed: {:?}", create_result.err());
 
-                // Insert some data
-                let insert_result = backend
-                    .execute_query("INSERT INTO test_mysql_schema (id, name) VALUES (?, ?)", 
-                                   &[Value::Number(Number::from(1)), Value::String("test".to_string())])
-                    .await;
+                // Insert data using sea-query
+                let (insert_sql, insert_values) = Query::insert()
+                    .into_table(Alias::new(&table_name))
+                    .columns([Alias::new("id"), Alias::new("name")])
+                    .values_panic([1.into(), "test".into()])
+                    .build(MysqlQueryBuilder);
+                    
+                // Convert sea-query Values to d1-rs Value array
+                let insert_params: Vec<Value> = insert_values.0.into_iter().map(|v| match v {
+                    sea_query::Value::Int(Some(i)) => Value::Number(Number::from(i)),
+                    sea_query::Value::String(Some(s)) => Value::String(s.to_string()),
+                    _ => Value::Null,
+                }).collect();
+                    
+                let insert_result = backend.execute_query(&insert_sql, &insert_params).await;
                 assert!(insert_result.is_ok(), "Insert failed: {:?}", insert_result.err());
 
-                // Query the data back
-                let select_result = backend
-                    .execute_query("SELECT * FROM test_mysql_schema", &[])
-                    .await;
+                // Query the data back using sea-query
+                let (select_sql, _) = Query::select()
+                    .from(Alias::new(&table_name))
+                    .columns([Alias::new("id"), Alias::new("name")])
+                    .build(MysqlQueryBuilder);
+                    
+                let select_result = backend.execute_query(&select_sql, &[]).await;
                 assert!(select_result.is_ok(), "Select failed: {:?}", select_result.err());
 
                 let query_result = select_result.unwrap();
                 assert_eq!(query_result.len(), 1);
                 assert!(query_result.has_column("id"));
                 assert!(query_result.has_column("name"));
+                
+                // Clean up using sea-query
+                let drop_stmt = Table::drop()
+                    .table(Alias::new(&table_name))
+                    .if_exists()
+                    .build(MysqlQueryBuilder);
+                let _ = backend.execute_schema(&drop_stmt).await;
             }
         }
 

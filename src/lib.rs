@@ -898,7 +898,7 @@ mod backend_exports_tests {
     fn test_mysql_client_type_alias() {
         // Test that MySQLClient is properly defined when mysql feature is enabled
         let _type_name = std::any::type_name::<MySQLClient>();
-        assert_eq!(_type_name, "d1_rs::db::DatabaseClient<d1_rs::backends::mysql::MySQLBackend>");
+        assert_eq!(_type_name, "d1_rs::db::DatabaseClient<d1_rs::backends::mysql::mysql_impl::MySQLBackend>");
     }
 
     #[test]

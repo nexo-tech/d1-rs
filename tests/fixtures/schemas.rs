@@ -8,6 +8,12 @@ use sea_query::{
     ColumnDef, ForeignKey, ForeignKeyAction,
     Index, Iden, Table, SqliteQueryBuilder,
 };
+
+#[cfg(feature = "postgres")]
+use sea_query::PostgresQueryBuilder;
+
+#[cfg(feature = "mysql")]
+use sea_query::MysqlQueryBuilder;
 use serde_json::Value;
 
 /// Schema builder for test fixtures
@@ -399,7 +405,13 @@ impl TestSchemaBuilder {
             },
         };
         
-        let sql = table.build(SqliteQueryBuilder);
+        let sql = match self.dialect {
+            DatabaseDialect::SQLite => table.build(SqliteQueryBuilder),
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => table.build(PostgresQueryBuilder),
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => table.build(MysqlQueryBuilder),
+        };
         (sql, vec![])
     }
     

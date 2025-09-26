@@ -414,13 +414,15 @@ pub mod utils {
             DatabaseDialect::MySQL => {
                 if upper_type.starts_with("VARCHAR") || upper_type.starts_with("TEXT") || upper_type.starts_with("CHAR") {
                     "TEXT".to_string()
+                } else if upper_type == "TINYINT(1)" {
+                    "BOOLEAN".to_string()
                 } else if upper_type.starts_with("INT") || upper_type.starts_with("BIGINT") || upper_type.starts_with("SMALLINT") || upper_type.starts_with("TINYINT") {
                     "INTEGER".to_string()
                 } else if upper_type.starts_with("FLOAT") || upper_type.starts_with("DOUBLE") || upper_type.starts_with("DECIMAL") {
                     "REAL".to_string()
                 } else if upper_type.starts_with("BLOB") || upper_type.starts_with("BINARY") {
                     "BLOB".to_string()
-                } else if upper_type.starts_with("BOOLEAN") || upper_type.starts_with("BOOL") || upper_type == "TINYINT(1)" {
+                } else if upper_type.starts_with("BOOLEAN") || upper_type.starts_with("BOOL") {
                     "BOOLEAN".to_string()
                 } else if upper_type.starts_with("TIMESTAMP") || upper_type.starts_with("DATETIME") || upper_type.starts_with("DATE") || upper_type.starts_with("TIME") {
                     "DATETIME".to_string()
