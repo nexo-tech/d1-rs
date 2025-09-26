@@ -1,0 +1,818 @@
+tests/test_migrations.rs:    let result = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='test_users'", &[])
+tests/test_migrations.rs:    let migrations = db.execute("SELECT * FROM _migrations WHERE name='create_test_users'", &[])
+tests/test_migrations.rs:        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('test_users', 'posts', 'comments') ORDER BY name",
+tests/test_migrations.rs:        "SELECT name, version FROM _migrations ORDER BY version",
+tests/test_migrations.rs:        "SELECT * FROM _migrations WHERE name='idempotent_test'",
+tests/test_migrations.rs:        INSERT INTO complex_entitys (email, name, age, score, is_active, metadata)
+tests/test_migrations.rs:    let result = db.execute("SELECT * FROM complex_entitys", &[])
+tests/test_migrations.rs:        CREATE TABLE IF NOT EXISTS _migrations (
+tests/test_migrations.rs:        CREATE TABLE IF NOT EXISTS _migration_lock (
+tests/test_migrations.rs:    db.execute("INSERT INTO _migration_lock (id, locked) VALUES (1, 0)", &[])
+tests/test_migrations.rs:    let lock_status = db.execute("SELECT locked FROM _migration_lock WHERE id = 1", &[])
+tests/test_performance_benchmarks.rs:        // Benchmark simple SELECT query
+tests/test_performance_benchmarks.rs:        let result = client.query("SELECT COUNT(*) as count FROM test_users", &[]).await;
+tests/test_performance_benchmarks.rs:            SELECT 
+tests/test_performance_benchmarks.rs:        // Benchmark CREATE TABLE operation
+tests/test_performance_benchmarks.rs:                "CREATE TABLE perf_test (
+tests/test_performance_benchmarks.rs:                "CREATE TABLE perf_test (
+tests/test_performance_benchmarks.rs:                "CREATE TABLE perf_test (
+tests/test_performance_benchmarks.rs:        // Benchmark CREATE INDEX operation
+tests/test_performance_benchmarks.rs:        let index_result = client.execute("CREATE INDEX idx_perf_name ON perf_test(name)", &[]).await;
+tests/test_performance_benchmarks.rs:        // Benchmark DROP operations
+tests/test_performance_benchmarks.rs:        let _ = client.execute("DROP INDEX idx_perf_name", &[]).await;
+tests/test_performance_benchmarks.rs:        let _ = client.execute("DROP TABLE perf_test", &[]).await;
+tests/test_performance_benchmarks.rs:        println!("🏗️  {} schema ops: CREATE {:?}, INDEX {:?}, DROP {:?}", 
+tests/test_performance_benchmarks.rs:        let result = seeder.client.query("SELECT * FROM test_users ORDER BY id", &[]).await;
+tests/test_performance_benchmarks.rs:                "SELECT COUNT(*) as count FROM test_users"
+tests/test_performance_benchmarks.rs:                "SELECT COUNT(*) as count FROM test_posts"
+tests/test_performance_benchmarks.rs:        ("COUNT users", "SELECT COUNT(*) FROM test_users"),
+tests/test_performance_benchmarks.rs:        ("SELECT users", "SELECT id, name, email FROM test_users LIMIT 10"),
+tests/test_performance_benchmarks.rs:        ("SELECT with WHERE", "SELECT * FROM test_users WHERE id < 100"),
+tests/test_performance_benchmarks.rs:        ("Complex query", "SELECT COUNT(*) as user_count FROM test_users WHERE created_at > '2020-01-01'"),
+tests/test_schema.rs:            "SELECT name FROM sqlite_master WHERE type='table' AND name='users'",
+tests/test_schema.rs:        INSERT INTO users (email, name, is_active, is_verified, age, metadata) 
+tests/test_schema.rs:        .execute("SELECT * FROM users", &[])
+tests/test_schema.rs:            "INSERT INTO posts (is_published, is_featured) VALUES (?, ?)",
+tests/test_schema.rs:        .execute("SELECT * FROM posts", &[])
+tests/test_relation_filtering.rs:    // SELECT * FROM users WHERE EXISTS (SELECT 1 FROM posts WHERE posts.user_id = users.id)
+tests/test_data_migration.rs:        CREATE TABLE test_scores (
+tests/test_data_migration.rs:            "INSERT INTO test_scores (student_name, math_score, english_score, science_score) VALUES (?, ?, ?, ?)",
+tests/test_data_migration.rs:    let rows = db.execute("SELECT student_name, total_score, math_score, english_score, science_score FROM test_scores ORDER BY student_name", &[])
+tests/test_data_migration.rs:    let rows = db.execute("SELECT student_name, average_score, math_score, english_score, science_score FROM test_scores ORDER BY student_name", &[])
+tests/test_data_migration.rs:    let rows = db.execute("SELECT student_name, max_score, min_score, math_score, english_score, science_score FROM test_scores ORDER BY student_name", &[])
+tests/test_data_migration.rs:            "SELECT student_name, score_summary FROM test_scores WHERE student_name = 'Alice'",
+tests/test_data_migration.rs:            "SELECT COUNT(*) as count FROM test_scores WHERE total_score IS NOT NULL",
+tests/test_data_migration.rs:        CREATE TABLE test_users (
+tests/test_data_migration.rs:            "INSERT INTO test_users (username, old_status, old_role, department_code) VALUES (?, ?, ?, ?)",
+tests/test_data_migration.rs:            "SELECT username, old_status, new_status FROM test_users ORDER BY username",
+tests/test_data_migration.rs:            "SELECT username, old_role, new_role FROM test_users ORDER BY username",
+tests/test_data_migration.rs:            "SELECT department_code, department_name FROM test_users LIMIT 1",
+tests/test_data_migration.rs:            "SELECT COUNT(*) as count FROM test_users WHERE new_status IS NOT NULL",
+tests/test_data_migration.rs:            "SELECT new_status FROM test_users WHERE username = 'alice'",
+tests/test_data_migration.rs:        CREATE TABLE test_formats (
+tests/test_data_migration.rs:            "INSERT INTO test_formats (name, old_date, old_time, old_number, old_phone, old_currency, mixed_case_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
+tests/test_data_migration.rs:            "SELECT name, old_date, new_date FROM test_formats ORDER BY name",
+tests/test_data_migration.rs:            "SELECT name, old_number, new_number FROM test_formats ORDER BY name",
+tests/test_data_migration.rs:            "SELECT COUNT(*) as count FROM test_formats WHERE new_phone IS NOT NULL",
+tests/test_data_migration.rs:            "SELECT name, old_currency, new_currency FROM test_formats WHERE name = 'alice'",
+tests/test_data_migration.rs:            "SELECT mixed_case_text, formatted_text FROM test_formats WHERE name = 'alice'",
+tests/test_introspector_debug.rs:    let sql = "CREATE TABLE debug_table (id INTEGER PRIMARY KEY, name TEXT)";
+tests/test_introspector_debug.rs:    let create_sql = "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)";
+tests/test_introspector_debug.rs:    let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
+tests/test_simple_introspector.rs:    let sql = "CREATE TABLE simple_test (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
+tests/test_simple_introspector.rs:    let sql = "CREATE TABLE column_test (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, is_active INTEGER DEFAULT 1)";
+tests/test_auto_schema_client.rs:            "SELECT name FROM sqlite_master WHERE type='table' AND name='users'",
+tests/test_auto_schema_client.rs:            "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'",
+tests/test_auto_schema_client.rs:            "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table'",
+tests/test_introspector_pragma.rs:        CREATE TABLE pragma_index_test (
+tests/test_introspector_pragma.rs:    let index_sql = "CREATE INDEX idx_name_age ON pragma_index_test(name, age)";
+tests/test_introspector_pragma.rs:    let unique_index_sql = "CREATE UNIQUE INDEX idx_email_unique ON pragma_index_test(email)";
+tests/test_introspector_pragma.rs:        CREATE TABLE pragma_users (
+tests/test_introspector_pragma.rs:        CREATE TABLE pragma_posts (
+tests/test_introspector_pragma.rs:            FOREIGN KEY (user_id) REFERENCES pragma_users(id) ON DELETE CASCADE ON UPDATE SET NULL,
+tests/test_introspector_pragma.rs:            FOREIGN KEY (category_id) REFERENCES pragma_users(id) ON DELETE SET NULL
+tests/test_introspector_pragma.rs:        CREATE TABLE pragma_comprehensive (
+tests/test_introspector_pragma.rs:        CREATE TABLE introspect_users (
+tests/test_introspector_pragma.rs:        CREATE TABLE introspect_posts (
+tests/test_introspector_pragma.rs:            FOREIGN KEY (user_id) REFERENCES introspect_users(id) ON DELETE CASCADE
+tests/test_introspector_pragma.rs:        CREATE TABLE introspect_tags (
+tests/test_introspector_pragma.rs:        CREATE TABLE introspect_post_tags (
+tests/test_introspector_pragma.rs:            FOREIGN KEY (post_id) REFERENCES introspect_posts(id) ON DELETE CASCADE,
+tests/test_introspector_pragma.rs:            FOREIGN KEY (tag_id) REFERENCES introspect_tags(id) ON DELETE CASCADE
+tests/test_introspector_pragma.rs:    db.execute("CREATE INDEX idx_posts_user_published ON introspect_posts(user_id, is_published)", &[]).await.unwrap();
+tests/test_introspector_pragma.rs:    db.execute("CREATE UNIQUE INDEX idx_tags_name ON introspect_tags(name)", &[]).await.unwrap();
+tests/test_data/mod.rs:        let user_result = backend.execute("SELECT COUNT(*) as count FROM users", &[]).await?;
+tests/test_data/mod.rs:        let post_result = backend.execute("SELECT COUNT(*) as count FROM posts", &[]).await?;
+tests/test_data/mod.rs:            "SELECT u.name, p.title FROM users u JOIN posts p ON u.id = p.user_id", 
+tests/test_data/mod.rs:            "SELECT name, email FROM users WHERE id = 1", 
+tests/test_data/mod.rs:            "SELECT name FROM sqlite_master WHERE type='table' AND name='users'", 
+tests/test_data/mod.rs:    let count_result = backend.execute("SELECT COUNT(*) as count FROM type_test", &[]).await?;
+tests/test_data/mod.rs:        "SELECT text_col, integer_col, real_col, boolean_col FROM type_test WHERE id = 1", 
+tests/test_data/mod.rs:    let count_result = backend.execute("SELECT COUNT(*) as count FROM performance_test", &[]).await?;
+tests/test_data/mod.rs:        "SELECT COUNT(*) as count FROM performance_test WHERE value < 100", 
+tests/test_data/mod.rs:        "SELECT COUNT(*) as count FROM performance_test WHERE value = 42", 
+tests/test_data/mod.rs:    let users_result = backend.execute("SELECT COUNT(*) FROM users", &[]).await?;
+tests/test_data/mod.rs:    let types_result = backend.execute("SELECT COUNT(*) FROM type_test", &[]).await?;
+tests/test_data/mod.rs:    let types_result_after = backend.execute("SELECT COUNT(*) FROM type_test", &[]).await?;
+tests/test_data/mod.rs:    let users_result_after = backend.execute("SELECT COUNT(*) FROM users", &[]).await;
+tests/test_data/mod.rs:            ("CREATE TABLE IF NOT EXISTS simple_test (id INTEGER PRIMARY KEY, name TEXT)".to_string(), vec![]),
+tests/test_data/mod.rs:            ("DROP TABLE IF EXISTS simple_test".to_string(), vec![]),
+tests/test_data/mod.rs:    let result = backend.execute("SELECT COUNT(*) FROM simple_test", &[]).await?;
+tests/test_data/mod.rs:            let result = backend.execute("SELECT COUNT(*) FROM users", &[]).await?;
+tests/test_data/mod.rs:                "SELECT u.name, p.title FROM users u JOIN posts p ON u.id = p.user_id",
+tests/test_data/mod.rs:                "SELECT text_col, integer_col, boolean_col FROM type_test WHERE id = 1",
+tests/test_data/mod.rs:        ("COUNT query", "SELECT COUNT(*) FROM performance_test"),
+tests/test_data/mod.rs:        ("Filtered COUNT", "SELECT COUNT(*) FROM performance_test WHERE value < 500"),
+tests/test_data/mod.rs:        ("Indexed query", "SELECT COUNT(*) FROM performance_test WHERE value = 42"),
+tests/test_data/mod.rs:        ("Range query", "SELECT COUNT(*) FROM performance_test WHERE value BETWEEN 100 AND 200"),
+tests/test_data/mod.rs:                "SELECT COUNT(*) FROM users WHERE name = ?",
+tests/test_data/mod.rs:        let verify_result = backend.execute("SELECT COUNT(*) FROM users", &[]).await?;
+tests/test_data/mod.rs:                "INSERT INTO users (name, email, created_at) VALUES (?, ?, '2024-01-01 00:00:00')",
+tests/test_data/mod.rs:                "SELECT name, email FROM users WHERE email = ?",
+tests/test_data_migration_3.rs:        CREATE TABLE customers (
+tests/test_data_migration_3.rs:        CREATE TABLE customer_analytics (
+tests/test_data_migration_3.rs:        CREATE TABLE orders (
+tests/test_data_migration_3.rs:            "INSERT INTO customers (name, email, created_at) VALUES (?, ?, ?)",
+tests/test_data_migration_3.rs:            "INSERT INTO orders (customer_id, amount, status, created_at) VALUES (?, ?, ?, ?)",
+tests/test_data_migration_3.rs:            "INSERT INTO customer_analytics SELECT * FROM customers",
+tests/test_data_migration_3.rs:            "INSERT INTO customer_analytics SELECT * FROM customers",
+tests/test_data_migration_3.rs:    // Test dangerous DROP pattern
+tests/test_data_migration_3.rs:            "DROP TABLE customers", // Dangerous query
+tests/test_data_migration_3.rs:    // Test dangerous DELETE pattern
+tests/test_data_migration_3.rs:            "DELETE FROM customers WHERE id = 1", // Dangerous query
+tests/test_data_migration_3.rs:            "INSERT INTO customer_analytics SELECT 1, 1, 'bronze', 100.0, 1, '2023-01-01'",
+tests/test_data_migration_3.rs:            "SELECT COUNT(*) FROM customers",
+tests/test_data_migration_3.rs:        "SELECT 1",  // Query doesn't reference either table
+tests/test_data_migration_3.rs:        INSERT INTO customer_analytics (customer_id, tier, lifetime_value, risk_score, created_at)
+tests/test_data_migration_3.rs:        SELECT 
+tests/test_data_migration_3.rs:    let analytics_rows = db.execute("SELECT customer_id, tier, lifetime_value, risk_score FROM customer_analytics ORDER BY customer_id", &[])
+tests/test_data_migration_3.rs:        INSERT INTO customer_analytics (customer_id, tier, lifetime_value, risk_score, created_at)
+tests/test_data_migration_3.rs:        SELECT 
+tests/test_data_migration_3.rs:        "SELECT COUNT(*) FROM (SELECT customer_id FROM customer_analytics GROUP BY customer_id HAVING COUNT(*) > 1)".to_string(),
+tests/test_data_migration_3.rs:        "SELECT COUNT(*) FROM customer_analytics WHERE tier NOT IN ('bronze', 'silver', 'gold')".to_string(),
+tests/test_data_migration_3.rs:        "SELECT COUNT(*) FROM customer_analytics WHERE lifetime_value < 0".to_string(),
+tests/test_data_migration_3.rs:        "SELECT COUNT(*) FROM customer_analytics WHERE risk_score NOT IN (0, 1)".to_string(),
+tests/test_data_migration_3.rs:        INSERT INTO customer_analytics (customer_id, tier, lifetime_value, risk_score, created_at)
+tests/test_data_migration_3.rs:        "SELECT COUNT(*) FROM (SELECT customer_id FROM customer_analytics GROUP BY customer_id HAVING COUNT(*) > 1)".to_string(),
+tests/test_data_migration_3.rs:        "SELECT COUNT(*) FROM customer_analytics WHERE tier NOT IN ('bronze', 'silver', 'gold')".to_string(),
+tests/test_data_migration_3.rs:        "SELECT COUNT(*) FROM customer_analytics WHERE lifetime_value < 0".to_string(),
+tests/test_data_migration_3.rs:        CREATE TABLE companies (
+tests/test_data_migration_3.rs:        CREATE TABLE departments (
+tests/test_data_migration_3.rs:        CREATE TABLE employees (
+tests/test_data_migration_3.rs:        CREATE TABLE projects (
+tests/test_data_migration_3.rs:            "INSERT INTO companies (name, status) VALUES (?, ?)",
+tests/test_data_migration_3.rs:            "INSERT INTO departments (name, company_id, budget) VALUES (?, ?, ?)",
+tests/test_data_migration_3.rs:            "INSERT INTO employees (name, department_id, salary) VALUES (?, ?, ?)",
+tests/test_data_migration_3.rs:            "INSERT INTO projects (name, department_id, lead_employee_id, status) VALUES (?, ?, ?, ?)",
+tests/test_data_migration_3.rs:    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());  // Empty table name
+tests/test_data_migration_3.rs:    // Test dangerous DROP pattern
+tests/test_data_migration_3.rs:    cascade_rules.insert("companies".to_string(), "DROP TABLE companies".to_string());  // Dangerous query
+tests/test_data_migration_3.rs:    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("non_existent_table".to_string(), "UPDATE non_existent_table SET status = 'completed'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("unused_table".to_string(), "UPDATE unused_table SET status = 'completed'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed' WHERE migration_status = 'pending'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("departments".to_string(), "UPDATE departments SET migration_status = 'completed' WHERE migration_status = 'pending'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("employees".to_string(), "UPDATE employees SET migration_status = 'completed' WHERE migration_status = 'pending'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("projects".to_string(), "UPDATE projects SET migration_status = 'completed' WHERE migration_status = 'pending'".to_string());
+tests/test_data_migration_3.rs:    let companies_result = db.execute("SELECT COUNT(*) as count FROM companies WHERE migration_status = 'completed'", &[])
+tests/test_data_migration_3.rs:    let departments_result = db.execute("SELECT COUNT(*) as count FROM departments WHERE migration_status = 'completed'", &[])
+tests/test_data_migration_3.rs:    let employees_result = db.execute("SELECT COUNT(*) as count FROM employees WHERE migration_status = 'completed'", &[])
+tests/test_data_migration_3.rs:    let projects_result = db.execute("SELECT COUNT(*) as count FROM projects WHERE migration_status = 'completed'", &[])
+tests/test_data_migration_3.rs:    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("departments".to_string(), "UPDATE non_existent_column SET invalid = 'fail'".to_string());  // This will fail
+tests/test_data_migration_3.rs:    cascade_rules.insert("employees".to_string(), "UPDATE employees SET migration_status = 'completed'".to_string());
+tests/test_data_migration_3.rs:    cascade_rules.insert("companies".to_string(), "UPDATE companies SET migration_status = 'completed'".to_string());
+tests/test_type_safe_migrations.rs:    assert!(sql.contains("CREATE TABLE users"));
+tests/test_type_safe_migrations.rs:    let result = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
+tests/test_type_safe_migrations.rs:    let insert_sql = "INSERT INTO users (email, name, is_active) VALUES (?, ?, ?)";
+tests/test_type_safe_migrations.rs:    let data = db.execute("SELECT * FROM users", &[])
+tests/test_type_safe_migrations.rs:        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'posts') ORDER BY name",
+tests/test_type_safe_migrations.rs:    db.execute("INSERT INTO users (email) VALUES (?)", &[
+tests/test_type_safe_migrations.rs:    db.execute("INSERT INTO posts (user_id, title) VALUES (?, ?)", &[
+tests/test_type_safe_migrations.rs:    let posts = db.execute("SELECT * FROM posts", &[])
+tests/test_type_safe_migrations.rs:    let tables = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
+tests/test_type_safe_migrations.rs:            let _ = db.execute("DELETE FROM _migrations WHERE version = 300", &[]).await;
+tests/test_type_safe_migrations.rs:            let _ = db.execute("DROP TABLE IF EXISTS users", &[]).await;
+tests/test_type_safe_migrations.rs:            let tables_after = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
+tests/test_type_safe_migrations.rs:    let tables_after = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", &[])
+tests/test_boolean_conversion.rs:    let sql = "INSERT INTO test_users (email, name, is_active) VALUES (?, ?, ?)";
+tests/test_boolean_conversion.rs:    let raw_result = db.execute("SELECT * FROM test_users WHERE email = ?", &[
+tests/test_boolean_conversion.rs:    let sql = "INSERT INTO test_users (email, name, is_active) VALUES (?, ?, ?)";
+tests/test_data_migration_2.rs:        CREATE TABLE test_formats (
+tests/test_data_migration_2.rs:            "INSERT INTO test_formats (name, old_date, old_time, old_number, old_phone, old_currency, mixed_case_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
+tests/test_data_migration_2.rs:            "SELECT COUNT(*) as count FROM test_formats WHERE formatted_text IS NOT NULL",
+tests/test_data_migration_2.rs:        CREATE TABLE test_trim (
+tests/test_data_migration_2.rs:            "INSERT INTO test_trim (padded_text) VALUES (?)",
+tests/test_data_migration_2.rs:            "SELECT padded_text, trimmed_text FROM test_trim ORDER BY id",
+tests/test_data_migration_2.rs:        CREATE TABLE test_orders (
+tests/test_data_migration_2.rs:            "INSERT INTO test_orders (customer_id, old_product_id, order_date, amount) VALUES (?, ?, ?, ?)",
+tests/test_data_migration_2.rs:            "SELECT old_product_id, new_product_id FROM test_orders ORDER BY id",
+tests/test_data_migration_2.rs:        CREATE TABLE test_large_orders (
+tests/test_data_migration_2.rs:            "INSERT INTO test_large_orders (old_supplier_id, order_value) VALUES (?, ?)",
+tests/test_data_migration_2.rs:            "SELECT COUNT(*) as count FROM test_large_orders WHERE new_supplier_id IS NOT NULL",
+tests/test_data_migration_2.rs:            "SELECT old_supplier_id, new_supplier_id FROM test_large_orders WHERE id = 1",
+tests/test_data_migration_2.rs:        CREATE TABLE test_users (
+tests/test_data_migration_2.rs:        CREATE TABLE departments (
+tests/test_data_migration_2.rs:        CREATE TABLE department_id_mapping (
+tests/test_data_migration_2.rs:            "INSERT INTO departments (id, name, code) VALUES (?, ?, ?)",
+tests/test_data_migration_2.rs:            "INSERT INTO department_id_mapping (old_id, new_id) VALUES (?, ?)",
+tests/test_data_migration_2.rs:            "INSERT INTO test_users (name, old_department_id, email) VALUES (?, ?, ?)",
+tests/test_data_migration_2.rs:    db.execute("DELETE FROM department_id_mapping", &[])
+tests/test_data_migration_2.rs:            "SELECT name, old_department_id, new_department_id FROM test_users ORDER BY id",
+tests/test_data_migration_2.rs:        CREATE TABLE test_products (
+tests/test_data_migration_2.rs:        CREATE TABLE categories (
+tests/test_data_migration_2.rs:        CREATE TABLE category_id_mapping (
+tests/test_data_migration_2.rs:            "INSERT INTO test_products (name, old_category_id, price) VALUES (?, ?, ?)",
+tests/test_data_migration_2.rs:            "INSERT INTO category_id_mapping (old_id, new_id) VALUES (?, ?)",
+tests/test_data_migration_2.rs:            "SELECT COUNT(*) as count FROM test_products WHERE new_category_id IS NOT NULL",
+tests/test_data_migration_2.rs:            "SELECT COUNT(*) as count FROM test_products WHERE new_category_id IS NULL",
+tests/test_data_migration_2.rs:    let sample_result = db.execute("SELECT old_category_id, new_category_id FROM test_products WHERE old_category_id = 1 LIMIT 1", &[])
+tests/test_pragma_debug.rs:    let sql = "CREATE TABLE pragma_test (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, is_active INTEGER DEFAULT 1)";
+tests/test_pragma_debug.rs:    let sql = "SELECT * FROM pragma_table_info('pragma_test')";
+tests/test_data_migration_6.rs:        "CREATE TABLE custom_source_users (
+tests/test_data_migration_6.rs:        "INSERT INTO custom_source_users (id, name, age, email) VALUES 
+tests/test_data_migration_6.rs:        "CREATE TABLE custom_target_users (
+tests/test_data_migration_6.rs:            "SELECT * FROM custom_source_users",
+tests/test_data_migration_6.rs:                "INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)"
+tests/test_data_migration_6.rs:                "INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)"
+tests/test_data_migration_6.rs:            "SELECT * FROM custom_source_users",
+tests/test_data_migration_6.rs:                "INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)"
+tests/test_data_migration_6.rs:            "SELECT * FROM custom_source_users",
+tests/test_data_migration_6.rs:            "SELECT * FROM custom_source_users",
+tests/test_data_migration_6.rs:                "INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)"
+tests/test_data_migration_6.rs:        "INSERT INTO custom_target_users (id, transformed_name, doubled_age, original_email, computed_field) VALUES ($id, $name, $age, $email, $computed_field)".to_string()
+tests/test_data_migration_6.rs:            "SELECT * FROM custom_source_users",
+tests/test_data_migration_6.rs:        "SELECT id, transformed_name, doubled_age, original_email, computed_field FROM custom_target_users ORDER BY id",
+tests/test_data_migration_6.rs:        "INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)".to_string(),
+tests/test_data_migration_6.rs:            "SELECT * FROM custom_source_users",
+tests/test_data_migration_6.rs:        .execute("SELECT COUNT(*) as count FROM custom_target_users", &[])
+tests/test_data_migration_6.rs:        vec!["INSERT INTO non_existent_table (id, name) VALUES ($id, $name)".to_string()];
+tests/test_data_migration_6.rs:            "SELECT * FROM custom_source_users",
+tests/test_data_migration_6.rs:        "INSERT INTO custom_target_users (id, transformed_name) VALUES ($id, $name)".to_string(),
+tests/test_data_migration_6.rs:            "SELECT * FROM non_existent_source_table",
+tests/test_data_migration_6.rs:            "INSERT INTO custom_source_users (id, name, age, email) VALUES (?, ?, ?, ?)",
+tests/test_data_migration_6.rs:        "INSERT INTO custom_target_users (id, transformed_name, doubled_age, original_email, computed_field) VALUES ($id, $name, $age, $email, $computed_field)".to_string()
+tests/test_data_migration_6.rs:            "SELECT * FROM custom_source_users ORDER BY id",
+tests/test_data_migration_6.rs:        .execute("SELECT COUNT(*) as count FROM custom_target_users", &[])
+tests/test_data_migration_6.rs:        "INSERT INTO custom_target_users (id, transformed_name, doubled_age, original_email, computed_field) VALUES ($id, $name, $age, $email, $computed_field)".to_string()
+tests/test_data_migration_6.rs:            "SELECT * FROM custom_source_users WHERE id = 1",
+tests/test_data_migration_6.rs:        "SELECT id, transformed_name, doubled_age, original_email, computed_field FROM custom_target_users WHERE id = 1",
+tests/test_data_migration_6.rs:        "CREATE TABLE builtin_source_users (
+tests/test_data_migration_6.rs:        "INSERT INTO builtin_source_users (id, full_name, age_str, status_code, display_name) VALUES 
+tests/test_data_migration_6.rs:        "CREATE TABLE builtin_target_users (
+tests/test_data_migration_6.rs:        "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:        &["INSERT INTO builtin_target_users (id, age) VALUES ($id, $age_str)".to_string()]
+tests/test_data_migration_6.rs:        &["INSERT INTO builtin_target_users (id, age) VALUES ($id, $age_str)".to_string()]
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            &["INSERT INTO builtin_target_users (id, age) VALUES ($id, $age_str)".to_string()],
+tests/test_data_migration_6.rs:        "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            &["INSERT INTO builtin_target_users (id, age) VALUES ($id, $age_str)".to_string()],
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            &["INSERT INTO builtin_target_users (id, age) VALUES ($id, $age_str)".to_string()],
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            &["INSERT INTO builtin_target_users (id, age) VALUES ($id, $age_str)".to_string()],
+tests/test_data_migration_6.rs:        vec!["INSERT INTO builtin_target_users (id, age) VALUES ($id, $age)".to_string()];
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:        .execute("SELECT id, age FROM builtin_target_users ORDER BY id", &[])
+tests/test_data_migration_6.rs:        "INSERT INTO builtin_target_users (id, status_desc) VALUES ($id, $status_desc)".to_string(),
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            "SELECT id, status_desc FROM builtin_target_users ORDER BY id",
+tests/test_data_migration_6.rs:        "INSERT INTO builtin_target_users (id, first_name, last_name) VALUES ($id, $first_name, $last_name)".to_string()
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            "SELECT id, first_name, last_name FROM builtin_target_users ORDER BY id",
+tests/test_data_migration_6.rs:        "INSERT INTO builtin_target_users (id, aggregated_info) VALUES ($id, $aggregated_info)"
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            "SELECT id, aggregated_info FROM builtin_target_users ORDER BY id",
+tests/test_data_migration_6.rs:        "INSERT INTO builtin_target_users (id, normalized_name) VALUES ($id, $normalized_name)"
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            "SELECT id, normalized_name FROM builtin_target_users ORDER BY id",
+tests/test_data_migration_6.rs:        vec!["INSERT INTO builtin_target_users (id, age) VALUES ($id, $age_str)".to_string()];
+tests/test_data_migration_6.rs:            "SELECT * FROM non_existent_table",
+tests/test_data_migration_6.rs:        vec!["INSERT INTO non_existent_table (id, age) VALUES ($id, $age)".to_string()];
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            &["INSERT INTO builtin_target_users (id) VALUES ($id)".to_string()],
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users",
+tests/test_data_migration_6.rs:            &["INSERT INTO builtin_target_users (id) VALUES ($id)".to_string()],
+tests/test_data_migration_6.rs:            "INSERT INTO builtin_source_users (id, full_name, age_str, status_code, display_name) VALUES (?, ?, ?, ?, ?)",
+tests/test_data_migration_6.rs:        vec!["INSERT INTO builtin_target_users (id, age) VALUES ($id, $age)".to_string()];
+tests/test_data_migration_6.rs:            "SELECT * FROM builtin_source_users ORDER BY id",
+tests/test_data_migration_6.rs:        .execute("SELECT COUNT(*) as count FROM builtin_target_users", &[])
+tests/test_data_migration_6.rs:        CREATE TABLE restore_test_users (
+tests/test_data_migration_6.rs:            "INSERT INTO restore_test_users (name, email, age) VALUES (?, ?, ?)",
+tests/test_data_migration_6.rs:        CREATE TABLE restore_test_users_backup_20240101_120000 (
+tests/test_data_migration_6.rs:            "INSERT INTO restore_test_users_backup_20240101_120000 (id, name, email, age) VALUES (?, ?, ?, ?)",
+tests/test_data_migration_6.rs:        .execute("SELECT name FROM restore_test_users WHERE id = 1", &[])
+tests/test_data_migration_6.rs:        CREATE TABLE snapshot_test_products (
+tests/test_data_migration_6.rs:        "INSERT INTO snapshot_test_products (name, price, category) VALUES (?, ?, ?)",
+tests/test_data_migration_6.rs:            "SELECT name, price FROM snapshot_test_products WHERE id = 1",
+tests/test_data_migration_6.rs:        CREATE TABLE mixed_restore_test (
+tests/test_data_migration_6.rs:        "INSERT INTO mixed_restore_test (data, status) VALUES (?, ?)",
+tests/test_data_migration_6.rs:        .execute("SELECT name FROM restore_test_users WHERE id = 1", &[])
+tests/test_data_migration_6.rs:        .execute("SELECT data FROM mixed_restore_test WHERE id = 1", &[])
+tests/test_data_migration_6.rs:        CREATE TABLE batch_restore_test (
+tests/test_data_migration_6.rs:            "INSERT INTO batch_restore_test (name, value) VALUES (?, ?)",
+tests/test_data_migration_6.rs:        CREATE TABLE batch_restore_test_backup (
+tests/test_data_migration_6.rs:            "INSERT INTO batch_restore_test_backup (id, name, value) VALUES (?, ?, ?)",
+tests/test_data_migration_6.rs:            "SELECT COUNT(*) as count FROM batch_restore_test WHERE name LIKE 'Original Record%'",
+tests/test_data_migration_6.rs:        CREATE TABLE empty_backup_table (
+tests/test_multi_database_integration.rs:    let result = client.execute_query("SELECT 1 as test_value", &[]).await
+tests/test_multi_database_integration.rs:    let create_sql = "CREATE TABLE multi_db_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)";
+tests/test_multi_database_integration.rs:        "INSERT INTO multi_db_test (name, value) VALUES (?, ?)",
+tests/test_multi_database_integration.rs:    let result = client.execute_query("SELECT COUNT(*) as count FROM multi_db_test", &[]).await
+tests/test_multi_database_integration.rs:    client.execute_schema("DROP TABLE multi_db_test").await
+tests/test_multi_database_integration.rs:            r#"CREATE TABLE type_test (
+tests/test_multi_database_integration.rs:            r#"CREATE TABLE type_test (
+tests/test_multi_database_integration.rs:            r#"CREATE TABLE type_test (
+tests/test_multi_database_integration.rs:        "INSERT INTO type_test (text_val, int_val, real_val, bool_val) VALUES (?, ?, ?, ?)",
+tests/test_multi_database_integration.rs:        "SELECT text_val, int_val, bool_val FROM type_test WHERE id = ?",
+tests/test_multi_database_integration.rs:    client.execute("DROP TABLE type_test", &[]).await?;
+tests/test_multi_database_integration.rs:            "CREATE TABLE transaction_test (id INTEGER PRIMARY KEY, value TEXT)"
+tests/test_multi_database_integration.rs:            "CREATE TABLE transaction_test (id BIGSERIAL PRIMARY KEY, value VARCHAR(255))"
+tests/test_multi_database_integration.rs:            "CREATE TABLE transaction_test (id BIGINT AUTO_INCREMENT PRIMARY KEY, value VARCHAR(255))"
+tests/test_multi_database_integration.rs:        "INSERT INTO transaction_test (value) VALUES (?)",
+tests/test_multi_database_integration.rs:    let result = client.execute("SELECT COUNT(*) as count FROM transaction_test", &[]).await?;
+tests/test_multi_database_integration.rs:    client.execute("DROP TABLE transaction_test", &[]).await?;
+tests/test_multi_database_integration.rs:            let user_count = client.execute("SELECT COUNT(*) as count FROM users", &[]).await?;
+tests/test_multi_database_integration.rs:    let result = client.execute("SELECT uuid_generate_v4() as uuid_val", &[]).await?;
+tests/test_multi_database_integration.rs:        "CREATE TABLE json_test (id BIGSERIAL PRIMARY KEY, data JSONB)",
+tests/test_multi_database_integration.rs:        "INSERT INTO json_test (data) VALUES (?)",
+tests/test_multi_database_integration.rs:    let json_result = client.execute("SELECT data FROM json_test", &[]).await?;
+tests/test_multi_database_integration.rs:    client.execute("DROP TABLE json_test", &[]).await?;
+tests/test_multi_database_integration.rs:        "CREATE TABLE json_test (id BIGINT AUTO_INCREMENT PRIMARY KEY, data JSON)",
+tests/test_multi_database_integration.rs:        "INSERT INTO json_test (data) VALUES (?)",
+tests/test_multi_database_integration.rs:    let json_result = client.execute("SELECT data FROM json_test", &[]).await?;
+tests/test_multi_database_integration.rs:    client.execute("DROP TABLE json_test", &[]).await?;
+tests/test_multi_database_integration.rs:            "CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, data TEXT, value INTEGER)"
+tests/test_multi_database_integration.rs:            "CREATE TABLE benchmark_test (id BIGSERIAL PRIMARY KEY, data VARCHAR(255), value INTEGER)"
+tests/test_multi_database_integration.rs:            "CREATE TABLE benchmark_test (id BIGINT AUTO_INCREMENT PRIMARY KEY, data VARCHAR(255), value INTEGER)"
+tests/test_multi_database_integration.rs:            "INSERT INTO benchmark_test (data, value) VALUES (?, ?)",
+tests/test_multi_database_integration.rs:    let result = client.execute("SELECT COUNT(*) as count FROM benchmark_test", &[]).await?;
+tests/test_multi_database_integration.rs:        "SELECT COUNT(*) as count FROM benchmark_test WHERE value < ?",
+tests/test_multi_database_integration.rs:    client.execute("DROP TABLE benchmark_test", &[]).await?;
+tests/test_multi_database_integration.rs:    let result = client.execute("SELECT * FROM non_existent_table", &[]).await;
+tests/test_multi_database_integration.rs:                "CREATE TABLE utils_test (id INTEGER PRIMARY KEY, name TEXT)"
+tests/test_multi_database_integration.rs:                "CREATE TABLE utils_test (id BIGSERIAL PRIMARY KEY, name VARCHAR(255))"
+tests/test_multi_database_integration.rs:                "CREATE TABLE utils_test (id BIGINT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255))"
+tests/test_multi_database_integration.rs:            "INSERT INTO utils_test (name) VALUES (?)",
+tests/test_multi_database_integration.rs:        client.execute("DROP TABLE utils_test", &[]).await?;
+tests/test_multi_database_integration.rs:        let user_count = client.execute("SELECT COUNT(*) as count FROM users", &[]).await?;
+tests/test_multi_database_integration.rs:            "SELECT u.name, p.title FROM users u JOIN posts p ON u.id = p.user_id",
+tests/test_multi_database_integration.rs:                    let result = client.execute("SELECT 1", &[]).await?;
+tests/test_multi_database_integration.rs:                "CREATE TABLE perf_test (id INTEGER PRIMARY KEY, data TEXT, value INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+tests/test_multi_database_integration.rs:                "CREATE TABLE perf_test (id BIGSERIAL PRIMARY KEY, data VARCHAR(255), value INTEGER, created_at TIMESTAMP DEFAULT NOW())"
+tests/test_multi_database_integration.rs:                "CREATE TABLE perf_test (id BIGINT AUTO_INCREMENT PRIMARY KEY, data VARCHAR(255), value INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+tests/test_multi_database_integration.rs:                "INSERT INTO perf_test (data, value) VALUES (?, ?)",
+tests/test_multi_database_integration.rs:    let result = client.execute_query("SELECT 1 as test", &[]).await
+tests/test_basic.rs:        CREATE TABLE test_items (
+tests/test_basic.rs:    let insert_sql = "INSERT INTO test_items (name, is_active, score) VALUES (?, ?, ?)";
+tests/test_basic.rs:    let select_sql = "SELECT * FROM test_items WHERE name = ?";
+tests/test_basic.rs:        "CREATE TABLE test_bools (id INTEGER PRIMARY KEY, is_active INTEGER)",
+tests/test_basic.rs:        "INSERT INTO test_bools (is_active) VALUES (?)",
+tests/test_basic.rs:    let result = db.execute("SELECT * FROM test_bools", &[])
+tests/test_basic.rs:        "SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'",
+tests/test_entity_analyzer_advanced.rs:    const DELETE_STRATEGY: RecursiveDeletionStrategy = RecursiveDeletionStrategy::SetNull;
+tests/test_relations.rs:        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+tests/test_relations.rs:            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+tests/common/multi_db.rs:                CREATE TABLE test_users (
+tests/common/multi_db.rs:                CREATE TABLE test_users (
+tests/common/multi_db.rs:                CREATE TABLE test_users (
+tests/common/multi_db.rs:                CREATE TABLE test_posts (
+tests/common/multi_db.rs:                CREATE TABLE test_posts (
+tests/common/multi_db.rs:                CREATE TABLE test_posts (
+tests/common/multi_db.rs:            "DROP TABLE IF EXISTS test_posts".to_string(),
+tests/common/multi_db.rs:            "DROP TABLE IF EXISTS test_users".to_string(),
+tests/common/multi_db.rs:        "INSERT INTO test_users (email, name, is_active, score) VALUES (?, ?, ?, ?)".to_string()
+tests/common/multi_db.rs:        "INSERT INTO test_posts (user_id, title, content, is_published, views) VALUES (?, ?, ?, ?, ?)".to_string()
+tests/common/multi_db.rs:        let sql = format!("SELECT COUNT(*) as count FROM {}", table);
+tests/common/multi_db.rs:                "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+tests/common/multi_db.rs:                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1"
+tests/common/multi_db.rs:                "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?"
+tests/common/database_manager.rs:                        match client.execute_query("SELECT 1 as test", &[]).await {
+tests/common/database_manager.rs:            &format!("SELECT COUNT(*) as count FROM {} LIMIT 0", table_name), 
+tests/common/database_manager.rs:            &format!("SELECT COUNT(*) as count FROM {}", table_name), 
+tests/common/database_manager.rs:        let result = client.execute_query("SELECT 1 as test", &[]).await
+tests/common/database_manager.rs:            let result = client.execute_query("SELECT 1 as test", &[]).await
+tests/common/database_manager.rs:            "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)"
+tests/common/database_manager.rs:            "INSERT INTO test_table (name) VALUES (?)", 
+tests/common/mod.rs:        CREATE TABLE test_users (
+tests/common/mod.rs:        CREATE TABLE test_posts (
+tests/common/mod.rs:    let insert_user = "INSERT INTO test_users (email, name, is_active, score) VALUES (?, ?, ?, ?)";
+tests/common/mod.rs:    let insert_post = "INSERT INTO test_posts (user_id, title, content, is_published, views) VALUES (?, ?, ?, ?, ?)";
+tests/common/mod.rs:            CREATE TABLE simple_test_table (
+tests/common/mod.rs:            r#"CREATE TABLE rollback_users (
+tests/common/mod.rs:            r#"CREATE TABLE rollback_projects (
+tests/common/mod.rs:                FOREIGN KEY (owner_id) REFERENCES rollback_users(id) ON DELETE CASCADE
+tests/common/mod.rs:            r#"CREATE TABLE rollback_tasks (
+tests/common/mod.rs:                FOREIGN KEY (project_id) REFERENCES rollback_projects(id) ON DELETE CASCADE,
+tests/common/mod.rs:                FOREIGN KEY (assignee_id) REFERENCES rollback_users(id) ON DELETE SET NULL
+tests/common/mod.rs:            "CREATE INDEX idx_rollback_users_username ON rollback_users(username)",
+tests/common/mod.rs:            "CREATE INDEX idx_rollback_users_email ON rollback_users(email)",
+tests/common/mod.rs:            "CREATE INDEX idx_rollback_projects_owner ON rollback_projects(owner_id)",
+tests/common/mod.rs:            "CREATE INDEX idx_rollback_tasks_project ON rollback_tasks(project_id)",
+tests/common/mod.rs:            "CREATE INDEX idx_rollback_tasks_assignee ON rollback_tasks(assignee_id)",
+tests/common/mod.rs:            "CREATE INDEX idx_rollback_tasks_status ON rollback_tasks(status)",
+tests/common/mod.rs:        let insert_user = "INSERT INTO rollback_users (username, email, full_name) VALUES (?, ?, ?)";
+tests/common/mod.rs:        let insert_project = "INSERT INTO rollback_projects (name, description, owner_id) VALUES (?, ?, ?)";
+tests/common/mod.rs:        let insert_task = "INSERT INTO rollback_tasks (title, description, project_id, assignee_id, status, priority) VALUES (?, ?, ?, ?, ?, ?)";
+tests/common/mod.rs:        let tables_query = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
+tests/common/mod.rs:        let index_query = "SELECT name FROM sqlite_master WHERE type='index' AND name = ?";
+tests/common/mod.rs:        let count_query = format!("SELECT COUNT(*) as count FROM {}", table_name);
+tests/common/mod.rs:                    r#"CREATE TABLE orphan_references (
+tests/common/mod.rs:                    r#"CREATE TABLE type_mismatch_source (
+tests/common/mod.rs:                    r#"CREATE TABLE type_mismatch_target (
+tests/common/mod.rs:                    r#"CREATE TABLE constraint_test (
+tests/common/mod.rs:                    "INSERT INTO constraint_test (email, age) VALUES (?, ?)",
+tests/common/mod.rs:                    "INSERT INTO constraint_test (email, age) VALUES (?, ?)",
+tests/common/mod.rs:                    r#"CREATE TABLE original_data (
+tests/common/mod.rs:                    r#"CREATE TABLE original_data_backup (
+tests/common/mod.rs:                    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+tests/common/mod.rs:                let basic_query = db.execute("SELECT 1", &[]).await;
+tests/test_data_migration_5.rs:        CREATE TABLE users (
+tests/test_data_migration_5.rs:        CREATE TABLE projects (
+tests/test_data_migration_5.rs:        CREATE TABLE user_project_assignments (
+tests/test_data_migration_5.rs:            "INSERT INTO users (name, department, role, seniority_level) VALUES (?, ?, ?, ?)",
+tests/test_data_migration_5.rs:            "INSERT INTO projects (name, department, complexity_level) VALUES (?, ?, ?)",
+tests/test_data_migration_5.rs:        "INSERT INTO user_project_assignments (user_id, project_id) VALUES (1, 1)";
+tests/test_data_migration_5.rs:    let validation_rules = vec!["SELECT COUNT(*) FROM user_project_assignments".to_string()];
+tests/test_data_migration_5.rs:    // Test dangerous generation query (DROP)
+tests/test_data_migration_5.rs:    let dangerous_query = "DROP TABLE user_project_assignments";
+tests/test_data_migration_5.rs:    // Test dangerous generation query (DELETE)
+tests/test_data_migration_5.rs:    let dangerous_query = "DELETE FROM user_project_assignments";
+tests/test_data_migration_5.rs:    // Test non-INSERT generation query
+tests/test_data_migration_5.rs:    let non_insert_query = "SELECT * FROM users";
+tests/test_data_migration_5.rs:        .expect("Should handle non-INSERT query gracefully");
+tests/test_data_migration_5.rs:        .contains("Generation query must be an INSERT statement"));
+tests/test_data_migration_5.rs:    let wrong_table_query = "INSERT INTO wrong_table (user_id, project_id) VALUES (1, 1)";
+tests/test_data_migration_5.rs:    let dangerous_validation_rules = vec!["DROP TABLE users".to_string()];
+tests/test_data_migration_5.rs:    let generation_query = "INSERT INTO non_existent_table (user_id, project_id) VALUES (1, 1)";
+tests/test_data_migration_5.rs:    let validation_rules = vec!["SELECT COUNT(*) FROM non_existent_table".to_string()];
+tests/test_data_migration_5.rs:        INSERT INTO user_project_assignments (user_id, project_id, assignment_type)
+tests/test_data_migration_5.rs:        SELECT u.id, p.id, 
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id".to_string(),
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id WHERE u.department = p.department".to_string(),
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM user_project_assignments WHERE assignment_type IN ('lead', 'standard', 'support')".to_string(),
+tests/test_data_migration_5.rs:        "SELECT ua.assignment_type, u.seniority_level, p.complexity_level FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id ORDER BY ua.id",
+tests/test_data_migration_5.rs:    let failing_query = "INSERT INTO user_project_assignments (user_id, project_id) SELECT invalid_column, id FROM projects";
+tests/test_data_migration_5.rs:    let validation_rules = vec!["SELECT COUNT(*) FROM user_project_assignments".to_string()];
+tests/test_data_migration_5.rs:        "INSERT INTO user_project_assignments (user_id, project_id) VALUES (1, 1)";
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM user_project_assignments".to_string(), // This will pass
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM invalid_table_name".to_string(),       // This will fail
+tests/test_data_migration_5.rs:    let generation_query = "INSERT INTO user_project_assignments (user_id, project_id) SELECT u.id, p.id FROM users u, projects p WHERE u.department = p.department LIMIT 3";
+tests/test_data_migration_5.rs:        INSERT INTO user_project_assignments (user_id, project_id, assignment_type)
+tests/test_data_migration_5.rs:        SELECT 
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id WHERE u.role LIKE '%Junior%' AND p.complexity_level >= 4".to_string(),
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id WHERE ua.assignment_type = 'lead' AND (u.role LIKE '%Senior%' OR u.role LIKE '%Lead%')".to_string(),
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM user_project_assignments ua JOIN users u ON ua.user_id = u.id JOIN projects p ON ua.project_id = p.id WHERE u.department = p.department".to_string(),
+tests/test_data_migration_5.rs:            r#"SELECT 
+tests/test_data_migration_5.rs:        CREATE TABLE external_assignments (
+tests/test_data_migration_5.rs:        CREATE TABLE external_permissions (
+tests/test_data_migration_5.rs:    let validation_rules = vec!["SELECT COUNT(*) FROM external_assignments".to_string()];
+tests/test_data_migration_5.rs:    let dangerous_validation_rules = vec!["DROP TABLE external_assignments".to_string()];
+tests/test_data_migration_5.rs:    let validation_rules = vec!["SELECT COUNT(*) FROM non_existent_table".to_string()];
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM external_assignments".to_string(),
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM external_assignments WHERE assignment_role IN ('lead', 'member')"
+tests/test_data_migration_5.rs:        "SELECT external_user_id, external_project_id, assignment_role, start_date FROM external_assignments ORDER BY external_user_id",
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM external_permissions".to_string(),
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM external_permissions WHERE user_ref > 0".to_string(),
+tests/test_data_migration_5.rs:        "SELECT user_ref, permission_ref, granted_date FROM external_permissions ORDER BY user_ref",
+tests/test_data_migration_5.rs:        "SELECT external_user_id, assignment_role FROM external_assignments WHERE external_user_id >= 10 ORDER BY external_user_id",
+tests/test_data_migration_5.rs:        .execute("SELECT COUNT(*) as count FROM external_assignments", &[])
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM external_assignments".to_string(), // This will pass
+tests/test_data_migration_5.rs:        "SELECT COUNT(*) FROM invalid_table_name".to_string(),   // This will fail
+tests/test_data_migration_5.rs:        "SELECT external_user_id, assignment_role FROM external_assignments WHERE external_user_id = 999",
+tests/test_data_migration_5.rs:        CREATE TABLE delimiter_articles (
+tests/test_data_migration_5.rs:        CREATE TABLE delimiter_article_tags (
+tests/test_data_migration_5.rs:        "INSERT INTO delimiter_articles (title, pipe_tags, semicolon_tags) VALUES (?, ?, ?)",
+tests/test_data_migration_5.rs:        .execute("SELECT COUNT(*) as count FROM delimiter_article_tags", &[])
+tests/test_data_migration_5.rs:    db.execute("DELETE FROM delimiter_article_tags", &[])
+tests/test_data_migration_5.rs:        .execute("SELECT COUNT(*) as count FROM delimiter_article_tags", &[])
+tests/rollback_system_tests.rs:/// Test reverse operation generation for CREATE TABLE operations
+tests/rollback_system_tests.rs:/// Test reverse operation generation for DROP TABLE operations
+tests/test_simple_relations.rs:    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, created_at TEXT)", &[]).await.expect("Failed to create users table");
+tests/test_simple_relations.rs:    db.execute("CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER, title TEXT, content TEXT, created_at TEXT)", &[]).await.expect("Failed to create posts table");
+tests/test_simple_relations.rs:    db.execute("INSERT INTO users (id, name, email, created_at) VALUES (1, 'Test User', 'test@example.com', ?)", &[serde_json::Value::String(now_str.to_string())]).await.expect("Failed to create user");
+tests/test_simple_relations.rs:    db.execute("INSERT INTO posts (id, user_id, title, content, created_at) VALUES (1, 1, 'First Post', 'Content 1', ?)", &[serde_json::Value::String(now_str.to_string())]).await.expect("Failed to create post 1");
+tests/test_simple_relations.rs:    db.execute("INSERT INTO posts (id, user_id, title, content, created_at) VALUES (2, 1, 'Second Post', 'Content 2', ?)", &[serde_json::Value::String(now_str.to_string())]).await.expect("Failed to create post 2");
+tests/test_revolutionary_nested_eager_loading.rs:    println!("🏆 This makes d1-rs the MOST ADVANCED ORM EVER CREATED!");
+tests/test_cross_database_advanced.rs:            ("active_users", "SELECT name FROM test_users WHERE is_active = ?", vec![seeder.bool_value(true)]),
+tests/test_cross_database_advanced.rs:            ("inactive_users", "SELECT name FROM test_users WHERE is_active = ?", vec![seeder.bool_value(false)]),
+tests/test_cross_database_advanced.rs:            ("high_score_users", "SELECT name, score FROM test_users WHERE score > ?", vec![Value::Number(50.into())]),
+tests/test_cross_database_advanced.rs:            ("specific_email", "SELECT id, name FROM test_users WHERE email LIKE ?", vec![Value::String("%alice%".to_string())]),
+tests/test_cross_database_advanced.rs:        let order_sql = "SELECT name, score FROM test_users WHERE score IS NOT NULL ORDER BY score DESC, name ASC";
+tests/test_cross_database_advanced.rs:        let limit_sql = "SELECT name FROM test_users ORDER BY id LIMIT ?";
+tests/test_cross_database_advanced.rs:            ("user_count", "SELECT COUNT(*) as count FROM test_users"),
+tests/test_cross_database_advanced.rs:            ("avg_score", "SELECT AVG(CAST(score AS REAL)) as avg_score FROM test_users WHERE score IS NOT NULL"),
+tests/test_cross_database_advanced.rs:            ("max_score", "SELECT MAX(score) as max_score FROM test_users"),
+tests/test_cross_database_advanced.rs:            ("min_score", "SELECT MIN(score) as min_score FROM test_users"),
+tests/test_cross_database_advanced.rs:            SELECT u.name, u.score 
+tests/test_cross_database_advanced.rs:            SELECT 
+tests/test_cross_database_advanced.rs:            SELECT name, email
+tests/test_cross_database_advanced.rs:                SELECT MAX(score) 
+tests/test_cross_database_advanced.rs:            SELECT 
+tests/test_cross_database_advanced.rs:                "CREATE TABLE migration_test (
+tests/test_cross_database_advanced.rs:                "CREATE TABLE migration_test (
+tests/test_cross_database_advanced.rs:                "CREATE TABLE migration_test (
+tests/test_cross_database_advanced.rs:        let insert_data_sql = "INSERT INTO migration_test (name, description) VALUES (?, ?)";
+tests/test_cross_database_advanced.rs:        let verify_sql = "SELECT id, name, version, description FROM migration_test";
+tests/test_cross_database_advanced.rs:                "CREATE INDEX idx_migration_name ON migration_test(name)"
+tests/test_cross_database_advanced.rs:                "CREATE INDEX idx_migration_name ON migration_test(name)"
+tests/test_cross_database_advanced.rs:                "CREATE INDEX idx_migration_name ON migration_test(name)"
+tests/test_cross_database_advanced.rs:            .expect(&format!("CREATE INDEX should work on {}", database.name()));
+tests/test_cross_database_advanced.rs:        let indexed_query_sql = "SELECT * FROM migration_test WHERE name = ?";
+tests/test_cross_database_advanced.rs:        client.execute("DROP INDEX idx_migration_name", &[]).await
+tests/test_cross_database_advanced.rs:            .expect("DROP INDEX should work");
+tests/test_cross_database_advanced.rs:        client.execute("DROP TABLE migration_test", &[]).await
+tests/test_cross_database_advanced.rs:            .expect("DROP TABLE should work");
+tests/test_cross_database_advanced.rs:        let count_result = seeder.client.query("SELECT COUNT(*) as count FROM test_users", &[]).await?;
+tests/test_cross_database_advanced.rs:        let batch_update_sql = "UPDATE test_users SET score = score + ? WHERE score < ?";
+tests/test_cross_database_advanced.rs:        let verify_update_sql = "SELECT COUNT(*) as count FROM test_users WHERE score >= ?";
+tests/test_cross_database_advanced.rs:        let batch_delete_sql = "DELETE FROM test_users WHERE score > ? AND email LIKE ?";
+tests/test_cross_database_advanced.rs:        let final_count_result = seeder.client.query("SELECT COUNT(*) as count FROM test_users", &[]).await?;
+tests/test_cross_database_advanced.rs:        let missing_table_result = seeder.client.query("SELECT * FROM non_existent_table", &[]).await;
+tests/test_cross_database_advanced.rs:        let missing_column_result = seeder.client.query("SELECT non_existent_column FROM test_users", &[]).await;
+tests/test_cross_database_advanced.rs:            "SELECT * FROM test_users WHERE id = ?", 
+tests/test_cross_database_advanced.rs:            let test_result = client.query("SELECT 1 as test_value", &[]).await
+tests/test_cross_database_advanced.rs:            "SELECT COUNT(*) as count FROM test_users",
+tests/test_cross_database_advanced.rs:            "SELECT COUNT(*) as count FROM test_posts", 
+tests/test_cross_database_advanced.rs:            "SELECT 1 as value",
+tests/test_cross_database_advanced.rs:            "SELECT 2 as value",
+tests/test_cross_database_advanced.rs:            "SELECT 3 as value",
+tests/test_data_migration_4.rs:        CREATE TABLE articles (
+tests/test_data_migration_4.rs:        CREATE TABLE article_tags (
+tests/test_data_migration_4.rs:        CREATE TABLE article_categories (
+tests/test_data_migration_4.rs:            "INSERT INTO articles (title, tags, categories) VALUES (?, ?, ?)",
+tests/test_data_migration_4.rs:            "SELECT article_id, tag_name FROM article_tags ORDER BY article_id, tag_name",
+tests/test_data_migration_4.rs:        CREATE TABLE empty_articles (
+tests/test_data_migration_4.rs:        CREATE TABLE empty_article_tags (
+tests/test_data_migration_4.rs:        CREATE TABLE test_articles (
+tests/test_data_migration_4.rs:        CREATE TABLE test_article_tags (
+tests/test_data_migration_4.rs:            "INSERT INTO test_articles (title, tags) VALUES (?, ?)",
+tests/test_data_migration_4.rs:            "SELECT tag_name FROM test_article_tags ORDER BY tag_name",
+tests/test_data_migration_4.rs:        CREATE TABLE old_user_roles (
+tests/test_data_migration_4.rs:        CREATE TABLE new_user_permissions (
+tests/test_data_migration_4.rs:            "INSERT INTO old_user_roles (user_id, role_id, status) VALUES (?, ?, ?)",
+tests/test_data_migration_4.rs:        CREATE TABLE source_junction (
+tests/test_data_migration_4.rs:        CREATE TABLE target_junction (
+tests/test_data_migration_4.rs:        "INSERT INTO source_junction (user_id, role_id, status) VALUES (?, ?, ?)",
+tests/test_data_migration_4.rs:    let new_records_result = db.execute("SELECT person_id, permission_id, state FROM new_user_permissions ORDER BY person_id, permission_id", &[])
+tests/test_data_migration_4.rs:        CREATE TABLE empty_old_junction (
+tests/test_data_migration_4.rs:        CREATE TABLE empty_new_junction (
+tests/test_data_migration_4.rs:    let new_records_result = db.execute("SELECT person_id, permission_id FROM new_user_permissions ORDER BY person_id, permission_id", &[])
+tests/test_data_migration_4.rs:        CREATE TABLE batch_old_junction (
+tests/test_data_migration_4.rs:        CREATE TABLE batch_new_junction (
+tests/test_data_migration_4.rs:                "INSERT INTO batch_old_junction (source_id, target_id) VALUES (?, ?)",
+tests/test_data_migration_4.rs:        .execute("SELECT COUNT(*) as count FROM batch_new_junction", &[])
+tests/rollback_error_scenarios.rs:            r#"CREATE TABLE incomplete_users (
+tests/rollback_error_scenarios.rs:            r#"CREATE TABLE type_mismatch_posts (
+tests/rollback_error_scenarios.rs:            r#"CREATE INDEX idx_missing_column ON incomplete_users(email)"#,
+tests/rollback_error_scenarios.rs:            r#"CREATE TABLE orphan_comments (
+tests/rollback_error_scenarios.rs:            r#"CREATE TABLE violation_users (
+tests/rollback_error_scenarios.rs:            r#"CREATE TABLE violation_posts (
+tests/rollback_error_scenarios.rs:            "INSERT INTO violation_users (email, name) VALUES (?, ?)",
+tests/rollback_error_scenarios.rs:            "INSERT INTO violation_users (email, name) VALUES (?, ?)",
+tests/rollback_error_scenarios.rs:            "INSERT INTO violation_posts (user_id, title, content) VALUES (?, ?, ?)",
+tests/rollback_error_scenarios.rs:            "INSERT INTO violation_posts (user_id, title, content) VALUES (?, ?, ?)",
+tests/rollback_error_scenarios.rs:            r#"CREATE TABLE interruption_test (
+tests/rollback_error_scenarios.rs:            r#"CREATE TABLE interruption_test_backup (
+tests/rollback_error_scenarios.rs:                "INSERT INTO interruption_test (name) VALUES (?)",
+tests/rollback_error_scenarios.rs:        "UPDATE violation_posts SET title = 'Duplicate Title' WHERE id = 1",
+tests/rollback_error_scenarios.rs:        "UPDATE violation_posts SET title = 'Duplicate Title' WHERE id = 2",
+tests/rollback_error_scenarios.rs:        r#"CREATE TABLE check_constraint_test (
+tests/rollback_error_scenarios.rs:        "INSERT INTO check_constraint_test (age, score, status) VALUES (?, ?, ?)",
+tests/rollback_error_scenarios.rs:        r#"CREATE TABLE corruption_test (
+tests/rollback_error_scenarios.rs:            "INSERT INTO corruption_test (json_data, numeric_data, date_data) VALUES (?, ?, ?)",
+tests/rollback_error_scenarios.rs:        "SELECT name FROM sqlite_master WHERE type='table' AND name='interruption_test'",
+tests/rollback_error_scenarios.rs:        r#"CREATE TABLE backup_corruption_test (
+tests/rollback_error_scenarios.rs:        r#"CREATE TABLE backup_corruption_test_backup (
+tests/rollback_error_scenarios.rs:        "INSERT INTO backup_corruption_test_backup (name, corrupted_data) VALUES (?, ?)",
+tests/rollback_error_scenarios.rs:        r#"CREATE TABLE drift_test (
+tests/test_phase1_integration.rs:    let create_sql = "CREATE TABLE simple_table (id INTEGER PRIMARY KEY, name TEXT)";
+tests/test_phase1_integration.rs:        CREATE TABLE users (
+tests/test_phase1_integration.rs:        CREATE TABLE posts (
+tests/test_phase1_integration.rs:    let index_sql = "CREATE INDEX idx_posts_user_id ON posts(user_id)";
+tests/test_phase1_integration.rs:        CREATE TABLE complex_table (
+tests/test_phase1_integration.rs:    let index_sql = "CREATE INDEX idx_old_name ON complex_table(old_name)";
+tests/test_multi_database.rs:            "SELECT COUNT(*) as count FROM test_users WHERE is_active = ?", 
+tests/test_multi_database.rs:        let active_users_sql = "SELECT COUNT(*) as count FROM test_users WHERE is_active = 1";
+tests/test_multi_database.rs:        let true_sql = "SELECT name FROM test_users WHERE is_active = 1";
+tests/test_multi_database.rs:        let false_sql = "SELECT name FROM test_users WHERE is_active = 0";
+tests/test_multi_database.rs:            SELECT u.name as user_name, p.title as post_title 
+tests/test_multi_database.rs:        let result = client.query("SELECT * FROM non_existent_table", &[]).await;
+tests/test_multi_database.rs:        let result = client.execute("INSERT INTO non_existent_table VALUES (1)", &[]).await;
+tests/test_auto_migration_introspector.rs:    let sql = "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
+tests/test_auto_migration_introspector.rs:        CREATE TABLE test_users (
+tests/fixtures/mod.rs:    /// Insert a test record using sea-query INSERT
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT COUNT(*) as count FROM users", &[]).await?;
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT COUNT(*) as count FROM posts", &[]).await?;
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT COUNT(*) as count FROM type_test", &[]).await?;
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT text_col, integer_col FROM type_test WHERE id = 1", &[]).await?;
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT COUNT(*) as count FROM performance_test", &[]).await?;
+tests/fixtures/data_sets.rs:            "'; DROP TABLE users; --".to_string(),
+tests/fixtures/data_sets.rs:            "'; DELETE FROM posts WHERE 1=1; --".to_string(),
+tests/fixtures/data_sets.rs:            "' UNION SELECT * FROM users --".to_string(),
+tests/fixtures/data_sets.rs:            "'; INSERT INTO users (name, email) VALUES ('hacker', 'hack@evil.com'); --".to_string(),
+tests/fixtures/data_sets.rs:            "' AND (SELECT COUNT(*) FROM users) > 0 --".to_string(),
+tests/fixtures/data_sets.rs:        assert!(injections.iter().any(|s| s.contains("DROP TABLE")));
+tests/fixtures/data_sets.rs:        assert!(injections.iter().any(|s| s.contains("UNION SELECT")));
+tests/fixtures/schemas.rs:        assert!(sql.contains("CREATE TABLE IF NOT EXISTS"));
+tests/fixtures/schemas.rs:        assert!(sql.contains("CREATE TABLE IF NOT EXISTS"));
+tests/fixtures/schemas.rs:        assert!(sql.contains("CREATE TABLE IF NOT EXISTS"));
+tests/fixtures/schemas.rs:        assert!(indexes[0].0.contains("CREATE INDEX"));
+tests/fixtures/schemas.rs:            assert!(sql.contains("DROP TABLE IF EXISTS"));
+tests/test_cross_database_suite.rs:        // Test CREATE consistency
+tests/test_cross_database_suite.rs:        assert!(!rows.is_empty(), "INSERT should return data");
+tests/test_cross_database_suite.rs:        let read_sql = "SELECT id, email, name, is_active, score FROM test_users WHERE email = ?";
+tests/test_cross_database_suite.rs:        // Test UPDATE consistency
+tests/test_cross_database_suite.rs:        let update_sql = "UPDATE test_users SET score = ? WHERE email = ?";
+tests/test_cross_database_suite.rs:        // Test DELETE consistency
+tests/test_cross_database_suite.rs:        let delete_sql = "DELETE FROM test_users WHERE email = ?";
+tests/test_cross_database_suite.rs:            let query_sql = "SELECT is_active FROM test_users WHERE email = ?";
+tests/test_cross_database_suite.rs:            "SELECT score FROM test_users WHERE email = ?", 
+tests/test_cross_database_suite.rs:            SELECT u.name as user_name, p.title as post_title, p.views
+tests/test_cross_database_suite.rs:        let count_sql = "SELECT COUNT(*) as total_posts, SUM(views) as total_views FROM test_posts WHERE is_published = ?";
+tests/test_cross_database_suite.rs:            SELECT name FROM test_users 
+tests/test_cross_database_suite.rs:                SELECT DISTINCT user_id FROM test_posts 
+tests/test_cross_database_suite.rs:        let get_user_id_sql = "SELECT id FROM test_users WHERE email = ? LIMIT 1";
+tests/test_cross_database_suite.rs:        // Benchmark INSERT performance
+tests/test_cross_database_suite.rs:        // Benchmark SELECT performance
+tests/test_cross_database_suite.rs:                "SELECT * FROM test_users WHERE email = ?", 
+tests/test_cross_database_suite.rs:            r#"SELECT u.name, COUNT(p.id) as post_count 
+tests/test_cross_database_suite.rs:        println!("  - INSERT (100 ops): {:?}", insert_duration);
+tests/test_cross_database_suite.rs:        println!("  - SELECT (50 ops): {:?}", select_duration); 
+tests/test_cross_database_suite.rs:        assert!(insert_time < &Duration::from_secs(10), "{} INSERT performance too slow", db_name);
+tests/test_cross_database_suite.rs:        assert!(select_time < &Duration::from_secs(5), "{} SELECT performance too slow", db_name);
+tests/test_cross_database_suite.rs:        let result = seeder.client.query("SELECT * FROM test_users ORDER BY score", &[]).await
+tests/test_cross_database_suite.rs:            let count_result = seeder.client.query("SELECT COUNT(*) as total FROM test_users", &[]).await
+tests/test_cross_database_suite.rs:                "CREATE TABLE schema_test (
+tests/test_cross_database_suite.rs:                "CREATE TABLE schema_test (
+tests/test_cross_database_suite.rs:                "CREATE TABLE schema_test (
+tests/test_cross_database_suite.rs:        let insert_test_sql = "INSERT INTO schema_test (name, age, salary) VALUES (?, ?, ?)";
+tests/test_cross_database_suite.rs:        let query_result = client.query("SELECT * FROM schema_test", &[]).await
+tests/test_cross_database_suite.rs:        client.execute("DROP TABLE schema_test", &[]).await
+tests/test_cross_database_suite.rs:        let initial_result = client.query("SELECT COUNT(*) as count FROM test_users", &[]).await
+tests/test_cross_database_suite.rs:        let final_result = client.query("SELECT COUNT(*) as count FROM test_users", &[]).await
+tests/test_cross_database_suite.rs:            "SELECT COUNT(*) as count FROM test_posts WHERE user_id NOT IN (SELECT id FROM test_users)",
+tests/test_cross_database_suite.rs:            "UPDATE test_users SET name = ? WHERE email = ?",
+tests/test_cross_database_suite.rs:            "SELECT name FROM test_users WHERE email = ?",
+tests/test_cross_database_suite.rs:            "SELECT id FROM test_users WHERE email = ?",
+tests/test_cross_database_suite.rs:            "DELETE FROM test_posts WHERE user_id = ?",
+tests/test_cross_database_suite.rs:            "DELETE FROM test_users WHERE id = ?",
+tests/test_cross_database_suite.rs:            "SELECT COUNT(*) as count FROM test_users WHERE id = ?",
+tests/test_phase4_2_standardized_errors.rs:                "Run query: SELECT * FROM posts WHERE user_id NOT IN (SELECT id FROM users)".to_string(),
+tests/test_phase4_2_standardized_errors.rs:        assert!(formatted.contains("SELECT * FROM posts WHERE user_id NOT IN"));
+tests/test_phase4_2_standardized_errors.rs:        assert!(formatted.contains("SELECT")); // Contains actual SQL
+tests/test_phase4_2_standardized_errors.rs:                "UPDATE user_stats SET score = 0 WHERE score NOT LIKE '%[0-9]%'".to_string(),
+tests/test_phase4_2_standardized_errors.rs:                "Identify orphaned records: SELECT * FROM posts WHERE user_id NOT IN (SELECT id FROM users)".to_string(),
+tests/test_phase4_2_standardized_errors.rs:                formatted.contains("SELECT") || 
+tests/test_phase4_2_standardized_errors.rs:                formatted.contains("UPDATE") || 
+tests/test_schema_simple.rs:    assert!(sql.contains("CREATE TABLE complex_example"));
+tests/test_migration_planner.rs:    // Verify rollback plan contains DROP TABLE
+tests/test_multi_database_integration.rs:    let result = client.execute_query("SELECT 1 as test_value", &[]).await
+tests/test_multi_database_integration.rs:    let result = client.execute_query("SELECT COUNT(*) as count FROM multi_db_test", &[]).await
+tests/test_multi_database_integration.rs:    let result = client.execute_query("SELECT 1 as test", &[]).await
+tests/common/database_manager.rs:                        match client.execute_query("SELECT 1 as test", &[]).await {
+tests/common/database_manager.rs:        let result = client.execute_query("SELECT 1 as test", &[]).await
+tests/common/database_manager.rs:            let result = client.execute_query("SELECT 1 as test", &[]).await
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT COUNT(*) as count FROM users", &[]).await?;
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT COUNT(*) as count FROM posts", &[]).await?;
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT COUNT(*) as count FROM type_test", &[]).await?;
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT text_col, integer_col FROM type_test WHERE id = 1", &[]).await?;
+tests/fixtures/mod.rs:        let result = backend.execute_query("SELECT COUNT(*) as count FROM performance_test", &[]).await?;
+tests/test_performance_benchmarks.rs:                violations.push(format!("Operation failed: {} on {}", metric.operation, metric.database));
+tests/test_performance_benchmarks.rs:                        violations.push(format!(
+tests/test_performance_benchmarks.rs:                        violations.push(format!(
+tests/test_performance_benchmarks.rs:                        violations.push(format!(
+tests/test_performance_benchmarks.rs:                        violations.push(format!(
+tests/test_performance_benchmarks.rs:                    violations.push(format!(
+tests/test_performance_benchmarks.rs:                    violations.push(format!(
+tests/test_performance_benchmarks.rs:            report.push_str(&format!("## {} Performance\n", db_name));
+tests/test_performance_benchmarks.rs:                report.push_str(&format!(
+tests/test_performance_benchmarks.rs:                    report.push_str(&format!(" ({:.1} ops/sec)", throughput));
+tests/test_performance_benchmarks.rs:                    report.push_str(&format!(" [{}MB]", memory));
+tests/test_performance_benchmarks.rs:                report.push_str(&format!("- {}\n", violation));
+tests/test_performance_benchmarks.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_performance_benchmarks.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_performance_benchmarks.rs:                Value::String(format!("bulk_user_{}@example.com", i)),
+tests/test_performance_benchmarks.rs:                Value::String(format!("Bulk User {}", i)),
+tests/test_performance_benchmarks.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_performance_benchmarks.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_performance_benchmarks.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_performance_benchmarks.rs:                Value::String(format!("memory_test_{}@example.com", i)),
+tests/test_performance_benchmarks.rs:                Value::String(format!("Memory Test User {}", i)),
+tests/test_performance_benchmarks.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_data_migration_2.rs:                Value::String(format!("Product {}", i)),
+tests/test_data_migration_6.rs:                serde_json::Value::String(format!("user{}", i)),
+tests/test_data_migration_6.rs:                serde_json::Value::String(format!("user{}@example.com", i)),
+tests/test_data_migration_6.rs:                serde_json::Value::String(format!("User {}", i)),
+tests/test_data_migration_6.rs:                serde_json::Value::String(format!("USER_{}", i))
+tests/test_data_migration_6.rs:                Value::String(format!("Record {}", i)),
+tests/test_data_migration_6.rs:                Value::String(format!("Original Record {}", i)),
+tests/test_multi_database_integration.rs:                Value::String(format!("data_{}", i)),
+tests/test_multi_database_integration.rs:                    Value::String(format!("performance_data_{}", i)),
+tests/test_entity_analyzer_advanced.rs:            name: format!("{}_parent_fk", Self::TABLE_NAME),
+tests/common/multi_db.rs:        let sql = format!("SELECT COUNT(*) as count FROM {}", table);
+tests/common/database_manager.rs:                    format!("{}:***", username)
+tests/common/database_manager.rs:                format!("{}{}{}", scheme, masked_creds, host_and_path)
+tests/common/database_manager.rs:            return Err(format!("Database {:?} is not available", dialect).into());
+tests/common/database_manager.rs:        }).await.map_err(|_| format!("Timeout waiting for {} database", dialect))?
+tests/common/database_manager.rs:                            let error_msg = format!("Test failed on {:?}: {}", dialect, e);
+tests/common/database_manager.rs:                    let error_msg = format!("Failed to create client for {:?}: {}", dialect, e);
+tests/common/database_manager.rs:            return Err(format!("Test failures: {}", errors.join(", ")).into());
+tests/common/database_manager.rs:                        Err(e) => return Err(format!("SQLite configuration invalid: {}", e).into()),
+tests/common/database_manager.rs:                        return Err(format!("{} URL not configured", dialect).into());
+tests/common/database_manager.rs:                        return Err(format!("{} URL not configured", dialect).into());
+tests/common/database_manager.rs:                .map_err(|e| format!("Failed to setup fixture '{}' on {:?}: {}", fixture_name, dialect, e))?;
+tests/common/database_manager.rs:            &format!("SELECT COUNT(*) as count FROM {} LIMIT 0", table_name), 
+tests/common/database_manager.rs:            &format!("SELECT COUNT(*) as count FROM {}", table_name), 
+tests/common/mod.rs:        let pragma_query = format!("PRAGMA table_info({})", table_name);
+tests/common/mod.rs:        let count_query = format!("SELECT COUNT(*) as count FROM {}", table_name);
+tests/common/mod.rs:                    format!("Unknown error scenario type: {}", scenario_type)
+tests/common/mod.rs:                    format!("Unknown recovery state: {}", expected_state)
+tests/rollback_system_tests.rs:                name: format!("test_column_{}", i),
+tests/rollback_system_tests.rs:                name: format!("idx_stress_test_{}", i),
+tests/rollback_system_tests.rs:            name: format!("idx_stress_test_{}", i),
+tests/test_cross_database_advanced.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_cross_database_advanced.rs:                .expect(&format!("Query {} should work on {}", test_name, database.name()));
+tests/test_cross_database_advanced.rs:                .expect(&format!("Aggregate {} should work on {}", agg_name, database.name()));
+tests/test_cross_database_advanced.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_cross_database_advanced.rs:            .expect(&format!("Migration table creation should work on {}", database.name()));
+tests/test_cross_database_advanced.rs:            .expect(&format!("ADD COLUMN should work on {}", database.name()));
+tests/test_cross_database_advanced.rs:            .expect(&format!("CREATE INDEX should work on {}", database.name()));
+tests/test_cross_database_advanced.rs:                    Value::String(format!("batch_user_{}@example.com", user_id)),
+tests/test_cross_database_advanced.rs:                    Value::String(format!("Batch User {}", user_id)),
+tests/test_cross_database_advanced.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_cross_database_advanced.rs:                .expect(&format!("Client {} creation should work on {}", i, database.name()));
+tests/test_cross_database_advanced.rs:                .expect(&format!("Concurrent query {} should work on {}", i, database.name()));
+tests/rollback_error_scenarios.rs:                &[Value::String(format!("Test Record {}", i))]
+tests/rollback_error_scenarios.rs:            assert!(format!("{:?}", other_error).contains("error"));
+tests/rollback_error_scenarios.rs:                    name: format!("col_{}", i),
+tests/rollback_error_scenarios.rs:            assert!(format!("{:?}", error).contains("error") || 
+tests/rollback_error_scenarios.rs:                   format!("{:?}", error).contains("timeout") ||
+tests/rollback_error_scenarios.rs:                   format!("{:?}", error).contains("failed"));
+tests/rollback_error_scenarios.rs:            let error_msg = format!("{:?}", error);
+tests/rollback_error_scenarios.rs:            let error_msg = format!("{:?}", error);
+tests/rollback_error_scenarios.rs:            assert!(format!("{:?}", error).contains("error"));
+tests/rollback_error_scenarios.rs:            let error_msg = format!("{:?}", error);
+tests/rollback_error_scenarios.rs:            let error_msg = format!("{:?}", error);
+tests/rollback_error_scenarios.rs:            let error_msg = format!("{:?}", error);
+tests/rollback_error_scenarios.rs:            let error_msg = format!("{:?}", error);
+tests/rollback_error_scenarios.rs:            let error_msg = format!("{:?}", error);
+tests/rollback_error_scenarios.rs:            let error_msg = format!("{:?}", error);
+tests/test_multi_database.rs:            .expect(&format!("Failed to create {} client", database.name()));
+tests/test_multi_database.rs:            .expect(&format!("Failed to create users table on {}", database.name()));
+tests/test_multi_database.rs:            .expect(&format!("Failed to create posts table on {}", database.name()));
+tests/test_multi_database.rs:            .expect(&format!("Failed to verify users table on {}", database.name())));
+tests/test_multi_database.rs:            .expect(&format!("Failed to verify posts table on {}", database.name())));
+tests/test_multi_database.rs:            .expect(&format!("Failed to setup {} test client", database.name()));
+tests/test_multi_database.rs:            .expect(&format!("Failed to query active users on {}", database.name()));
+tests/test_multi_database.rs:            .expect(&format!("Failed to setup clean {} client", database.name()));
+tests/test_multi_database.rs:            .expect(&format!("Failed to setup {} client with data", database.name()));
+tests/test_multi_database.rs:            .expect(&format!("Failed to cleanup {} client", database.name()));
+tests/test_multi_database.rs:            .expect(&format!("Failed to create {} client", database.name()));
+tests/fixtures/mod.rs:            .ok_or_else(|| format!("Fixture '{}' not found", fixture_name))?;
+tests/fixtures/mod.rs:            .ok_or_else(|| format!("Fixture '{}' not found", fixture_name))?;
+tests/fixtures/mod.rs:                    ("data".to_string(), json!(format!("test data {}", i))),
+tests/fixtures/entities.rs:                format!("performance data {}", i),
+tests/fixtures/data_sets.rs:                data: format!("sequential_{:04}", i),
+tests/fixtures/data_sets.rs:                created_at: Some(format!("2024-01-{:02} {:02}:00:00", 
+tests/fixtures/data_sets.rs:                data: format!("random_{}", i * 7 % 9999),
+tests/fixtures/data_sets.rs:                created_at: Some(format!("2024-02-{:02} {:02}:{:02}:00", 
+tests/fixtures/data_sets.rs:                data: format!("cluster_{}_{:03}", cluster, i % 100),
+tests/fixtures/data_sets.rs:                created_at: Some(format!("2024-03-{:02} 12:00:00", 
+tests/fixtures/data_sets.rs:                data: format!("sorted_{:05}", i),
+tests/fixtures/data_sets.rs:                created_at: Some(format!("2024-01-01 {:02}:00:00", i % 24)),
+tests/fixtures/data_sets.rs:                data: format!("reverse_{:05}", 5000 - i),
+tests/fixtures/data_sets.rs:                created_at: Some(format!("2024-01-01 {:02}:00:00", (24 - (i % 24)) % 24)),
+tests/fixtures/data_sets.rs:                data: format!("random_{:05}", pseudo_random),
+tests/fixtures/data_sets.rs:                created_at: Some(format!("2024-{:02}-{:02} {:02}:{:02}:{:02}", 
+tests/test_comprehensive_edge_cases.rs:            .set_name(format!("Level{}", level))
+tests/test_comprehensive_edge_cases.rs:            .expect(&format!("Failed to create level {} category", level));
+tests/test_comprehensive_edge_cases.rs:            .set_title(format!("Post {}", i))
+tests/test_comprehensive_edge_cases.rs:            .set_content(format!("Content for post {}", i))
+tests/test_comprehensive_edge_cases.rs:            .expect(&format!("Failed to create post {}", i));
+tests/test_comprehensive_edge_cases.rs:            .set_title(format!("Concurrent Post {}", i))
+tests/test_comprehensive_edge_cases.rs:            .set_content(format!("Content {}", i))
+tests/test_comprehensive_edge_cases.rs:            .expect(&format!("Failed to create concurrent post {}", i));
+tests/test_performance_regression.rs:            .set_name(format!("User {}", i))
+tests/test_performance_regression.rs:            .set_email(format!("user{}@example.com", i))
+tests/test_performance_regression.rs:            .expect(&format!("Failed to create user {}", i));
+tests/test_performance_regression.rs:            .set_title(format!("Performance Post {}", i))
+tests/test_performance_regression.rs:            .set_content(format!("Content for performance test {}", i))
+tests/test_performance_regression.rs:            .expect(&format!("Failed to create post {}", i));
+tests/test_performance_regression.rs:            .set_name(format!("Level {}", level))
+tests/test_performance_regression.rs:            .set_description(format!("Category at level {}", level))
+tests/test_performance_regression.rs:            .expect(&format!("Failed to create level {} category", level));
+tests/test_performance_regression.rs:            .set_title(format!("M2M Post {}", i))
+tests/test_performance_regression.rs:            .set_content(format!("Content {}", i))
+tests/test_performance_regression.rs:            .expect(&format!("Failed to create post {}", i));
+tests/test_performance_regression.rs:            .set_name(format!("M2M Category {}", i))
+tests/test_performance_regression.rs:            .set_description(format!("Category {}", i))
+tests/test_performance_regression.rs:            .expect(&format!("Failed to create category {}", i));
+tests/test_performance_regression.rs:            .set_title(format!("Query Post {}", i))
+tests/test_performance_regression.rs:            .set_content(format!("Content with keyword{} and data", i))
+tests/test_performance_regression.rs:            .expect(&format!("Failed to create post {}", i));
+tests/test_performance_regression.rs:            .set_title(format!("Memory Post {}", i))
+tests/test_performance_regression.rs:            .set_content(format!("Large content for memory test {} with lots of text to make it larger and test memory efficiency", i))
+tests/test_performance_regression.rs:            .expect(&format!("Failed to create post {}", i));
+tests/test_cross_database_suite.rs:            let email = format!("{}@example.com", case_name);
+tests/test_cross_database_suite.rs:                Value::String(format!("User {}", case_name)),
+tests/test_cross_database_suite.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_cross_database_suite.rs:            let email = format!("perf_user_{}@example.com", i);
+tests/test_cross_database_suite.rs:                Value::String(format!("Performance User {}", i)),
+tests/test_cross_database_suite.rs:            let email = format!("perf_user_{}@example.com", i * 2);
+tests/test_cross_database_suite.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_cross_database_suite.rs:                Value::String(format!("memory_test_{}@example.com", i)),
+tests/test_cross_database_suite.rs:                Value::String(format!("Memory Test User {}", i)),
+tests/test_cross_database_suite.rs:            .expect(&format!("Large query should work on {}", database.name()));
+tests/test_cross_database_suite.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_cross_database_suite.rs:            .expect(&format!("Schema creation should work on {}", database.name()));
+tests/test_cross_database_suite.rs:            .expect(&format!("Failed to setup {} client", database.name()));
+tests/test_phase4_2_standardized_errors.rs:        assert_eq!(format!("{:?}", errors[0]), format!("{:?}", deserialized));
+tests/test_enhanced_relations_api.rs:            .set_title(format!("{} Views Post", title))
+tests/test_enhanced_relations_api.rs:            .set_title(format!("Post {}", i))
+tests/test_phase3_user_configurable_types.rs:        serde_json::Value::String(format!("uuid:{}", value))

@@ -15,8 +15,8 @@ This document provides the complete implementation plan for multi-database testi
 - [x] **Task 1.3**: Feature Gate Compilation Verification (100-200 lines)
 
 ### **Phase 2: Command & Feature Gate Integration**
-- [ ] **Task 2.1**: Backend Isolation & Logging (250-350 lines)
-- [ ] **Task 2.2**: Command Environment Enforcement (150-250 lines)
+- [x] **Task 2.1**: Backend Isolation & Logging (250-350 lines)
+- [x] **Task 2.2**: Command Environment Enforcement (150-250 lines)
 
 ### **Phase 3: Database-Agnostic Test Conversion**
 - [ ] **Task 3.1**: Raw SQL Audit & Helper Utilities (300-400 lines)
