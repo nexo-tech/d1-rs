@@ -2,6 +2,9 @@ use d1_rs::auto_migration::{AutoSchemaClient, MigrationEnvironment};
 use d1_rs::*;
 use serde::{Deserialize, Serialize};
 
+mod common;
+use common::query_helpers::{build_table_exists_query, build_table_count_query};
+
 /// Revolutionary Phase 3.1 Test Suite - AutoSchemaClient
 /// Tests the world-first compile-time safe automatic migration system
 ///
@@ -68,22 +71,18 @@ async fn test_auto_migrate_revolutionary_one_command() {
         "Should have execution time"
     );
 
-    // Verify tables were created correctly
+    // Verify tables were created correctly using database-agnostic helpers
+    let (users_exists_sql, users_exists_params) = build_table_exists_query("users", client.db.dialect());
     let _users_table_exists = client
         .db
-        .execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='users'",
-            &[],
-        )
+        .execute(&users_exists_sql, &users_exists_params)
         .await
         .expect("Failed to check users table");
 
+    let (posts_exists_sql, posts_exists_params) = build_table_exists_query("posts", client.db.dialect());
     let _posts_table_exists = client
         .db
-        .execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'",
-            &[],
-        )
+        .execute(&posts_exists_sql, &posts_exists_params)
         .await
         .expect("Failed to check posts table");
 
@@ -124,13 +123,11 @@ async fn test_dry_run_preview_changes() {
     println!("Estimated duration: {:?}", plan.estimated_duration);
     println!("Safety warnings: {}", plan.safety_warnings.len());
 
-    // Verify database is unchanged (no tables should exist yet)
+    // Verify database is unchanged (no tables should exist yet) using database-agnostic helper
+    let (count_sql, count_params) = build_table_count_query(client.db.dialect());
     let _tables_result = client
         .db
-        .execute(
-            "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table'",
-            &[],
-        )
+        .execute(&count_sql, &count_params)
         .await
         .expect("Failed to check table count");
 

@@ -3,6 +3,11 @@ mod common;
 use d1_rs::backends::QueryResult;
 use chrono::{DateTime, Utc};
 use d1_rs::*;
+use common::query_helpers::{
+    build_table_exists_query, build_insert_query, build_select_query,
+    table, column
+};
+use sea_query::Value as SeaValue;
 
 #[tokio::test]
 async fn test_modern_schema_definition() {
@@ -46,41 +51,49 @@ async fn test_modern_schema_definition() {
         .await
         .expect("Failed to create table");
 
-    // Verify table was created
+    // Verify table was created using database-agnostic helper
+    let (exists_sql, exists_params) = build_table_exists_query("users", db.dialect());
     let tables = db
-        .execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='users'",
-            &[],
-        )
+        .execute(&exists_sql, &exists_params)
         .await
         .expect("Failed to query tables");
 
     assert_eq!(tables.rows().len(), 1);
 
-    // Test inserting data with proper boolean handling
-    use serde_json::Value;
-    let insert_sql = r#"
-        INSERT INTO users (email, name, is_active, is_verified, age, metadata) 
-        VALUES (?, ?, ?, ?, ?, ?)
-    "#;
-
-    db.execute(
-        insert_sql,
-        &[
-            Value::String("test@example.com".to_string()),
-            Value::String("Test User".to_string()),
-            Value::Bool(true),  // This will be converted to 1
-            Value::Bool(false), // This will be converted to 0
-            Value::Number(25.into()),
-            Value::String(r#"{"role": "admin"}"#.to_string()),
+    // Test inserting data with proper boolean handling using sea-query helpers
+    let (insert_sql, insert_params) = build_insert_query(
+        table("users"),
+        vec![
+            column("email"), 
+            column("name"), 
+            column("is_active"), 
+            column("is_verified"), 
+            column("age"), 
+            column("metadata")
         ],
-    )
-    .await
-    .expect("Failed to insert user");
+        vec![
+            SeaValue::String(Some(Box::new("test@example.com".to_string()))),
+            SeaValue::String(Some(Box::new("Test User".to_string()))),
+            SeaValue::Bool(Some(true)),  // This will be converted to 1
+            SeaValue::Bool(Some(false)), // This will be converted to 0
+            SeaValue::Int(Some(25)),
+            SeaValue::String(Some(Box::new(r#"{"role": "admin"}"#.to_string()))),
+        ],
+        db.dialect()
+    );
 
-    // Query back and verify boolean conversion works
+    db.execute(&insert_sql, &insert_params)
+        .await
+        .expect("Failed to insert user");
+
+    // Query back and verify boolean conversion works using sea-query helpers
+    let (select_sql, select_params) = build_select_query(
+        table("users"),
+        vec![], // Empty means SELECT *
+        db.dialect()
+    );
     let result = db
-        .execute("SELECT * FROM users", &[])
+        .execute(&select_sql, &select_params)
         .await
         .expect("Failed to query users");
 
@@ -118,13 +131,15 @@ async fn test_schema_migration_with_booleans() {
     // Create the table and verify it works
     db.execute(&sql, &[]).await.expect("Failed to create table");
 
-    // Simple test: insert data with boolean values
-    use serde_json::Value;
+    // Simple test: insert data with boolean values using sea-query helpers
+    let (insert_sql, insert_params) = build_insert_query(
+        table("posts"),
+        vec![column("is_published"), column("is_featured")],
+        vec![SeaValue::Bool(Some(true)), SeaValue::Bool(Some(false))],
+        db.dialect()
+    );
     let insert_result = db
-        .execute(
-            "INSERT INTO posts (is_published, is_featured) VALUES (?, ?)",
-            &[Value::Bool(true), Value::Bool(false)],
-        )
+        .execute(&insert_sql, &insert_params)
         .await;
 
     assert!(
@@ -132,9 +147,14 @@ async fn test_schema_migration_with_booleans() {
         "Should be able to insert boolean values"
     );
 
-    // Query the data back
+    // Query the data back using sea-query helpers
+    let (select_sql, select_params) = build_select_query(
+        table("posts"),
+        vec![], // Empty means SELECT *
+        db.dialect()
+    );
     let query_result = db
-        .execute("SELECT * FROM posts", &[])
+        .execute(&select_sql, &select_params)
         .await
         .expect("Failed to query data");
 

@@ -363,15 +363,97 @@ pub fn build_create_table_query_with_columns(
     (sql, vec![])
 }
 
-/// Build a database-agnostic DROP TABLE query
+/// Build a database-agnostic DROP TABLE query using sea-query
 pub fn build_drop_table_query(
     table_name: &str,
     if_exists: bool,
-    _dialect: DatabaseDialect
+    dialect: DatabaseDialect
 ) -> (String, Vec<Value>) {
-    let if_exists_clause = if if_exists { "IF EXISTS " } else { "" };
-    let sql = format!("DROP TABLE {}{}", if_exists_clause, table_name);
+    let mut drop_table = SeaTable::drop();
+    drop_table.table(Alias::new(table_name));
+    
+    if if_exists {
+        drop_table.if_exists();
+    }
+    
+    let sql = match dialect {
+        DatabaseDialect::SQLite => drop_table.build(SqliteQueryBuilder),
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => drop_table.build(PostgresQueryBuilder),
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => drop_table.build(MysqlQueryBuilder),
+    };
+    
     (sql, vec![])
+}
+
+/// Build a database-agnostic table existence check query using sea-query
+pub fn build_table_exists_query(
+    table_name: &str,
+    dialect: DatabaseDialect
+) -> (String, Vec<Value>) {
+    match dialect {
+        DatabaseDialect::SQLite => {
+            let (sql, params) = Query::select()
+                .column(Alias::new("name"))
+                .from(Alias::new("sqlite_master"))
+                .and_where(Expr::col(Alias::new("type")).eq("table"))
+                .and_where(Expr::col(Alias::new("name")).eq(table_name))
+                .build(SqliteQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        },
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => {
+            let (sql, params) = Query::select()
+                .column(Alias::new("table_name"))
+                .from((Alias::new("information_schema"), Alias::new("tables")))
+                .and_where(Expr::col(Alias::new("table_name")).eq(table_name))
+                .build(PostgresQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        },
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => {
+            let (sql, params) = Query::select()
+                .column(Alias::new("table_name"))
+                .from((Alias::new("information_schema"), Alias::new("tables")))
+                .and_where(Expr::col(Alias::new("table_name")).eq(table_name))
+                .build(MysqlQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        },
+    }
+}
+
+/// Build a database-agnostic query to count all tables using sea-query
+pub fn build_table_count_query(dialect: DatabaseDialect) -> (String, Vec<Value>) {
+    match dialect {
+        DatabaseDialect::SQLite => {
+            let (sql, params) = Query::select()
+                .expr(Expr::asterisk().count())
+                .from(Alias::new("sqlite_master"))
+                .and_where(Expr::col(Alias::new("type")).eq("table"))
+                .and_where(Expr::col(Alias::new("name")).not_like("sqlite_%"))
+                .build(SqliteQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        },
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => {
+            let (sql, params) = Query::select()
+                .expr(Expr::asterisk().count())
+                .from((Alias::new("information_schema"), Alias::new("tables")))
+                .and_where(Expr::col(Alias::new("table_schema")).eq("public"))
+                .build(PostgresQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        },
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => {
+            let (sql, params) = Query::select()
+                .expr(Expr::asterisk().count())
+                .from((Alias::new("information_schema"), Alias::new("tables")))
+                .and_where(Expr::col(Alias::new("table_schema")).eq(Expr::cust("DATABASE()")))
+                .build(MysqlQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        },
+    }
 }
 
 /// Helper to create table identifiers
