@@ -60,6 +60,7 @@ async fn test_boolean_conversion() {
     let (create_sql, _create_params) = build_create_table_query_with_columns(
         "test_bools",
         vec![
+            ("id", "INTEGER", true, Some("AUTOINCREMENT"), false),
             ("name", "TEXT", false, None, false),
             ("is_active", "BOOLEAN", false, None, true)
         ],
@@ -96,6 +97,7 @@ async fn test_boolean_conversion() {
     struct TestBool {
         #[primary_key]
         id: i64,
+        name: String,
         is_active: bool,
     }
     
@@ -108,6 +110,7 @@ async fn test_boolean_conversion() {
     println!("Converted entities: {:?}", converted);
     
     assert_eq!(converted.len(), 1);
+    assert_eq!(converted[0].name, "Test Bool");
     assert_eq!(converted[0].is_active, true);
 }
 
