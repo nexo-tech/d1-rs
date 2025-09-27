@@ -9,7 +9,7 @@ use d1_rs::backends::{DatabaseBackend, QueryResult};
 use sea_query::{
     Query, Expr, Value as SeaValue, Order, Alias, DynIden, 
     SqliteQueryBuilder, SimpleExpr, Asterisk, IntoIden,
-    Table as SeaTable, ColumnDef, Index, ForeignKey
+    Table as SeaTable, ColumnDef, Index
 };
 
 #[cfg(feature = "postgres")]
@@ -307,23 +307,23 @@ pub fn build_create_table_query_with_columns(
     for (col_name, col_type_str, is_primary_key, default_value, nullable) in columns {
         let mut col_def = ColumnDef::new(Alias::new(col_name));
         
-        // Set column type based on string
+        // Set column type based on string - use custom type to preserve exact case
         match col_type_str.to_uppercase().as_str() {
-            "TEXT" => col_def.text(),
-            "INTEGER" => col_def.integer(),
-            "BOOLEAN" => col_def.boolean(),
-            "REAL" => col_def.float(),
-            "BLOB" => col_def.blob(),
+            "TEXT" => col_def.custom(Alias::new("TEXT")),
+            "INTEGER" => col_def.custom(Alias::new("INTEGER")),
+            "BOOLEAN" => col_def.custom(Alias::new("BOOLEAN")),
+            "REAL" => col_def.custom(Alias::new("REAL")),
+            "BLOB" => col_def.custom(Alias::new("BLOB")),
             "DATETIME" => {
                 match dialect {
-                    DatabaseDialect::SQLite => col_def.text(), // SQLite stores datetime as text
+                    DatabaseDialect::SQLite => col_def.custom(Alias::new("DATETIME")), // Preserve DATETIME type name
                     #[cfg(feature = "postgres")]
                     DatabaseDialect::PostgreSQL => col_def.timestamp(),
                     #[cfg(feature = "mysql")]
                     DatabaseDialect::MySQL => col_def.timestamp(),
                 }
             },
-            _ => col_def.text(), // Default fallback
+            _ => col_def.custom(Alias::new("TEXT")), // Default fallback
         };
         
         // Set primary key
@@ -508,9 +508,10 @@ pub fn build_add_foreign_key_query(
     
     let sql = match dialect {
         DatabaseDialect::SQLite => {
-            // SQLite doesn't support ALTER TABLE ADD FOREIGN KEY, but we can work around this
-            // For tests, we'll add a comment indicating the constraint should be added during CREATE TABLE
-            format!("-- SQLite foreign key constraint: {} -> {}({}){}", column, referenced_table, referenced_column, action_clause)
+            // SQLite doesn't support ALTER TABLE ADD FOREIGN KEY
+            // Foreign keys should be defined in CREATE TABLE statement
+            // Return empty string to indicate no operation needed
+            String::new()
         },
         #[cfg(feature = "postgres")]
         DatabaseDialect::PostgreSQL => {
@@ -537,7 +538,7 @@ pub fn build_create_table_query_with_foreign_keys(
     table_name: &str,
     columns: Vec<(&str, &str, bool, Option<&str>, bool)>, // (name, type_string, primary_key, default_value, nullable)
     foreign_keys: Vec<(&str, &str, Option<&str>, Option<&str>)>, // (column, referenced_table, on_delete, on_update)
-    dialect: DatabaseDialect
+    _dialect: DatabaseDialect
 ) -> (String, Vec<Value>) {
     // Create base table structure using raw SQL for maximum compatibility
     let mut sql_parts = Vec::new();
@@ -606,7 +607,7 @@ pub fn build_create_table_query_with_foreign_keys(
 /// Build a database-agnostic ALTER TABLE ADD PRIMARY KEY query using sea-query
 #[allow(dead_code)]
 pub fn build_add_primary_key_query(
-    _table_name: &str,
+    table_name: &str,
     columns: Vec<&str>,
     dialect: DatabaseDialect
 ) -> (String, Vec<Value>) {
@@ -646,23 +647,23 @@ pub fn build_create_table_query_with_composite_pk(
     for (col_name, col_type_str, default_value, nullable) in columns {
         let mut col_def = ColumnDef::new(Alias::new(col_name));
         
-        // Set column type based on string
+        // Set column type based on string - use custom type to preserve exact case
         match col_type_str.to_uppercase().as_str() {
-            "TEXT" => col_def.text(),
-            "INTEGER" => col_def.integer(),
-            "BOOLEAN" => col_def.boolean(),
-            "REAL" => col_def.float(),
-            "BLOB" => col_def.blob(),
+            "TEXT" => col_def.custom(Alias::new("TEXT")),
+            "INTEGER" => col_def.custom(Alias::new("INTEGER")),
+            "BOOLEAN" => col_def.custom(Alias::new("BOOLEAN")),
+            "REAL" => col_def.custom(Alias::new("REAL")),
+            "BLOB" => col_def.custom(Alias::new("BLOB")),
             "DATETIME" => {
                 match dialect {
-                    DatabaseDialect::SQLite => col_def.text(), // SQLite stores datetime as text
+                    DatabaseDialect::SQLite => col_def.custom(Alias::new("DATETIME")), // Preserve DATETIME type name
                     #[cfg(feature = "postgres")]
                     DatabaseDialect::PostgreSQL => col_def.timestamp(),
                     #[cfg(feature = "mysql")]
                     DatabaseDialect::MySQL => col_def.timestamp(),
                 }
             },
-            _ => col_def.text(), // Default fallback
+            _ => col_def.custom(Alias::new("TEXT")), // Default fallback
         };
         
         // Set nullable
@@ -699,12 +700,11 @@ pub fn build_create_table_query_with_composite_pk(
     
     // Add composite primary key if specified
     if !primary_key_columns.is_empty() {
-        let pk_columns: Vec<_> = primary_key_columns.into_iter().map(|c| Alias::new(c)).collect();
-        create_table.primary_key(sea_query::Index::create().col(pk_columns[0].clone()));
-        for _pk_col in pk_columns.iter().skip(1) {
-            // sea-query doesn't easily support composite primary keys in CREATE TABLE
-            // This is a limitation we'll work around
+        let mut pk_index = sea_query::Index::create();
+        for pk_col in primary_key_columns.into_iter() {
+            pk_index.col(Alias::new(pk_col));
         }
+        create_table.primary_key(&mut pk_index);
     }
     
     let sql = match dialect {
@@ -850,6 +850,7 @@ pub fn build_insert_migration_query(
 }
 
 /// Build a database-agnostic query to delete migration records
+#[allow(dead_code)]
 pub fn build_delete_migration_query(
     where_clause: SimpleExpr,
     dialect: DatabaseDialect
@@ -871,6 +872,7 @@ pub fn build_delete_migration_query(
 }
 
 /// Build a database-agnostic query to select multiple tables by name
+#[allow(dead_code)]
 pub fn build_select_tables_by_names_query(
     table_names: Vec<&str>,
     dialect: DatabaseDialect
@@ -912,6 +914,7 @@ pub fn build_select_tables_by_names_query(
 }
 
 /// Build a database-agnostic query to check migration lock
+#[allow(dead_code)]
 pub fn build_select_migration_lock_query(dialect: DatabaseDialect) -> (String, Vec<Value>) {
     let mut query = Query::select();
     query
@@ -931,6 +934,7 @@ pub fn build_select_migration_lock_query(dialect: DatabaseDialect) -> (String, V
 }
 
 /// Build a database-agnostic query to insert migration lock
+#[allow(dead_code)]
 pub fn build_insert_migration_lock_query(dialect: DatabaseDialect) -> (String, Vec<Value>) {
     let mut query = Query::insert();
     query

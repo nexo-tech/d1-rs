@@ -11,12 +11,6 @@ mod common;
 
 use common::database_manager::TestDatabaseManager;
 use d1_rs::backends::{DatabaseBackend, QueryResult};
-use common::query_helpers::{
-    build_count_query, build_insert_query, build_select_query, build_create_table_query_simple,
-    build_drop_table_query, table, column
-};
-use sea_query::{Value as SeaValue, Expr, Alias};
-use serde_json::Value;
 
 /// Test that TestDatabaseManager correctly identifies available databases
 #[tokio::test]

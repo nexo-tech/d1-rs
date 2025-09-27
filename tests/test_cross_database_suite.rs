@@ -11,8 +11,7 @@ use std::collections::HashMap;
 mod common;
 use common::multi_db::*;
 use common::query_helpers::{
-    build_select_query_with_where, build_select_query, build_count_query_with_where,
-    build_count_query, build_insert_query, build_update_query, build_delete_query,
+    build_select_query_with_where, build_delete_query,
     table, column
 };
 use sea_query::{Value as SeaValue, Expr, Alias};
