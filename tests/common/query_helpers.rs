@@ -9,7 +9,7 @@ use d1_rs::backends::{DatabaseBackend, QueryResult};
 use sea_query::{
     Query, Expr, Value as SeaValue, Order, Alias, DynIden, 
     SqliteQueryBuilder, SimpleExpr, Asterisk, IntoIden,
-    Table as SeaTable, ColumnDef, Index
+    Table as SeaTable, ColumnDef, Index, Func, JoinType
 };
 
 #[cfg(feature = "postgres")]
@@ -1299,4 +1299,44 @@ mod tests {
         assert!(drop_sql.contains("IF EXISTS"));
         assert!(drop_sql.contains("test_table"));
     }
+}
+
+/// Build a complex JOIN query with aggregations for performance testing
+pub fn build_complex_join_query_with_aggregations(dialect: DatabaseDialect) -> (String, Vec<Value>) {
+    let mut query = Query::select();
+    query.columns([
+            (Alias::new("u"), Alias::new("name")),
+            (Alias::new("u"), Alias::new("email")),
+        ])
+        .expr_as(Func::count(Expr::col((Alias::new("p"), Alias::new("id")))), Alias::new("post_count"))
+        .expr_as(Func::avg(Expr::col((Alias::new("p"), Alias::new("views")))), Alias::new("avg_views"))
+        .expr_as(Func::max(Expr::col((Alias::new("p"), Alias::new("views")))), Alias::new("max_views"))
+        .from_as(Alias::new("test_users"), Alias::new("u"))
+        .join_as(
+            JoinType::LeftJoin,
+            Alias::new("test_posts"),
+            Alias::new("p"),
+            Expr::col((Alias::new("u"), Alias::new("id"))).equals((Alias::new("p"), Alias::new("user_id")))
+        )
+        .and_where(Expr::col((Alias::new("u"), Alias::new("is_active"))).eq(true))
+        .group_by_columns([
+            (Alias::new("u"), Alias::new("id")),
+            (Alias::new("u"), Alias::new("name")),
+            (Alias::new("u"), Alias::new("email"))
+        ])
+        .and_having(Expr::expr(Func::count(Expr::col((Alias::new("p"), Alias::new("id"))))).gte(0))
+        .order_by_columns([
+            ((Alias::new("post_count"), Order::Desc)),
+            ((Alias::new("avg_views"), Order::Desc))
+        ]);
+    
+    let (sql, params) = match dialect {
+        DatabaseDialect::SQLite => query.build(SqliteQueryBuilder),
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => query.build(PostgresQueryBuilder),
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => query.build(MysqlQueryBuilder),
+    };
+    
+    (sql, convert_sea_query_params_to_json(params.0))
 }

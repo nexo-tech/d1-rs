@@ -318,42 +318,10 @@ async fn test_complex_query_performance() {
         
         let seeder = TestDataSeeder::new(client);
         
-        // Benchmark complex JOIN query with aggregations using sea-query
+        // Benchmark complex JOIN query with aggregations using helper
         let start = Instant::now();
-        let (complex_sql, complex_params) = Query::select()
-            .columns([
-                (Alias::new("u"), Alias::new("name")),
-                (Alias::new("u"), Alias::new("email")),
-            ])
-            .expr_as(Func::count(Expr::col((Alias::new("p"), Alias::new("id")))), Alias::new("post_count"))
-            .expr_as(Func::avg(Expr::col((Alias::new("p"), Alias::new("views")))), Alias::new("avg_views"))
-            .expr_as(Func::max(Expr::col((Alias::new("p"), Alias::new("views")))), Alias::new("max_views"))
-            .from_as(Alias::new("test_users"), Alias::new("u"))
-            .join_as(
-                JoinType::LeftJoin,
-                Alias::new("test_posts"),
-                Alias::new("p"),
-                Expr::col((Alias::new("u"), Alias::new("id"))).equals((Alias::new("p"), Alias::new("user_id")))
-            )
-            .and_where(Expr::col((Alias::new("u"), Alias::new("is_active"))).eq(true))
-            .group_by_columns([
-                (Alias::new("u"), Alias::new("id")),
-                (Alias::new("u"), Alias::new("name")),
-                (Alias::new("u"), Alias::new("email"))
-            ])
-            .and_having(Expr::expr(Func::count(Expr::col((Alias::new("p"), Alias::new("id"))))).gte(0))
-            .order_by_columns([
-                ((Alias::new("post_count"), Order::Desc)),
-                ((Alias::new("avg_views"), Order::Desc))
-            ])
-            .build(match database.dialect() {
-                DatabaseDialect::SQLite => SqliteQueryBuilder,
-                #[cfg(feature = "postgres")]
-                DatabaseDialect::PostgreSQL => PostgresQueryBuilder,
-                #[cfg(feature = "mysql")]
-                DatabaseDialect::MySQL => MysqlQueryBuilder,
-            });
-        let result = seeder.client.query(&complex_sql, &convert_sea_query_params_to_json(complex_params.0)).await;
+        let (complex_sql, complex_params) = build_complex_join_query_with_aggregations(database.dialect());
+        let result = seeder.client.query(&complex_sql, &complex_params).await;
         let duration = start.elapsed();
         
         let success = result.is_ok();
