@@ -1,4 +1,5 @@
 # Rust build artifacts
+default.profraw
 /target/
 target/
 Cargo.lock
@@ -54,3 +55,4 @@ coverage/
 tmp/
 temp/
 *.tmp
+
