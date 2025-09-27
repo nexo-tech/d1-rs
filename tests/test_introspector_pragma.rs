@@ -4,7 +4,8 @@ use d1_rs::*;
 mod common;
 use common::query_helpers::{
     build_create_table_query_with_columns, build_create_index_query, build_create_unique_index_query,
-    build_pragma_query
+    build_pragma_query, build_add_foreign_key_query, build_create_table_query_with_composite_pk,
+    build_create_table_query_with_foreign_keys
 };
 
 #[tokio::test]
@@ -93,8 +94,8 @@ async fn test_pragma_compatibility_foreign_keys() {
     );
     db.execute(&users_sql, &users_params).await.unwrap();
     
-    // Create child table with foreign key using database-agnostic helper
-    let (posts_sql, posts_params) = build_create_table_query_with_columns(
+    // Create child table with foreign keys included in CREATE TABLE statement
+    let (posts_sql, posts_params) = build_create_table_query_with_foreign_keys(
         "pragma_posts",
         vec![
             ("id", "INTEGER", true, Some("AUTOINCREMENT"), false),
@@ -102,11 +103,13 @@ async fn test_pragma_compatibility_foreign_keys() {
             ("user_id", "INTEGER", false, None, false),
             ("category_id", "INTEGER", false, None, true)
         ],
+        vec![
+            ("user_id", "pragma_users", Some("CASCADE"), Some("SET NULL")),
+            ("category_id", "pragma_users", Some("SET NULL"), None)
+        ],
         db.dialect()
     );
     db.execute(&posts_sql, &posts_params).await.unwrap();
-    
-    // Note: Foreign key constraints are handled by introspection layer for cross-database compatibility
     
     // Test pragma_foreign_key_list function
     let introspector = SchemaIntrospector::new(&db);
@@ -150,7 +153,7 @@ async fn test_pragma_table_info_comprehensive() {
         vec![
             ("id", "INTEGER", true, Some("AUTOINCREMENT"), false),
             ("name", "TEXT", false, None, false),
-            ("email", "TEXT", false, None, true), // UNIQUE constraint handled separately
+            ("email", "TEXT", false, None, true),
             ("age", "INTEGER", false, Some("25"), true),
             ("salary", "REAL", false, None, true),
             ("bio", "BLOB", false, None, true),
@@ -162,6 +165,15 @@ async fn test_pragma_table_info_comprehensive() {
         db.dialect()
     );
     db.execute(&sql, &params).await.unwrap();
+    
+    // Add UNIQUE constraint for email
+    let (email_unique_sql, email_unique_params) = build_create_unique_index_query(
+        "idx_pragma_comprehensive_email_unique",
+        "pragma_comprehensive",
+        vec!["email"],
+        db.dialect()
+    );
+    db.execute(&email_unique_sql, &email_unique_params).await.unwrap();
     
     let introspector = SchemaIntrospector::new(&db);
     
@@ -232,7 +244,7 @@ async fn test_complete_database_introspection() {
         "introspect_users",
         vec![
             ("id", "INTEGER", true, Some("AUTOINCREMENT"), false),
-            ("username", "TEXT", false, None, false), // UNIQUE constraint handled separately
+            ("username", "TEXT", false, None, false),
             ("email", "TEXT", false, None, false),
             ("is_admin", "BOOLEAN", false, Some("0"), true),
             ("created_at", "DATETIME", false, Some("CURRENT_TIMESTAMP"), true)
@@ -240,6 +252,15 @@ async fn test_complete_database_introspection() {
         db.dialect()
     );
     db.execute(&users_sql, &users_params).await.unwrap();
+    
+    // Add UNIQUE constraint for username
+    let (username_unique_sql, username_unique_params) = build_create_unique_index_query(
+        "idx_introspect_users_username_unique",
+        "introspect_users",
+        vec!["username"],
+        db.dialect()
+    );
+    db.execute(&username_unique_sql, &username_unique_params).await.unwrap();
     
     let (posts_sql, posts_params) = build_create_table_query_with_columns(
         "introspect_posts",
@@ -255,30 +276,69 @@ async fn test_complete_database_introspection() {
     );
     db.execute(&posts_sql, &posts_params).await.unwrap();
     
+    // Add foreign key constraint from posts to users
+    let (fk_posts_sql, fk_posts_params) = build_add_foreign_key_query(
+        "introspect_posts",
+        "fk_introspect_posts_user_id",
+        vec!["user_id"],
+        "introspect_users",
+        vec!["id"],
+        Some("CASCADE"),
+        None,
+        db.dialect()
+    );
+    db.execute(&fk_posts_sql, &fk_posts_params).await.unwrap();
+    
     let (tags_sql, tags_params) = build_create_table_query_with_columns(
         "introspect_tags",
         vec![
             ("id", "INTEGER", true, Some("AUTOINCREMENT"), false),
-            ("name", "TEXT", false, None, false), // UNIQUE constraint handled separately
+            ("name", "TEXT", false, None, false),
             ("color", "TEXT", false, Some("#ffffff"), true)
         ],
         db.dialect()
     );
     db.execute(&tags_sql, &tags_params).await.unwrap();
     
-    // Create junction table for many-to-many using database-agnostic helper
-    let (post_tags_sql, post_tags_params) = build_create_table_query_with_columns(
+    // Add UNIQUE constraint for name (this is already being created as idx_tags_name below)
+    
+    // Create junction table for many-to-many using database-agnostic helper with composite primary key
+    let (post_tags_sql, post_tags_params) = build_create_table_query_with_composite_pk(
         "introspect_post_tags",
         vec![
-            ("post_id", "INTEGER", false, None, false),
-            ("tag_id", "INTEGER", false, None, false),
-            ("created_at", "DATETIME", false, Some("CURRENT_TIMESTAMP"), true)
+            ("post_id", "INTEGER", None, false),
+            ("tag_id", "INTEGER", None, false),
+            ("created_at", "DATETIME", Some("CURRENT_TIMESTAMP"), true)
         ],
+        vec!["post_id", "tag_id"],
         db.dialect()
     );
     db.execute(&post_tags_sql, &post_tags_params).await.unwrap();
     
-    // Note: Composite primary key and foreign key constraints handled by introspection layer
+    // Add foreign key constraints for junction table
+    let (fk3_sql, fk3_params) = build_add_foreign_key_query(
+        "introspect_post_tags",
+        "fk_post_tags_post_id",
+        vec!["post_id"],
+        "introspect_posts",
+        vec!["id"],
+        Some("CASCADE"),
+        None,
+        db.dialect()
+    );
+    db.execute(&fk3_sql, &fk3_params).await.unwrap();
+    
+    let (fk4_sql, fk4_params) = build_add_foreign_key_query(
+        "introspect_post_tags",
+        "fk_post_tags_tag_id", 
+        vec!["tag_id"],
+        "introspect_tags",
+        vec!["id"],
+        Some("CASCADE"),
+        None,
+        db.dialect()
+    );
+    db.execute(&fk4_sql, &fk4_params).await.unwrap();
     
     // Create indexes using database-agnostic helpers
     let (idx1_sql, idx1_params) = build_create_index_query(
