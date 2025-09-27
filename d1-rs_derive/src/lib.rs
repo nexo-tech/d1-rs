@@ -249,7 +249,7 @@ fn extract_table_name(attrs: &[Attribute], default_name: &str) -> String {
     
     // Convert PascalCase to snake_case and pluralize
     let mut result = String::new();
-    let mut chars = default_name.chars().peekable();
+    let chars = default_name.chars();
     
     for c in chars {
         if c.is_uppercase() && !result.is_empty() {
