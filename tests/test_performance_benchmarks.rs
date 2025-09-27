@@ -8,9 +8,17 @@ use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
+use sea_query::{Query, Expr, Order, Alias, SqliteQueryBuilder, IntoIden, Func, JoinType, Asterisk};
+
+#[cfg(feature = "postgres")]
+use sea_query::PostgresQueryBuilder;
+
+#[cfg(feature = "mysql")]
+use sea_query::MysqlQueryBuilder;
 
 mod common;
 use common::multi_db::*;
+use common::query_helpers::*;
 
 /// Performance metrics collection and analysis
 #[derive(Debug, Clone)]
@@ -203,9 +211,13 @@ async fn test_single_query_performance() {
         let client = TestUtils::setup_test_client_with_data(database.clone()).await
             .expect(&format!("Failed to setup {} client", database.name()));
         
-        // Benchmark simple SELECT query
+        // Benchmark simple SELECT query using sea-query helper
         let start = Instant::now();
-        let result = client.query("SELECT COUNT(*) as count FROM test_users", &[]).await;
+        let (count_sql, count_params) = build_count_query(
+            Alias::new("test_users").into_iden(), 
+            database.dialect()
+        );
+        let result = client.query(&count_sql, &count_params).await;
         let duration = start.elapsed();
         
         let success = result.is_ok();
@@ -306,24 +318,42 @@ async fn test_complex_query_performance() {
         
         let seeder = TestDataSeeder::new(client);
         
-        // Benchmark complex JOIN query with aggregations
-        let complex_query = r#"
-            SELECT 
-                u.name,
-                u.email,
-                COUNT(p.id) as post_count,
-                AVG(CAST(p.views AS REAL)) as avg_views,
-                MAX(p.views) as max_views
-            FROM test_users u
-            LEFT JOIN test_posts p ON u.id = p.user_id
-            WHERE u.is_active = ?
-            GROUP BY u.id, u.name, u.email
-            HAVING COUNT(p.id) >= 0
-            ORDER BY post_count DESC, avg_views DESC
-        "#;
-        
+        // Benchmark complex JOIN query with aggregations using sea-query
         let start = Instant::now();
-        let result = seeder.client.query(complex_query, &[seeder.bool_value(true)]).await;
+        let (complex_sql, complex_params) = Query::select()
+            .columns([
+                (Alias::new("u"), Alias::new("name")),
+                (Alias::new("u"), Alias::new("email")),
+            ])
+            .expr_as(Func::count(Expr::col((Alias::new("p"), Alias::new("id")))), Alias::new("post_count"))
+            .expr_as(Func::avg(Expr::col((Alias::new("p"), Alias::new("views")))), Alias::new("avg_views"))
+            .expr_as(Func::max(Expr::col((Alias::new("p"), Alias::new("views")))), Alias::new("max_views"))
+            .from_as(Alias::new("test_users"), Alias::new("u"))
+            .join_as(
+                JoinType::LeftJoin,
+                Alias::new("test_posts"),
+                Alias::new("p"),
+                Expr::col((Alias::new("u"), Alias::new("id"))).equals((Alias::new("p"), Alias::new("user_id")))
+            )
+            .and_where(Expr::col((Alias::new("u"), Alias::new("is_active"))).eq(true))
+            .group_by_columns([
+                (Alias::new("u"), Alias::new("id")),
+                (Alias::new("u"), Alias::new("name")),
+                (Alias::new("u"), Alias::new("email"))
+            ])
+            .and_having(Expr::expr(Func::count(Expr::col((Alias::new("p"), Alias::new("id"))))).gte(0))
+            .order_by_columns([
+                ((Alias::new("post_count"), Order::Desc)),
+                ((Alias::new("avg_views"), Order::Desc))
+            ])
+            .build(match database.dialect() {
+                DatabaseDialect::SQLite => SqliteQueryBuilder,
+                #[cfg(feature = "postgres")]
+                DatabaseDialect::PostgreSQL => PostgresQueryBuilder,
+                #[cfg(feature = "mysql")]
+                DatabaseDialect::MySQL => MysqlQueryBuilder,
+            });
+        let result = seeder.client.query(&complex_sql, &convert_sea_query_params_to_json(complex_params.0)).await;
         let duration = start.elapsed();
         
         let success = result.is_ok();
@@ -364,51 +394,40 @@ async fn test_schema_operation_performance() {
         let client = TestUtils::setup_test_client(database.clone()).await
             .expect(&format!("Failed to setup {} client", database.name()));
         
-        // Benchmark CREATE TABLE operation
-        let create_sql = match client.dialect() {
-            DatabaseDialect::SQLite => {
-                "CREATE TABLE perf_test (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    score INTEGER,
-                    active INTEGER DEFAULT 1
-                )"
-            },
-            #[cfg(feature = "postgres")]
-            DatabaseDialect::PostgreSQL => {
-                "CREATE TABLE perf_test (
-                    id BIGSERIAL PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    score INTEGER,
-                    active BOOLEAN DEFAULT TRUE
-                )"
-            },
-            #[cfg(feature = "mysql")]
-            DatabaseDialect::MySQL => {
-                "CREATE TABLE perf_test (
-                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    score INT,
-                    active BOOLEAN DEFAULT TRUE
-                )"
-            },
-        };
+        // Benchmark CREATE TABLE operation using sea-query helper
+        let (create_sql, create_params) = build_create_table_query_with_columns(
+            "perf_test",
+            vec![
+                ("id", "INTEGER", true, Some("AUTOINCREMENT"), false),
+                ("name", "TEXT", false, None, false),
+                ("score", "INTEGER", false, None, true),
+                ("active", "INTEGER", false, Some("1"), true)
+            ],
+            client.dialect()
+        );
         
         let start = Instant::now();
-        let result = client.execute(create_sql, &[]).await;
+        let result = client.execute(&create_sql, &create_params).await;
         let create_duration = start.elapsed();
         let create_success = result.is_ok();
         
-        // Benchmark CREATE INDEX operation
+        // Benchmark CREATE INDEX operation using sea-query helper  
         let index_start = Instant::now();
-        let index_result = client.execute("CREATE INDEX idx_perf_name ON perf_test(name)", &[]).await;
+        let (index_sql, index_params) = build_create_index_query(
+            "idx_perf_name",
+            "perf_test", 
+            vec!["name"],
+            false,
+            client.dialect()
+        );
+        let index_result = client.execute(&index_sql, &index_params).await;
         let index_duration = index_start.elapsed();
         let index_success = index_result.is_ok();
         
-        // Benchmark DROP operations
+        // Benchmark DROP operations using sea-query helper
         let drop_start = Instant::now();
-        let _ = client.execute("DROP INDEX idx_perf_name", &[]).await;
-        let _ = client.execute("DROP TABLE perf_test", &[]).await;
+        let (drop_table_sql, drop_table_params) = build_drop_table_query("perf_test", true, client.dialect());
+        let _ = client.execute(&drop_table_sql, &drop_table_params).await;
         let drop_duration = drop_start.elapsed();
         
         let total_duration = create_duration + index_duration + drop_duration;
@@ -462,9 +481,15 @@ async fn test_memory_usage_benchmarks() {
             let _ = seeder.client.execute(&seeder.get_insert_user_sql(), &params).await;
         }
         
-        // Benchmark large result set query
+        // Benchmark large result set query using sea-query helper
         let start = Instant::now();
-        let result = seeder.client.query("SELECT * FROM test_users ORDER BY id", &[]).await;
+        let (select_sql, select_params) = build_select_query_with_order(
+            Alias::new("test_users").into_iden(),
+            vec![], // Empty means SELECT *
+            vec![(Alias::new("id").into_iden(), Order::Asc)],
+            database.dialect()
+        );
+        let result = seeder.client.query(&select_sql, &select_params).await;
         let duration = start.elapsed();
         
         let success = result.is_ok();
@@ -510,13 +535,13 @@ async fn test_throughput_benchmarks() {
         
         let mut success_count = 0;
         for i in 0..read_operations {
-            let query = if i % 2 == 0 {
-                "SELECT COUNT(*) as count FROM test_users"
+            let (query_sql, query_params) = if i % 2 == 0 {
+                build_count_query(Alias::new("test_users").into_iden(), database.dialect())
             } else {
-                "SELECT COUNT(*) as count FROM test_posts"
+                build_count_query(Alias::new("test_posts").into_iden(), database.dialect())
             };
             
-            if client.query(query, &[]).await.is_ok() {
+            if client.query(&query_sql, &query_params).await.is_ok() {
                 success_count += 1;
             }
         }
@@ -559,17 +584,42 @@ async fn test_cross_database_performance_comparison() {
     let mut performance_data: HashMap<String, Vec<Duration>> = HashMap::new();
     let mut timings = Vec::new();
     
-    // Run multiple identical operations to get performance variance data
+    // Run multiple identical operations to get performance variance data using sea-query helpers
     let operations = vec![
-        ("COUNT users", "SELECT COUNT(*) FROM test_users"),
-        ("SELECT users", "SELECT id, name, email FROM test_users LIMIT 10"),
-        ("SELECT with WHERE", "SELECT * FROM test_users WHERE id < 100"),
-        ("Complex query", "SELECT COUNT(*) as user_count FROM test_users WHERE created_at > '2020-01-01'"),
+        ("COUNT users", {
+            let (sql, params) = build_count_query(Alias::new("test_users").into_iden(), DatabaseDialect::SQLite);
+            (sql, params)
+        }),
+        ("SELECT users", {
+            let (sql, params) = Query::select()
+                .columns([Alias::new("id"), Alias::new("name"), Alias::new("email")])
+                .from(Alias::new("test_users"))
+                .limit(10)
+                .build(SqliteQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        }),
+        ("SELECT with WHERE", {
+            let (sql, params) = build_select_query_with_where(
+                Alias::new("test_users").into_iden(),
+                vec![], // SELECT *
+                vec![Expr::col(Alias::new("id")).lt(100)],
+                DatabaseDialect::SQLite
+            );
+            (sql, params)
+        }),
+        ("Complex query", {
+            let (sql, params) = Query::select()
+                .expr_as(Func::count(Expr::asterisk()), Alias::new("user_count"))
+                .from(Alias::new("test_users"))
+                .and_where(Expr::col(Alias::new("created_at")).gt("2020-01-01"))
+                .build(SqliteQueryBuilder);
+            (sql, convert_sea_query_params_to_json(params.0))
+        }),
     ];
     
-    for (op_name, operation) in &operations {
+    for (op_name, (operation_sql, operation_params)) in &operations {
         let start = Instant::now();
-        let result = client.execute(operation, &[]).await;
+        let result = client.execute(operation_sql, &operation_params).await;
         let duration = start.elapsed();
         
         // Verify operation succeeded
