@@ -10,11 +10,7 @@ use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use sea_query::{Query, Expr, Order, Alias, SqliteQueryBuilder, IntoIden, Func};
 
-#[cfg(feature = "postgres")]
-use sea_query::PostgresQueryBuilder;
 
-#[cfg(feature = "mysql")]
-use sea_query::MysqlQueryBuilder;
 
 mod common;
 use common::multi_db::*;

@@ -475,10 +475,10 @@ pub fn build_pragma_query(
 /// Build a database-agnostic ALTER TABLE ADD FOREIGN KEY query using database-specific SQL
 #[allow(dead_code)]
 pub fn build_add_foreign_key_query(
-    _table_name: &str,
-    _constraint_name: &str,
+    #[allow(unused_variables)] table_name: &str,
+    #[allow(unused_variables)] constraint_name: &str,
     columns: Vec<&str>,
-    _referenced_table: &str,
+    #[allow(unused_variables)] referenced_table: &str,
     referenced_columns: Vec<&str>,
     on_delete: Option<&str>,
     on_update: Option<&str>,
@@ -489,8 +489,10 @@ pub fn build_add_foreign_key_query(
         panic!("Only single-column foreign keys are supported currently");
     }
     
-    let _column = columns[0];
-    let _referenced_column = referenced_columns[0];
+    #[allow(unused_variables)]
+    let column = columns[0];
+    #[allow(unused_variables)]
+    let referenced_column = referenced_columns[0];
     
     // Build ON DELETE and ON UPDATE clauses
     let mut clauses = Vec::new();
@@ -500,7 +502,8 @@ pub fn build_add_foreign_key_query(
     if let Some(action) = on_update {
         clauses.push(format!("ON UPDATE {}", action));
     }
-    let _action_clause = if clauses.is_empty() {
+    #[allow(unused_variables)]
+    let action_clause = if clauses.is_empty() {
         String::new()
     } else {
         format!(" {}", clauses.join(" "))
@@ -607,7 +610,7 @@ pub fn build_create_table_query_with_foreign_keys(
 /// Build a database-agnostic ALTER TABLE ADD PRIMARY KEY query using sea-query
 #[allow(dead_code)]
 pub fn build_add_primary_key_query(
-    _table_name: &str,
+    #[allow(unused_variables)] table_name: &str,
     columns: Vec<&str>,
     dialect: DatabaseDialect
 ) -> (String, Vec<Value>) {

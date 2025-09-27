@@ -172,7 +172,7 @@ mod tests {
         }
 
         std::env::set_var("DATABASE_BACKENDS", "postgres");
-        std::env::set_var("POSTGRES_TEST_URL", "postgresql://test:test@localhost:5432/test");
+        std::env::set_var("POSTGRES_TEST_URL", "postgresql://d1rs_user:d1rs_pass@localhost:5434/d1rs_test");
         
         let manager = TestDatabaseManager::new();
         let client = manager.create_client(DatabaseDialect::PostgreSQL).await?;
@@ -199,7 +199,7 @@ mod tests {
         }
 
         std::env::set_var("DATABASE_BACKENDS", "mysql");
-        std::env::set_var("MYSQL_TEST_URL", "mysql://test:test@localhost:3306/test");
+        std::env::set_var("MYSQL_TEST_URL", "mysql://d1rs_user:d1rs_pass@localhost:3308/d1rs_test");
         
         let manager = TestDatabaseManager::new();
         let client = manager.create_client(DatabaseDialect::MySQL).await?;
@@ -245,6 +245,14 @@ mod tests {
 
     #[tokio::test]
     async fn validate_query_equivalence() -> TestResult {
+        // Skip this test in strict backend mode since it tests all backends
+        if std::env::var("DATABASE_BACKENDS").is_ok() {
+            let backends = std::env::var("DATABASE_BACKENDS").unwrap();
+            if backends != "sqlite,postgres,mysql" && !backends.contains(",") {
+                println!("⏭️  Skipping query equivalence test in single-backend mode ({})", backends);
+                return Ok(());
+            }
+        }
         use sea_query::{ColumnDef, Table, Iden, Alias as TableAlias, SqliteQueryBuilder};
         #[cfg(feature = "postgres")]
         use sea_query::PostgresQueryBuilder;
