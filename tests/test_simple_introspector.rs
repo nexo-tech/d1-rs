@@ -1,14 +1,26 @@
 use d1_rs::auto_migration::SchemaIntrospector;
 use d1_rs::*;
 
+mod common;
+use common::query_helpers::{
+    build_create_table_query_with_columns
+};
+
 #[tokio::test]
 async fn test_introspector_direct() {
     // Create a test database
     let db = D1Client::new_in_memory().await.unwrap();
     
-    // Create a simple table
-    let sql = "CREATE TABLE simple_test (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
-    db.execute(sql, &[]).await.unwrap();
+    // Create a simple table using database-agnostic helper
+    let (sql, params) = build_create_table_query_with_columns(
+        "simple_test",
+        vec![
+            ("id", "INTEGER", true, None, false),
+            ("name", "TEXT", false, None, false)
+        ],
+        db.dialect()
+    );
+    db.execute(&sql, &params).await.unwrap();
     
     // Create the introspector
     let introspector = SchemaIntrospector::new(&db);
@@ -30,9 +42,17 @@ async fn test_introspector_columns() {
     // Create a test database
     let db = D1Client::new_in_memory().await.unwrap();
     
-    // Create a test table
-    let sql = "CREATE TABLE column_test (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, is_active INTEGER DEFAULT 1)";
-    db.execute(sql, &[]).await.unwrap();
+    // Create a test table using database-agnostic helper
+    let (sql, params) = build_create_table_query_with_columns(
+        "column_test",
+        vec![
+            ("id", "INTEGER", true, Some("AUTOINCREMENT"), false),
+            ("name", "TEXT", false, None, false),
+            ("is_active", "INTEGER", false, Some("1"), true)
+        ],
+        db.dialect()
+    );
+    db.execute(&sql, &params).await.unwrap();
     
     // Create the introspector
     let introspector = SchemaIntrospector::new(&db);

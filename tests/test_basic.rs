@@ -8,7 +8,7 @@ use common::query_helpers::{
     build_select_query, build_insert_query, build_create_table_query_simple,
     build_create_table_query_with_columns, table, column
 };
-use sea_query::{Value as SeaValue, ColumnType};
+use sea_query::{Value as SeaValue};
 
 #[tokio::test]
 async fn test_basic_database_operations() {
@@ -60,8 +60,8 @@ async fn test_boolean_conversion() {
     let (create_sql, _create_params) = build_create_table_query_with_columns(
         "test_bools",
         vec![
-            ("name", ColumnType::Text, false),
-            ("is_active", ColumnType::Boolean, true)
+            ("name", "TEXT", false, None, false),
+            ("is_active", "BOOLEAN", false, None, true)
         ],
         DatabaseDialect::SQLite
     );

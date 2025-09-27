@@ -9,7 +9,7 @@ use d1_rs::backends::{DatabaseBackend, QueryResult};
 use sea_query::{
     Query, Expr, Value as SeaValue, Order, Alias, DynIden, 
     SqliteQueryBuilder, SimpleExpr, Asterisk, IntoIden,
-    Table as SeaTable, ColumnDef, ColumnType
+    Table as SeaTable, ColumnDef, Index
 };
 
 #[cfg(feature = "postgres")]
@@ -297,59 +297,76 @@ pub fn build_create_table_query_simple(
 #[allow(dead_code)]
 pub fn build_create_table_query_with_columns(
     table_name: &str,
-    columns: Vec<(&str, ColumnType, bool)>, // (name, type, not_null)
+    columns: Vec<(&str, &str, bool, Option<&str>, bool)>, // (name, type_string, primary_key, default_value, nullable)
     dialect: DatabaseDialect
 ) -> (String, Vec<Value>) {
     let mut create_table = SeaTable::create();
     create_table.table(Alias::new(table_name));
     
-    // Add primary key id column
-    match dialect {
-        DatabaseDialect::SQLite => {
-            create_table.col(
-                ColumnDef::new(Alias::new("id"))
-                    .integer()
-                    .not_null()
-                    .auto_increment()
-                    .primary_key()
-            );
-        },
-        #[cfg(feature = "postgres")]
-        DatabaseDialect::PostgreSQL => {
-            create_table.col(
-                ColumnDef::new(Alias::new("id"))
-                    .integer()
-                    .not_null()
-                    .auto_increment()
-                    .primary_key()
-            );
-        },
-        #[cfg(feature = "mysql")]
-        DatabaseDialect::MySQL => {
-            create_table.col(
-                ColumnDef::new(Alias::new("id"))
-                    .integer()
-                    .not_null()
-                    .auto_increment()
-                    .primary_key()
-            );
-        },
-    }
-    
     // Add custom columns
-    for (col_name, col_type, not_null) in columns {
+    for (col_name, col_type_str, is_primary_key, default_value, nullable) in columns {
         let mut col_def = ColumnDef::new(Alias::new(col_name));
-        match col_type {
-            ColumnType::Text => col_def.text(),
-            ColumnType::Integer => col_def.integer(),
-            ColumnType::Boolean => col_def.boolean(),
-            ColumnType::Float => col_def.float(),
-            ColumnType::Double => col_def.double(),
+        
+        // Set column type based on string
+        match col_type_str.to_uppercase().as_str() {
+            "TEXT" => col_def.text(),
+            "INTEGER" => col_def.integer(),
+            "BOOLEAN" => col_def.boolean(),
+            "REAL" => col_def.float(),
+            "BLOB" => col_def.blob(),
+            "DATETIME" => {
+                match dialect {
+                    DatabaseDialect::SQLite => col_def.text(), // SQLite stores datetime as text
+                    #[cfg(feature = "postgres")]
+                    DatabaseDialect::PostgreSQL => col_def.timestamp(),
+                    #[cfg(feature = "mysql")]
+                    DatabaseDialect::MySQL => col_def.timestamp(),
+                }
+            },
             _ => col_def.text(), // Default fallback
         };
-        if not_null {
+        
+        // Set primary key
+        if is_primary_key {
+            col_def.primary_key();
+            if let Some(default) = default_value {
+                if default == "AUTOINCREMENT" {
+                    col_def.auto_increment();
+                }
+            }
+        }
+        
+        // Set nullable
+        if !nullable {
             col_def.not_null();
         }
+        
+        // Set default value
+        if let Some(default) = default_value {
+            if default != "AUTOINCREMENT" {
+                // Handle special default values
+                match default {
+                    "CURRENT_TIMESTAMP" => {
+                        match dialect {
+                            DatabaseDialect::SQLite => col_def.default(Expr::cust("CURRENT_TIMESTAMP")),
+                            #[cfg(feature = "postgres")]
+                            DatabaseDialect::PostgreSQL => col_def.default(Expr::cust("CURRENT_TIMESTAMP")),
+                            #[cfg(feature = "mysql")]
+                            DatabaseDialect::MySQL => col_def.default(Expr::cust("CURRENT_TIMESTAMP")),
+                        };
+                    },
+                    _ => {
+                        // Try to parse as number first, then string
+                        if let Ok(num) = default.parse::<i32>() {
+                            col_def.default(SeaValue::Int(Some(num)));
+                        } else {
+                            col_def.default(SeaValue::String(Some(Box::new(default.to_string()))));
+                        }
+                    }
+                }
+            }
+        }
+        
         create_table.col(col_def);
     }
     
@@ -386,6 +403,73 @@ pub fn build_drop_table_query(
     };
     
     (sql, vec![])
+}
+
+/// Build a database-agnostic CREATE INDEX query using sea-query
+#[allow(dead_code)]
+pub fn build_create_index_query(
+    index_name: &str,
+    table_name: &str,
+    columns: Vec<&str>,
+    unique: bool,
+    dialect: DatabaseDialect
+) -> (String, Vec<Value>) {
+    let mut create_index = Index::create();
+    create_index.name(index_name);
+    create_index.table(Alias::new(table_name));
+    
+    if unique {
+        create_index.unique();
+    }
+    
+    for column in columns {
+        create_index.col(Alias::new(column));
+    }
+    
+    let sql = match dialect {
+        DatabaseDialect::SQLite => create_index.build(SqliteQueryBuilder),
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => create_index.build(PostgresQueryBuilder),
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => create_index.build(MysqlQueryBuilder),
+    };
+    
+    (sql, vec![])
+}
+
+/// Build a database-agnostic CREATE UNIQUE INDEX query using sea-query
+#[allow(dead_code)]
+pub fn build_create_unique_index_query(
+    index_name: &str,
+    table_name: &str,
+    columns: Vec<&str>,
+    dialect: DatabaseDialect
+) -> (String, Vec<Value>) {
+    build_create_index_query(index_name, table_name, columns, true, dialect)
+}
+
+/// Build a database-specific PRAGMA query (SQLite-specific, no-op for other databases)
+#[allow(dead_code)]
+pub fn build_pragma_query(
+    pragma_name: &str,
+    value: &str,
+    dialect: DatabaseDialect
+) -> (String, Vec<Value>) {
+    match dialect {
+        DatabaseDialect::SQLite => {
+            (format!("PRAGMA {} = {}", pragma_name, value), vec![])
+        },
+        #[cfg(feature = "postgres")]
+        DatabaseDialect::PostgreSQL => {
+            // PostgreSQL doesn't have PRAGMA statements, return a no-op comment
+            ("-- PostgreSQL: no PRAGMA equivalent".to_string(), vec![])
+        },
+        #[cfg(feature = "mysql")]
+        DatabaseDialect::MySQL => {
+            // MySQL doesn't have PRAGMA statements, return a no-op comment
+            ("-- MySQL: no PRAGMA equivalent".to_string(), vec![])
+        },
+    }
 }
 
 /// Build a database-agnostic table existence check query using sea-query

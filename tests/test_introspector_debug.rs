@@ -1,31 +1,41 @@
 use d1_rs::*;
-
 use d1_rs::backends::QueryResult;
+
+mod common;
+use common::query_helpers::{
+    build_create_table_query_simple, build_table_exists_query
+};
 #[tokio::test]
 async fn test_basic_db_operation() {
     // Test basic database operation first
     let db = D1Client::new_in_memory().await.unwrap();
     
-    // Create a simple table
-    let sql = "CREATE TABLE debug_table (id INTEGER PRIMARY KEY, name TEXT)";
-    let result = db.execute(sql, &[]).await;
+    // Create a simple table using database-agnostic helper
+    let (sql, params) = build_create_table_query_simple(
+        "debug_table",
+        db.dialect()
+    );
+    let result = db.execute(&sql, &params).await;
     
     println!("Create table result: {:?}", result);
     assert!(result.is_ok());
 }
 
 #[tokio::test]
-async fn test_sqlite_master_query() {
-    // Test querying sqlite_master directly
+async fn test_table_existence_query() {
+    // Test querying for table existence in a database-agnostic way
     let db = D1Client::new_in_memory().await.unwrap();
     
-    // Create a test table
-    let create_sql = "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)";
-    db.execute(create_sql, &[]).await.unwrap();
+    // Create a test table using database-agnostic helper
+    let (create_sql, create_params) = build_create_table_query_simple(
+        "test_table",
+        db.dialect()
+    );
+    db.execute(&create_sql, &create_params).await.unwrap();
     
-    // Query sqlite_master
-    let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
-    let result = db.execute(sql, &[]).await;
+    // Query for table existence using database-agnostic helper
+    let (sql, params) = build_table_exists_query("test_table", db.dialect());
+    let result = db.execute(&sql, &params).await;
     
     println!("Query result: {:?}", result);
     
