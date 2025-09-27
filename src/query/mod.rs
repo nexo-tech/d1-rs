@@ -2,7 +2,6 @@
 /// 
 /// This module provides compile-time safe SQL query building with zero string literals
 /// for parameter generation. All parameter binding is validated at compile time.
-
 pub mod parameter_builder;
 pub mod queries;
 

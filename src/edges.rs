@@ -1,8 +1,9 @@
 /// New edge/relations system inspired by ent-go
 /// This provides a much cleaner API for defining and querying relationships
-
 use crate::{D1Client, D1RsError, Entity, Result, QueryBuilder};
 use crate::backends::QueryResult;
+use crate::query_builder::{QueryRenderer, json_to_sea_value};
+use sea_query::{Query, Expr, Alias, Func, Asterisk};
 use std::marker::PhantomData;
 use serde_json;
 
@@ -233,13 +234,12 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     
     /// Handle one-to-many relations (Parent has many Children)
     async fn query_one_to_many(&self, db: &D1Client, edge: &EdgeDefinition) -> Result<Vec<Child>> {
-        let sql = format!(
-            "SELECT * FROM {} WHERE {} = ?",
-            Child::TABLE_NAME,
-            edge.foreign_key
-        );
+        let mut query = Query::select();
+        query.from(Alias::new(Child::TABLE_NAME))
+             .column(Asterisk)
+             .and_where(Expr::col(Alias::new(edge.foreign_key.clone())).eq(Expr::val(json_to_sea_value(&self.parent_id))));
         
-        let params = vec![self.parent_id.clone()];
+        let (sql, params) = query.render_for_dialect(db.dialect());
         let result = db.execute(&sql, &params).await?;
         
         self.convert_rows_to_entities(result.into_rows()).await
@@ -286,13 +286,12 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             Ok(vec![])
         } else {
             // Regular many-to-one relationship
-            let sql = format!(
-                "SELECT * FROM {} WHERE {} = ?",
-                Child::TABLE_NAME,
-                edge.references
-            );
+            let mut query = Query::select();
+            query.from(Alias::new(Child::TABLE_NAME))
+                 .column(Asterisk)
+                 .and_where(Expr::col(Alias::new(edge.references.clone())).eq(Expr::val(json_to_sea_value(&self.parent_id))));
             
-            let params = vec![self.parent_id.clone()];
+            let (sql, params) = query.render_for_dialect(db.dialect());
             let result = db.execute(&sql, &params).await?;
             
             self.convert_rows_to_entities(result.into_rows()).await
@@ -369,13 +368,12 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
     
     /// Count one-to-many relations with SQL COUNT(*)
     async fn count_one_to_many(&self, db: &D1Client, edge: &EdgeDefinition) -> Result<i64> {
-        let sql = format!(
-            "SELECT COUNT(*) FROM {} WHERE {} = ?",
-            Child::TABLE_NAME,
-            edge.foreign_key
-        );
+        let mut query = Query::select();
+        query.from(Alias::new(Child::TABLE_NAME))
+             .expr(Func::count(Expr::col(Alias::new("*"))))
+             .and_where(Expr::col(Alias::new(edge.foreign_key.clone())).eq(Expr::val(json_to_sea_value(&self.parent_id))));
         
-        let params = vec![self.parent_id.clone()];
+        let (sql, params) = query.render_for_dialect(db.dialect());
         let result = db.execute(&sql, &params).await?;
         
         // Parse count result

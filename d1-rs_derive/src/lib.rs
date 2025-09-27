@@ -251,7 +251,7 @@ fn extract_table_name(attrs: &[Attribute], default_name: &str) -> String {
     let mut result = String::new();
     let mut chars = default_name.chars().peekable();
     
-    while let Some(c) = chars.next() {
+    for c in chars {
         if c.is_uppercase() && !result.is_empty() {
             result.push('_');
         }

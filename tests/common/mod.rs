@@ -7,6 +7,7 @@ pub mod multi_db;
 pub mod database_manager;
 pub mod query_helpers;
 pub mod backend_verification;
+pub mod test_macros;
 
 // Add fixtures module path for the tests directory
 #[path = "../fixtures/mod.rs"]
