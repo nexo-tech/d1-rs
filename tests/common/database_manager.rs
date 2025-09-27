@@ -29,6 +29,7 @@ use crate::common::query_helpers::{
 };
 use sea_query::Value as SeaValue;
 use crate::common::query_helpers::QueryAssertions;
+use crate::common::backend_verification::BackendVerificationError;
 
 /// Unified backend wrapper that can hold any of the three supported database backends
 #[derive(Clone)]
@@ -190,6 +191,161 @@ impl DatabaseBackend for AnyDatabaseBackend {
             #[cfg(feature = "mysql")]
             AnyDatabaseBackend::MySQL(backend) => backend.ping().await,
         }
+    }
+}
+
+// Backend Verification Methods for AnyDatabaseBackend
+impl AnyDatabaseBackend {
+    /// Verify that this backend matches the expected dialect
+    pub fn verify_backend_type(&self, expected: DatabaseDialect) -> Result<(), BackendVerificationError> {
+        let actual = self.dialect();
+        if actual != expected {
+            return Err(BackendVerificationError::TypeMismatch { expected, actual });
+        }
+        
+        println!("✅ Backend verified: {:?} - {}", actual, self.connection_info());
+        Ok(())
+    }
+    
+    /// Get a human-readable connection summary
+    pub fn connection_summary(&self) -> String {
+        match self {
+            AnyDatabaseBackend::SQLite(_) => "SQLite in-memory database".to_string(),
+            #[cfg(feature = "postgres")]
+            AnyDatabaseBackend::PostgreSQL(_) => {
+                format!("PostgreSQL database connection")
+            },
+            #[cfg(feature = "mysql")]
+            AnyDatabaseBackend::MySQL(_) => {
+                format!("MySQL database connection")
+            },
+        }
+    }
+    
+    /// Perform comprehensive health check
+    pub async fn health_check(&self) -> Result<(), BackendVerificationError> {
+        // Test basic connectivity
+        match self.ping().await {
+            Ok(_) => println!("✅ Ping successful: {}", self.connection_summary()),
+            Err(e) => return Err(BackendVerificationError::HealthCheckFailure(
+                format!("Ping failed: {}", e)
+            )),
+        }
+        
+        // Test simple query execution using sea-query for database-agnostic SQL
+        use sea_query::{Query, Expr, Alias, SqliteQueryBuilder};
+        #[cfg(feature = "postgres")]
+        use sea_query::PostgresQueryBuilder;
+        #[cfg(feature = "mysql")]
+        use sea_query::MysqlQueryBuilder;
+        
+        let test_query = Query::select()
+            .expr_as(Expr::val(1), Alias::new("health_check"))
+            .to_owned();
+        
+        let (test_sql, test_params) = match self.dialect() {
+            DatabaseDialect::SQLite => test_query.build(SqliteQueryBuilder),
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => test_query.build(PostgresQueryBuilder),
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => test_query.build(MysqlQueryBuilder),
+        };
+        // Convert sea_query parameters to serde_json values
+        let params: Vec<Value> = test_params.0.into_iter().map(|v| match v {
+            sea_query::Value::Int(Some(i)) => Value::Number(i.into()),
+            sea_query::Value::String(Some(s)) => Value::String((*s).into()),
+            sea_query::Value::Bool(Some(b)) => Value::Bool(b),
+            _ => Value::Null,
+        }).collect();
+
+        match self.execute_query(&test_sql, &params).await {
+            Ok(result) => {
+                let rows = result.into_rows();
+                if rows.is_empty() {
+                    return Err(BackendVerificationError::HealthCheckFailure(
+                        "Health check query returned no results".to_string()
+                    ));
+                }
+                println!("✅ Health check query successful");
+            },
+            Err(e) => return Err(BackendVerificationError::HealthCheckFailure(
+                format!("Health check query failed: {}", e)
+            )),
+        }
+        
+        // Test schema operations using sea-query for database-agnostic DDL
+        use sea_query::{Table, ColumnDef, Iden, Alias as TableAlias};
+        
+        #[derive(Iden)]
+        enum HealthCheckTable {
+            #[allow(dead_code)]
+            Table,
+            Id,
+        }
+        
+        let table_name = format!("health_check_table_{}", 
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
+        
+        let create_table = Table::create()
+            .table(TableAlias::new(&table_name))
+            .if_not_exists()
+            .col(ColumnDef::new(HealthCheckTable::Id).integer())
+            .to_owned();
+            
+        let create_sql = match self.dialect() {
+            DatabaseDialect::SQLite => create_table.build(SqliteQueryBuilder),
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => create_table.build(PostgresQueryBuilder),
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => create_table.build(MysqlQueryBuilder),
+        };
+        
+        match self.execute_schema(&create_sql).await {
+            Ok(_) => println!("✅ Schema operation test successful"),
+            Err(e) => return Err(BackendVerificationError::HealthCheckFailure(
+                format!("Schema operation test failed: {}", e)
+            )),
+        }
+        
+        println!("✅ Full health check passed for {}", self.connection_summary());
+        Ok(())
+    }
+    
+    /// Verify backend isolation (ensure no cross-contamination)
+    pub async fn verify_isolation(&self, expected_dialect: DatabaseDialect) -> Result<(), BackendVerificationError> {
+        self.verify_backend_type(expected_dialect)?;
+        
+        // Additional isolation checks
+        let connection_info = self.connection_info();
+        
+        match expected_dialect {
+            DatabaseDialect::SQLite => {
+                if connection_info.contains("postgres") || connection_info.contains("mysql") {
+                    return Err(BackendVerificationError::ConnectionFailure(
+                        format!("SQLite backend has contaminated connection: {}", connection_info)
+                    ));
+                }
+            },
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => {
+                if !connection_info.to_lowercase().contains("postgres") {
+                    return Err(BackendVerificationError::ConnectionFailure(
+                        format!("PostgreSQL backend missing postgres in connection: {}", connection_info)
+                    ));
+                }
+            },
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => {
+                if !connection_info.to_lowercase().contains("mysql") {
+                    return Err(BackendVerificationError::ConnectionFailure(
+                        format!("MySQL backend missing mysql in connection: {}", connection_info)
+                    ));
+                }
+            },
+        }
+        
+        println!("✅ Backend isolation verified for {:?}", expected_dialect);
+        Ok(())
     }
 }
 

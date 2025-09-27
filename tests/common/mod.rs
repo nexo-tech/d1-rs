@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub mod multi_db;
 pub mod database_manager;
 pub mod query_helpers;
+pub mod backend_verification;
 
 // Add fixtures module path for the tests directory
 #[path = "../fixtures/mod.rs"]
