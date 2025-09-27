@@ -8,7 +8,7 @@ use d1_rs::dialects::DatabaseDialect;
 use serde_json::Value;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
-use sea_query::{Query, Expr, Order, Alias, SqliteQueryBuilder, IntoIden, Func, JoinType, Asterisk};
+use sea_query::{Query, Expr, Order, Alias, SqliteQueryBuilder, IntoIden, Func};
 
 #[cfg(feature = "postgres")]
 use sea_query::PostgresQueryBuilder;
@@ -577,7 +577,7 @@ async fn test_cross_database_performance_comparison() {
         }),
         ("Complex query", {
             let (sql, params) = Query::select()
-                .expr_as(Func::count(Expr::asterisk()), Alias::new("user_count"))
+                .expr_as(Func::count(Expr::col(Alias::new("id"))), Alias::new("user_count"))
                 .from(Alias::new("test_users"))
                 .and_where(Expr::col(Alias::new("created_at")).gt("2020-01-01"))
                 .build(SqliteQueryBuilder);
