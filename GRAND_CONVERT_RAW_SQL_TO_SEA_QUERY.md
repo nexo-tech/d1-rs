@@ -6,7 +6,7 @@
 - [x] **Task 1.1**: SELECT Query Builder Conversion (`src/query_builder/select.rs`)
 - [x] **Task 1.2**: INSERT Query Builder Conversion (`src/query_builder/insert.rs`)
 - [x] **Task 1.3**: UPDATE Query Builder Conversion (`src/query_builder/update.rs`)
-- [ ] **Task 1.4**: DELETE Query Builder Conversion (`src/query_builder/delete.rs`)
+- [x] **Task 1.4**: DELETE Query Builder Conversion (`src/query_builder/delete.rs`)
 - [ ] **Task 1.5**: Core Query Infrastructure (`src/query/queries.rs`)
 - [ ] **Task 1.6**: Query Parameter Builder (`src/query/parameter_builder.rs`)
 
