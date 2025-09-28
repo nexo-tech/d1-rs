@@ -112,7 +112,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 
         impl d1_rs::QueryBuilder<#name> for #query_builder_name {
             async fn all(self, db: &d1_rs::D1Client) -> d1_rs::Result<Vec<#name>> {
-                let (sql, params) = self.query.to_sql();
+                let (sql, params) = self.query.to_sql(db.dialect());
                 let result = db.execute(&sql, &params).await?;
                 result.into_entities()
             }
@@ -120,13 +120,13 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             async fn first(self, db: &d1_rs::D1Client) -> d1_rs::Result<Option<#name>> {
                 let mut query = self.query;
                 query.limit(1);
-                let (sql, params) = query.to_sql();
+                let (sql, params) = query.to_sql(db.dialect());
                 let result = db.execute(&sql, &params).await?;
                 result.into_entity()
             }
 
             async fn count(self, db: &d1_rs::D1Client) -> d1_rs::Result<i64> {
-                let (sql, params) = self.query.to_count_sql();
+                let (sql, params) = self.query.to_count_sql(db.dialect());
                 db.execute_returning_count(&sql, &params).await
             }
             
@@ -154,7 +154,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 
         impl d1_rs::CreateBuilder<#name> for #create_builder_name {
             async fn save(self, db: &d1_rs::D1Client) -> d1_rs::Result<#name> {
-                let (sql, params) = self.insert_query.to_sql();
+                let (sql, params) = self.insert_query.to_sql(db.dialect());
                 let result = db.execute_returning_one(&sql, &params).await?;
                 
                 if let Some(row) = result {
@@ -195,7 +195,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 
         impl d1_rs::UpdateBuilder<#name> for #update_builder_name {
             async fn save(self, db: &d1_rs::D1Client) -> d1_rs::Result<#name> {
-                let (sql, params) = self.update_query.to_sql();
+                let (sql, params) = self.update_query.to_sql(db.dialect());
                 let result = db.execute_returning_one(&sql, &params).await?;
                 
                 if let Some(row) = result {
