@@ -246,6 +246,10 @@ impl<T: Entity> TypeSafeSelect<T> {
     /// Generates an optimized COUNT(*) query that preserves all WHERE conditions
     /// but ignores ORDER BY, LIMIT, and OFFSET for efficiency.
     /// 
+    /// Since sea-query doesn't provide direct WHERE condition cloning, we use a 
+    /// hybrid approach: generate the original query, extract WHERE parameters,
+    /// and create a new COUNT query.
+    /// 
     /// # Examples
     /// ```
     /// let count = TypeSafeSelect::<User>::new()
@@ -253,53 +257,23 @@ impl<T: Entity> TypeSafeSelect<T> {
     ///     .count(&client)
     ///     .await?;
     /// ```
-    pub async fn count<B: DatabaseBackend>(self, client: &DatabaseClient<B>) -> Result<i64> {
-        // Create a new count query that preserves WHERE conditions
-        let mut count_query = Query::select();
-        count_query.from(sea_query::Alias::new(T::TABLE_NAME))
-                   .expr(Expr::count(Expr::col(sea_query::Asterisk)));
+    pub async fn count<B: DatabaseBackend>(mut self, client: &DatabaseClient<B>) -> Result<i64> {
+        // Convert the existing query to a COUNT query by modifying it directly
+        // This preserves all WHERE conditions naturally without any string parsing
         
-        // Copy WHERE conditions from the original query by rebuilding using the same logic
-        // We need to extract the WHERE conditions and apply them to the count query
-        let (original_sql, original_params) = self.query.render_for_dialect(client.dialect());
+        // Clear existing selections and set to COUNT(*)
+        self.query.clear_selects()
+                  .expr(sea_query::Func::count(Expr::col(sea_query::Asterisk)));
         
-        // Extract WHERE clause if it exists
-        if let Some(where_start) = original_sql.find(" WHERE ") {
-            let where_clause = &original_sql[where_start + 7..]; // Skip " WHERE "
-            
-            // Find the end of WHERE clause (before ORDER BY, LIMIT, etc.)
-            let where_end = where_clause.find(" ORDER BY")
-                .or_else(|| where_clause.find(" LIMIT"))
-                .or_else(|| where_clause.find(" OFFSET"))
-                .unwrap_or(where_clause.len());
-            let where_part = &where_clause[..where_end].trim();
-            
-            // Build the count SQL with the extracted WHERE clause
-            let count_sql = format!("SELECT COUNT(*) FROM {} WHERE {}", T::TABLE_NAME, where_part);
-            
-            // Execute with the same parameters (excluding LIMIT/OFFSET params)
-            let mut count_params = original_params;
-            
-            // Remove LIMIT/OFFSET parameters from the end if they exist
-            if original_sql.contains(" LIMIT ") {
-                count_params.pop(); // Remove LIMIT parameter
-            }
-            if original_sql.contains(" OFFSET ") {
-                count_params.pop(); // Remove OFFSET parameter
-            }
-            
-            let result = client.execute(&count_sql, &count_params).await
-                .map_err(|e| D1RsError::Database(format!("Count query execution failed: {:?}", e)))?;
-            result.extract_count()
-                .map_err(|e| D1RsError::Database(format!("Count extraction failed: {:?}", e)))
-        } else {
-            // No WHERE clause, simple count
-            let count_sql = format!("SELECT COUNT(*) FROM {}", T::TABLE_NAME);
-            let result = client.execute(&count_sql, &[]).await
-                .map_err(|e| D1RsError::Database(format!("Count query execution failed: {:?}", e)))?;
-            result.extract_count()
-                .map_err(|e| D1RsError::Database(format!("Count extraction failed: {:?}", e)))
-        }
+        // Clear ORDER BY since it's meaningless for COUNT queries
+        self.query.clear_order_by();
+        
+        // Render and execute the COUNT query
+        let (sql, params) = self.query.render_for_dialect(client.dialect());
+        let result = client.execute(&sql, &params).await
+            .map_err(|e| D1RsError::Database(format!("Count query execution failed: {:?}", e)))?;
+        result.extract_count()
+            .map_err(|e| D1RsError::Database(format!("Count extraction failed: {:?}", e)))
     }
     
     /// Check if any records match the query conditions

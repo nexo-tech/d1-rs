@@ -3,8 +3,8 @@
 ## 🏁 MASTER PROGRESS CHECKLIST
 
 ### **PHASE 1: CORE QUERY BUILDERS** (6 files, ~300-400 lines)
-- [ ] **Task 1.1**: SELECT Query Builder Conversion (`src/query_builder/select.rs`)
-- [ ] **Task 1.2**: INSERT Query Builder Conversion (`src/query_builder/insert.rs`)
+- [x] **Task 1.1**: SELECT Query Builder Conversion (`src/query_builder/select.rs`)
+- [x] **Task 1.2**: INSERT Query Builder Conversion (`src/query_builder/insert.rs`)
 - [ ] **Task 1.3**: UPDATE Query Builder Conversion (`src/query_builder/update.rs`)
 - [ ] **Task 1.4**: DELETE Query Builder Conversion (`src/query_builder/delete.rs`)
 - [ ] **Task 1.5**: Core Query Infrastructure (`src/query/queries.rs`)
