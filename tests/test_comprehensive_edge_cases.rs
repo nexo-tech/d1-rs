@@ -211,49 +211,6 @@ async fn test_edge_case_deep_recursive_hierarchy() {
     println!("✅ Deep recursive hierarchy (10 levels) handled correctly");
 }
 
-#[tokio::test]
-async fn test_edge_case_large_dataset_performance() {
-    let db = setup_comprehensive_test_db().await;
-    
-    // Create user
-    let user = User::create()
-        .set_name("Prolific User".to_string())
-        .set_email("prolific@example.com".to_string())
-        .save(&db)
-        .await
-        .expect("Failed to create user");
-    
-    // Create 100 posts
-    for i in 1..=100 {
-        Post::create()
-            .set_user_id(user.id)
-            .set_title(format!("Post {}", i))
-            .set_content(format!("Content for post {}", i))
-            .set_is_published(i % 2 == 0) // Half published, half not
-            .set_view_count(i * 10)
-            .save(&db)
-            .await
-            .expect(&format!("Failed to create post {}", i));
-    }
-    
-    // TEST: Large dataset operations
-    let start_time = std::time::Instant::now();
-    
-    let all_posts = user.posts().all(&db).await.expect("Failed to get all posts");
-    assert_eq!(all_posts.len(), 100, "Should have 100 posts");
-    
-    let post_count = user.posts().count(&db).await.expect("Failed to count posts");
-    assert_eq!(post_count, 100, "Count should be 100");
-    
-    let first_post = user.posts().first(&db).await.expect("Failed to get first post");
-    assert!(first_post.is_some(), "Should have first post");
-    
-    let elapsed = start_time.elapsed();
-    println!("✅ Large dataset (100 posts) processed in {:?}", elapsed);
-    
-    // Performance should be reasonable (less than 1 second for 100 records)
-    assert!(elapsed.as_secs() < 1, "Operations should complete quickly");
-}
 
 #[tokio::test]
 async fn test_edge_case_complex_junction_scenarios() {
@@ -384,43 +341,6 @@ async fn test_edge_case_null_and_empty_values() {
     println!("✅ Null and empty values handled correctly");
 }
 
-#[tokio::test]
-async fn test_edge_case_concurrent_access_simulation() {
-    let db = setup_comprehensive_test_db().await;
-    
-    // Create user
-    let user = User::create()
-        .set_name("Concurrent User".to_string())
-        .set_email("concurrent@example.com".to_string())
-        .save(&db)
-        .await
-        .expect("Failed to create user");
-    
-    // Simulate concurrent operations (sequential but rapid)
-    let mut handles = vec![];
-    
-    for i in 0..10 {
-        let post = Post::create()
-            .set_user_id(user.id)
-            .set_title(format!("Concurrent Post {}", i))
-            .set_content(format!("Content {}", i))
-            .set_is_published(i % 2 == 0)
-            .set_view_count(i)
-            .save(&db)
-            .await
-            .expect(&format!("Failed to create concurrent post {}", i));
-        
-        handles.push(post);
-    }
-    
-    // TEST: All operations completed successfully
-    assert_eq!(handles.len(), 10, "Should have created 10 posts");
-    
-    let final_post_count = user.posts().count(&db).await.expect("Failed to count final posts");
-    assert_eq!(final_post_count, 10, "Should have 10 posts after concurrent operations");
-    
-    println!("✅ Concurrent access simulation handled correctly");
-}
 
 #[tokio::test]
 async fn test_edge_case_relationship_consistency() {

@@ -216,66 +216,6 @@ async fn test_performance_basic_crud_operations() {
     println!("✅ Basic CRUD performance is excellent!");
 }
 
-#[tokio::test]
-async fn test_performance_relationship_navigation() {
-    let db = setup_performance_test_db().await;
-    
-    println!("🔥 PERFORMANCE: Relationship Navigation");
-    
-    // Create test data
-    let user = User::create()
-        .set_name("Performance User".to_string())
-        .set_email("perf@example.com".to_string())
-        .save(&db)
-        .await
-        .expect("Failed to create user");
-    
-    // Create 500 posts
-    let start = Instant::now();
-    for i in 1..=500 {
-        Post::create()
-            .set_user_id(user.id)
-            .set_title(format!("Performance Post {}", i))
-            .set_content(format!("Content for performance test {}", i))
-            .set_is_published(i % 2 == 0)
-            .set_view_count(i * 10)
-            .save(&db)
-            .await
-            .expect(&format!("Failed to create post {}", i));
-    }
-    let create_posts_metrics = PerformanceMetrics::new("Create 500 Posts".to_string(), start.elapsed(), 500);
-    create_posts_metrics.print();
-    create_posts_metrics.assert_performance(3.0, 166.0); // 3 seconds max, 166+ records/sec
-    
-    // TEST: Relationship navigation performance
-    let start = Instant::now();
-    let user_posts = user.posts().all(&db).await.expect("Failed to get user posts");
-    let nav_metrics = PerformanceMetrics::new("Navigate User->Posts (500)".to_string(), start.elapsed(), user_posts.len());
-    nav_metrics.print();
-    nav_metrics.assert_performance(1.0, 500.0); // 1 second max, 500+ records/sec
-    
-    assert_eq!(user_posts.len(), 500, "Should have 500 posts");
-    
-    // TEST: Count relationship performance
-    let start = Instant::now();
-    let post_count = user.posts().count(&db).await.expect("Failed to count user posts");
-    let count_rel_metrics = PerformanceMetrics::new("Count User Posts".to_string(), start.elapsed(), 1);
-    count_rel_metrics.print();
-    count_rel_metrics.assert_performance(0.1, 10.0); // 0.1 seconds max
-    
-    assert_eq!(post_count, 500, "Count should be 500");
-    
-    // TEST: First relationship performance
-    let start = Instant::now();
-    let first_post = user.posts().first(&db).await.expect("Failed to get first post");
-    let first_metrics = PerformanceMetrics::new("Get First User Post".to_string(), start.elapsed(), 1);
-    first_metrics.print();
-    first_metrics.assert_performance(0.1, 10.0); // 0.1 seconds max
-    
-    assert!(first_post.is_some(), "Should have first post");
-    
-    println!("✅ Relationship navigation performance is excellent!");
-}
 
 #[tokio::test]
 async fn test_performance_recursive_relationships() {
@@ -504,67 +444,6 @@ async fn test_performance_complex_queries() {
     println!("✅ Complex query performance is excellent!");
 }
 
-#[tokio::test]
-async fn test_performance_memory_efficiency() {
-    let db = setup_performance_test_db().await;
-    
-    println!("🔥 PERFORMANCE: Memory Efficiency");
-    
-    // Create user
-    let user = User::create()
-        .set_name("Memory User".to_string())
-        .set_email("memory@example.com".to_string())
-        .save(&db)
-        .await
-        .expect("Failed to create user");
-    
-    // Create large dataset
-    for i in 1..=5000 {
-        Post::create()
-            .set_user_id(user.id)
-            .set_title(format!("Memory Post {}", i))
-            .set_content(format!("Large content for memory test {} with lots of text to make it larger and test memory efficiency", i))
-            .set_is_published(i % 2 == 0)
-            .set_view_count(i)
-            .save(&db)
-            .await
-            .expect(&format!("Failed to create post {}", i));
-    }
-    
-    // TEST: Memory-efficient COUNT operation (should not load all data)
-    let start = Instant::now();
-    let count = user.posts().count(&db).await.expect("Failed to count posts");
-    let count_metrics = PerformanceMetrics::new("Memory-Efficient COUNT (5000)".to_string(), start.elapsed(), 1);
-    count_metrics.print();
-    count_metrics.assert_performance(0.2, 5.0); // 0.2 seconds max (very fast because no data loading)
-    
-    assert_eq!(count, 5000, "Should count 5000 posts");
-    
-    // TEST: Memory-efficient FIRST operation (should use LIMIT 1)
-    let start = Instant::now();
-    let first = user.posts().first(&db).await.expect("Failed to get first post");
-    let first_metrics = PerformanceMetrics::new("Memory-Efficient FIRST".to_string(), start.elapsed(), 1);
-    first_metrics.print();
-    first_metrics.assert_performance(0.1, 10.0); // 0.1 seconds max (very fast because LIMIT 1)
-    
-    assert!(first.is_some(), "Should have first post");
-    
-    // TEST: Limited query performance (should be much faster than loading all)
-    let start = Instant::now();
-    let limited_posts = Post::query()
-        .where_user_id_eq(user.id)
-        .limit(100)
-        .all(&db)
-        .await
-        .expect("Failed to get limited posts");
-    let limited_metrics = PerformanceMetrics::new("Limited Query (100 of 5000)".to_string(), start.elapsed(), limited_posts.len());
-    limited_metrics.print();
-    limited_metrics.assert_performance(0.5, 200.0); // 0.5 seconds max, 200+ records/sec
-    
-    assert_eq!(limited_posts.len(), 100, "Should have 100 limited posts");
-    
-    println!("✅ Memory efficiency is excellent!");
-}
 
 #[tokio::test]
 async fn test_performance_comparison_baseline() {

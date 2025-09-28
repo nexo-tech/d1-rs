@@ -376,10 +376,19 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         let (sql, params) = query.render_for_dialect(db.dialect());
         let result = db.execute(&sql, &params).await?;
         
-        // Parse count result
+        // Parse count result - sea-query may generate different column names
         if let Some(row) = result.rows().first() {
-            if let Some(count_value) = row.get("COUNT(*)") {
-                return Ok(count_value.as_i64().unwrap_or(0));
+            if let serde_json::Value::Object(obj) = row {
+                // Try multiple possible column names for COUNT results
+                for key in ["COUNT(*)", "count", "count(*)", "COUNT", "COUNT_1"] {
+                    if let Some(count_value) = obj.get(key) {
+                        return Ok(count_value.as_i64().unwrap_or(0));
+                    }
+                }
+                // If no standard count column found, try the first value
+                if let Some((_, value)) = obj.iter().next() {
+                    return Ok(value.as_i64().unwrap_or(0));
+                }
             }
         }
         Ok(0)
@@ -420,8 +429,17 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
             let result = db.execute(&sql, &params).await?;
             
             if let Some(row) = result.rows().first() {
-                if let Some(count_value) = row.get("COUNT(*)") {
-                    return Ok(count_value.as_i64().unwrap_or(0));
+                if let serde_json::Value::Object(obj) = row {
+                    // Try multiple possible column names for COUNT results
+                    for key in ["COUNT(*)", "count", "count(*)", "COUNT", "COUNT_1"] {
+                        if let Some(count_value) = obj.get(key) {
+                            return Ok(count_value.as_i64().unwrap_or(0));
+                        }
+                    }
+                    // If no standard count column found, try the first value
+                    if let Some((_, value)) = obj.iter().next() {
+                        return Ok(value.as_i64().unwrap_or(0));
+                    }
                 }
             }
             Ok(0)
@@ -462,8 +480,17 @@ impl<Parent: Entity + HasEdges, Child: Entity + Clone> Association<Parent, Child
         let result = db.execute(&sql, &params).await?;
         
         if let Some(row) = result.rows().first() {
-            if let Some(count_value) = row.get("COUNT(*)") {
-                return Ok(count_value.as_i64().unwrap_or(0));
+            if let serde_json::Value::Object(obj) = row {
+                // Try multiple possible column names for COUNT results
+                for key in ["COUNT(*)", "count", "count(*)", "COUNT", "COUNT_1"] {
+                    if let Some(count_value) = obj.get(key) {
+                        return Ok(count_value.as_i64().unwrap_or(0));
+                    }
+                }
+                // If no standard count column found, try the first value
+                if let Some((_, value)) = obj.iter().next() {
+                    return Ok(value.as_i64().unwrap_or(0));
+                }
             }
         }
         Ok(0)
