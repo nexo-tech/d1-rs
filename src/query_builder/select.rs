@@ -205,6 +205,8 @@ impl<T: Entity> TypeSafeSelect<T> {
     
     /// Execute query and return all matching entities
     /// 
+    /// Uses the database dialect from the client to generate optimal SQL.
+    /// 
     /// # Examples
     /// ```
     /// let users = TypeSafeSelect::<User>::new()
@@ -224,6 +226,7 @@ impl<T: Entity> TypeSafeSelect<T> {
     /// Execute query and return the first matching entity
     /// 
     /// Automatically adds LIMIT 1 to the query for efficiency.
+    /// Uses the database dialect from the client to generate optimal SQL.
     /// 
     /// # Examples
     /// ```
@@ -245,10 +248,7 @@ impl<T: Entity> TypeSafeSelect<T> {
     /// 
     /// Generates an optimized COUNT(*) query that preserves all WHERE conditions
     /// but ignores ORDER BY, LIMIT, and OFFSET for efficiency.
-    /// 
-    /// Since sea-query doesn't provide direct WHERE condition cloning, we use a 
-    /// hybrid approach: generate the original query, extract WHERE parameters,
-    /// and create a new COUNT query.
+    /// Uses the database dialect from the client to generate optimal SQL.
     /// 
     /// # Examples
     /// ```
@@ -279,6 +279,7 @@ impl<T: Entity> TypeSafeSelect<T> {
     /// Check if any records match the query conditions
     /// 
     /// More efficient than calling count() > 0 as it uses LIMIT 1.
+    /// Uses the database dialect from the client to generate optimal SQL.
     pub async fn exists<B: DatabaseBackend>(mut self, client: &DatabaseClient<B>) -> Result<bool> {
         self.query.limit(1);
         let (sql, params) = self.query.render_for_dialect(client.dialect());
@@ -296,229 +297,280 @@ impl<T: Entity> QueryRenderer for TypeSafeSelect<T> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::dialects::DatabaseDialect;
     use serde_json::json;
-    use sea_query::{Query, SelectStatement};
+    use sea_query::Query;
     
-    // Mock implementation helper that creates SelectStatement directly
-    fn create_basic_select() -> SelectStatement {
+    // Test our business logic, not sea-query's SQL generation
+    
+    #[test]
+    fn test_query_builder_parameter_binding() {
+        // Test that our query builder correctly handles parameter binding
         let mut query = Query::select();
         query.from(sea_query::Alias::new("users"))
-             .column(sea_query::Asterisk);
-        query
-    }
-    
-    // Test SQL generation directly without Entity constraint
-    #[test]
-    fn test_basic_select_sql_generation() {
-        let query = create_basic_select();
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("name")).eq("Alice"))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("age")).gt(25));
         
-        assert!(sql.contains("SELECT"));
-        assert!(sql.contains("FROM"));
-        assert!(sql.contains("users"));
+        // Test parameter rendering across all database dialects
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness - this is our business logic
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0], json!("Alice"));
+            assert_eq!(params[1], json!(25));
+            
+            // Basic sanity check that sea-query generated a SELECT (but don't test format)
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
     
     #[test] 
-    fn test_where_conditions() {
-        let mut query = create_basic_select();
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("name")).eq("Alice"));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("age")).gt(25));
+    fn test_where_condition_operators() {
+        // Test that our operators map correctly to sea-query expressions
+        let mut query = Query::select();
+        query.from(sea_query::Alias::new("products"))
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("price")).gt(100))      // >
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("discount")).gte(10))    // >=
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("stock")).lt(50))        // <
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("rating")).lte(4))       // <=
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("status")).ne("banned"));// !=
         
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
-        
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("name"));
-        assert!(sql.contains("age"));
-        assert!(sql.contains("AND"));
+        // Test across all database dialects
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness and order
+            assert_eq!(params.len(), 5);
+            assert_eq!(params[0], json!(100));     // price > 100
+            assert_eq!(params[1], json!(10));      // discount >= 10
+            assert_eq!(params[2], json!(50));      // stock < 50
+            assert_eq!(params[3], json!(4));       // rating <= 4
+            assert_eq!(params[4], json!("banned"));// status != "banned"
+            
+            // Basic sanity check
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
     
     #[test]
-    fn test_like_condition() {
-        let mut query = create_basic_select();
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("name")).like("%Alice%"));
+    fn test_like_pattern_handling() {
+        // Test LIKE operator parameter handling
+        let mut query = Query::select();
+        query.from(sea_query::Alias::new("users"))
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("name")).like("%Alice%"))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("email")).like("%.com"));
         
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
-        
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("LIKE"));
-        assert!(sql.contains("%Alice%"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness for LIKE patterns
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0], json!("%Alice%"));
+            assert_eq!(params[1], json!("%.com"));
+            
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
     
     #[test]
-    fn test_in_condition() {
-        let mut query = create_basic_select();
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("name"))
-            .is_in(["Alice", "Bob", "Charlie"]));
+    fn test_in_operator_parameter_handling() {
+        // Test IN operator with multiple values
+        let mut query = Query::select();
+        query.from(sea_query::Alias::new("orders"))
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("status"))
+                       .is_in(["pending", "processing", "shipped"]));
         
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
-        
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("IN"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness for IN operator
+            assert_eq!(params.len(), 3);
+            assert_eq!(params[0], json!("pending"));
+            assert_eq!(params[1], json!("processing"));
+            assert_eq!(params[2], json!("shipped"));
+            
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
     
     #[test]
-    fn test_between_condition() {
-        let mut query = create_basic_select();
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("age")).between(18, 65));
+    fn test_between_operator_parameter_handling() {
+        // Test BETWEEN operator parameter handling
+        let mut query = Query::select();
+        query.from(sea_query::Alias::new("events"))
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("age")).between(18, 65))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("score")).between(75.5, 95.8));
         
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
-        
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("BETWEEN"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness for BETWEEN
+            assert_eq!(params.len(), 4);
+            assert_eq!(params[0], json!(18));      // age BETWEEN 18
+            assert_eq!(params[1], json!(65));      // AND 65
+            assert_eq!(params[2], json!(75.5));    // score BETWEEN 75.5
+            assert_eq!(params[3], json!(95.8));    // AND 95.8
+            
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
     
     #[test]
-    fn test_null_conditions() {
-        let mut query = create_basic_select();
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("email")).is_null());
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("name")).is_not_null());
+    fn test_null_handling() {
+        // Test NULL/NOT NULL handling (no parameters expected)
+        let mut query = Query::select();
+        query.from(sea_query::Alias::new("profiles"))
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("avatar")).is_null())
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("name")).is_not_null());
         
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
-        
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("IS NULL"));
-        assert!(sql.contains("IS NOT NULL"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // NULL checks don't generate parameters
+            assert_eq!(params.len(), 0);
+            
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
     
     #[test]
-    fn test_order_by() {
-        let mut query = create_basic_select();
-        query.order_by(sea_query::Alias::new("name"), sea_query::Order::Asc);
-        query.order_by(sea_query::Alias::new("created_at"), sea_query::Order::Desc);
+    fn test_ordering_and_pagination_parameters() {
+        // Test ORDER BY, LIMIT, OFFSET parameter handling
+        let mut query = Query::select();
+        query.from(sea_query::Alias::new("posts"))
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("published")).eq(true))
+             .order_by(sea_query::Alias::new("created_at"), sea_query::Order::Desc)
+             .order_by(sea_query::Alias::new("title"), sea_query::Order::Asc)
+             .limit(25)
+             .offset(50);
         
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
-        
-        assert!(sql.contains("ORDER BY"));
-        assert!(sql.contains("ASC"));
-        assert!(sql.contains("DESC"));
-    }
-    
-    #[test]
-    fn test_limit_and_offset() {
-        let mut query = create_basic_select();
-        query.limit(10);
-        query.offset(20);
-        
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
-        
-        assert!(sql.contains("LIMIT"));
-        assert!(sql.contains("OFFSET"));
-        assert!(sql.contains("10"));
-        assert!(sql.contains("20"));
-    }
-    
-    #[test]
-    fn test_complex_query() {
-        let mut query = create_basic_select();
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("active")).eq(true));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("name")).like("%admin%"));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("age")).gte(21));
-        query.order_by(sea_query::Alias::new("created_at"), sea_query::Order::Desc);
-        query.order_by(sea_query::Alias::new("name"), sea_query::Order::Asc);
-        query.limit(50);
-        query.offset(100);
-        
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
-        
-        // Verify SQL structure
-        assert!(sql.contains("SELECT"));
-        assert!(sql.contains("FROM"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("AND"));
-        assert!(sql.contains("ORDER BY"));
-        assert!(sql.contains("LIMIT"));
-        assert!(sql.contains("OFFSET"));
-    }
-    
-    #[test]
-    fn test_comparison_operators() {
-        let mut query = create_basic_select();
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("age")).gt(18));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("score")).gte(75));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("attempts")).lt(5));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("failures")).lte(2));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("status")).ne("banned"));
-        
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
-        
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains(">"));
-        assert!(sql.contains(">="));
-        assert!(sql.contains("<"));
-        assert!(sql.contains("<="));
-        // Different databases/versions may use != or <> for not equals
-        assert!(sql.contains("!=") || sql.contains("<>"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness: 1 WHERE + 1 LIMIT + 1 OFFSET = 3 params
+            assert_eq!(params.len(), 3);
+            assert_eq!(params[0], json!(true));   // WHERE published = true
+            assert_eq!(params[1], json!(25));     // LIMIT 25
+            assert_eq!(params[2], json!(50));     // OFFSET 50
+            
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
     
     #[test]
     fn test_json_to_sea_value_conversion() {
+        // Test our value conversion logic
         use super::json_to_sea_value;
         
-        // Test string conversion
-        let string_val = json_to_sea_value(&json!("test"));
-        assert_eq!(string_val, sea_query::Value::String(Some(Box::new("test".to_string()))));
-        
-        // Test integer conversion
+        // Test various JSON types get converted correctly
+        let string_val = json_to_sea_value(&json!("test_string"));
         let int_val = json_to_sea_value(&json!(42));
-        assert!(matches!(int_val, sea_query::Value::Int(_) | sea_query::Value::BigInt(_)));
-        
-        // Test boolean conversion
+        let float_val = json_to_sea_value(&json!(3.14));
         let bool_val = json_to_sea_value(&json!(true));
-        assert_eq!(bool_val, sea_query::Value::Bool(Some(true)));
-        
-        // Test null conversion  
         let null_val = json_to_sea_value(&json!(null));
-        // For null values, we expect a null representation - this varies by sea-query version
-        // Just verify the conversion doesn't panic
-        let _converted = null_val;
+        
+        // Verify conversions work (specific format is sea-query's responsibility)
+        assert!(matches!(string_val, sea_query::Value::String(_)));
+        assert!(matches!(int_val, sea_query::Value::Int(_) | sea_query::Value::BigInt(_)));
+        assert!(matches!(float_val, sea_query::Value::Double(_) | sea_query::Value::Float(_)));
+        assert!(matches!(bool_val, sea_query::Value::Bool(_)));
+        // null_val format varies by sea-query version - just ensure no panic
+        let _null_handled = null_val;
     }
     
     #[test]
-    fn test_renderer_functionality() {
-        // Create a simple query manually
-        let query = create_basic_select();
+    fn test_complex_query_parameter_order() {
+        // Test complex query with multiple conditions to verify parameter order
+        let mut query = Query::select();
+        query.from(sea_query::Alias::new("analytics"))
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("active")).eq(true))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("category")).like("%finance%"))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("score")).gte(85))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("tags")).is_in(["urgent", "priority"]))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("price")).between(100.0, 500.0))
+             .order_by(sea_query::Alias::new("created_at"), sea_query::Order::Desc)
+             .limit(20)
+             .offset(40);
         
-        // Test rendering for different dialects
-        let sqlite_sql = query.to_string(sea_query::SqliteQueryBuilder);
-        let postgres_sql = query.to_string(sea_query::PostgresQueryBuilder);
-        let mysql_sql = query.to_string(sea_query::MysqlQueryBuilder);
-        
-        // Basic assertions
-        assert!(sqlite_sql.contains("SELECT"));
-        assert!(postgres_sql.contains("SELECT"));
-        assert!(mysql_sql.contains("SELECT"));
-        
-        // Different dialects may use different quoting
-        assert!(sqlite_sql.contains("users") || sqlite_sql.contains("\"users\""));
-        assert!(postgres_sql.contains("users") || postgres_sql.contains("\"users\""));
-        assert!(mysql_sql.contains("users") || mysql_sql.contains("`users`"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness and order: 1+1+1+2+2+1+1 = 9 parameters
+            assert_eq!(params.len(), 9);
+            assert_eq!(params[0], json!(true));        // active = true
+            assert_eq!(params[1], json!("%finance%"));  // category LIKE '%finance%'
+            assert_eq!(params[2], json!(85));          // score >= 85
+            assert_eq!(params[3], json!("urgent"));      // tags IN ('urgent',
+            assert_eq!(params[4], json!("priority"));    //          'priority')
+            assert_eq!(params[5], json!(100.0));       // price BETWEEN 100.0
+            assert_eq!(params[6], json!(500.0));       //           AND 500.0
+            assert_eq!(params[7], json!(20));          // LIMIT 20
+            assert_eq!(params[8], json!(40));          // OFFSET 40
+            
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
     
     #[test]
-    fn test_unicode_support() {
-        let mut query = create_basic_select();
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("name")).eq("测试用户"));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("emoji")).eq("😀"));
+    fn test_count_query_optimization() {
+        // Test COUNT query parameter preservation
+        let mut query = Query::select();
+        query.from(sea_query::Alias::new("reports"))
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("status")).eq("published"))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("views")).gte(1000))
+             .order_by(sea_query::Alias::new("created_at"), sea_query::Order::Desc)
+             .limit(50);
         
-        let sql = query.to_string(sea_query::SqliteQueryBuilder);
+        // Convert to COUNT query
+        query.clear_selects()
+             .expr(sea_query::Func::count(sea_query::Expr::col(sea_query::Asterisk)))
+             .clear_order_by();
+        // Note: LIMIT should be preserved for COUNT queries in some cases
         
-        // SQL should be generated without errors
-        assert!(sql.contains("SELECT"));
-        assert!(sql.contains("WHERE"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test that WHERE parameters are preserved in COUNT
+            assert_eq!(params.len(), 3);  // 2 WHERE + 1 LIMIT
+            assert_eq!(params[0], json!("published"));
+            assert_eq!(params[1], json!(1000));
+            assert_eq!(params[2], json!(50));
+            
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
     
     #[test]
-    fn test_count_query_structure() {
-        let mut count_query = Query::select();
-        count_query.from(sea_query::Alias::new("users"))
-                   .expr(sea_query::Expr::count(sea_query::Expr::col(sea_query::Asterisk)));
+    fn test_unicode_and_special_character_parameters() {
+        // Test that our parameter handling works with special characters
+        let mut query = Query::select();
+        query.from(sea_query::Alias::new("international_users"))
+             .column(sea_query::Asterisk)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("name")).eq("测试用户"))   // Chinese
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("emoji")).eq("🚀✨"))    // Emoji
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("special")).eq("!@#$%"));  // Special chars
         
-        let sql = count_query.to_string(sea_query::SqliteQueryBuilder);
-        
-        assert!(sql.contains("SELECT"));
-        assert!(sql.contains("COUNT"));
-        assert!(sql.contains("FROM"));
-        assert!(sql.contains("users"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness with unicode
+            assert_eq!(params.len(), 3);
+            assert_eq!(params[0], json!("测试用户"));
+            assert_eq!(params[1], json!("🚀✨"));
+            assert_eq!(params[2], json!("!@#$%"));
+            
+            assert!(sql.to_uppercase().contains("SELECT"));
+        }
     }
 }

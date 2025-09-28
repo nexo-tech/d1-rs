@@ -174,6 +174,45 @@ impl DatabaseDialect {
         dialects
     }
     
+    /// Generate a single database-specific parameter placeholder
+    /// 
+    /// Each database uses different parameter placeholder syntax:
+    /// - SQLite/MySQL: ?
+    /// - PostgreSQL: $1, $2, $3, etc.
+    pub fn placeholder(&self, position: usize) -> String {
+        match self {
+            DatabaseDialect::SQLite => {
+                let _ = position; // Unused in SQLite, but parameter kept for API consistency
+                "?".to_string()
+            },
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => format!("${}", position),
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => {
+                let _ = position; // Unused in MySQL, but parameter kept for API consistency
+                "?".to_string()
+            },
+        }
+    }
+    
+    /// Generate multiple database-specific parameter placeholders
+    /// 
+    /// Returns a comma-separated string of placeholders for the given count.
+    /// Handles database-specific parameter syntax automatically.
+    pub fn placeholders(&self, count: usize) -> String {
+        if count == 0 {
+            return String::new();
+        }
+        
+        match self {
+            DatabaseDialect::SQLite => (0..count).map(|_| "?").collect::<Vec<_>>().join(", "),
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => (1..=count).map(|i| format!("${}", i)).collect::<Vec<_>>().join(", "),
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => (0..count).map(|_| "?").collect::<Vec<_>>().join(", "),
+        }
+    }
+    
     /// Parse dialect from string (case-insensitive)
     /// 
     /// Useful for configuration parsing
@@ -396,6 +435,74 @@ mod tests {
         {
             let debug_str = format!("{:?}", DatabaseDialect::MySQL);
             assert_eq!(debug_str, "MySQL");
+        }
+    }
+    
+    #[test]
+    fn test_placeholder_generation() {
+        // Test single placeholder generation
+        assert_eq!(DatabaseDialect::SQLite.placeholder(1), "?");
+        assert_eq!(DatabaseDialect::SQLite.placeholder(5), "?");
+        
+        #[cfg(feature = "postgres")]
+        {
+            assert_eq!(DatabaseDialect::PostgreSQL.placeholder(1), "$1");
+            assert_eq!(DatabaseDialect::PostgreSQL.placeholder(2), "$2");
+            assert_eq!(DatabaseDialect::PostgreSQL.placeholder(10), "$10");
+        }
+        
+        #[cfg(feature = "mysql")]
+        {
+            assert_eq!(DatabaseDialect::MySQL.placeholder(1), "?");
+            assert_eq!(DatabaseDialect::MySQL.placeholder(3), "?");
+        }
+    }
+    
+    #[test]
+    fn test_placeholders_generation() {
+        // Test empty placeholders
+        for dialect in DatabaseDialect::all_available() {
+            assert_eq!(dialect.placeholders(0), "");
+        }
+        
+        // Test SQLite placeholders
+        assert_eq!(DatabaseDialect::SQLite.placeholders(1), "?");
+        assert_eq!(DatabaseDialect::SQLite.placeholders(3), "?, ?, ?");
+        assert_eq!(DatabaseDialect::SQLite.placeholders(5), "?, ?, ?, ?, ?");
+        
+        // Test PostgreSQL placeholders
+        #[cfg(feature = "postgres")]
+        {
+            assert_eq!(DatabaseDialect::PostgreSQL.placeholders(1), "$1");
+            assert_eq!(DatabaseDialect::PostgreSQL.placeholders(3), "$1, $2, $3");
+            assert_eq!(DatabaseDialect::PostgreSQL.placeholders(5), "$1, $2, $3, $4, $5");
+        }
+        
+        // Test MySQL placeholders
+        #[cfg(feature = "mysql")]
+        {
+            assert_eq!(DatabaseDialect::MySQL.placeholders(1), "?");
+            assert_eq!(DatabaseDialect::MySQL.placeholders(3), "?, ?, ?");
+            assert_eq!(DatabaseDialect::MySQL.placeholders(4), "?, ?, ?, ?");
+        }
+    }
+    
+    #[test]
+    fn test_placeholder_cross_database_compatibility() {
+        // Test that parameter generation works across all available dialects
+        for dialect in DatabaseDialect::all_available() {
+            // Single parameter should always generate something non-empty
+            let single = dialect.placeholder(1);
+            assert!(!single.is_empty(), "Single placeholder should not be empty for {}", dialect);
+            
+            // Multiple parameters should generate comma-separated values
+            let multiple = dialect.placeholders(3);
+            assert!(!multiple.is_empty(), "Multiple placeholders should not be empty for {}", dialect);
+            assert!(multiple.contains(",") || dialect.placeholders(1) == multiple, 
+                    "Multiple placeholders should contain commas or be single for {}", dialect);
+            
+            // Zero parameters should always be empty
+            assert_eq!(dialect.placeholders(0), "", "Zero placeholders should be empty for {}", dialect);
         }
     }
 }

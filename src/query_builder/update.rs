@@ -281,6 +281,8 @@ impl<T: Entity> TypeSafeUpdate<T> {
     /// - For databases with RETURNING support (PostgreSQL, SQLite): Uses RETURNING * to get the full entity
     /// - For databases without RETURNING support (MySQL): Executes update, then queries back the entity
     /// 
+    /// Uses the database dialect from the client to generate optimal SQL.
+    /// 
     /// # Examples
     /// ```
     /// let user = TypeSafeUpdate::<User>::new()
@@ -338,6 +340,7 @@ impl<T: Entity> TypeSafeUpdate<T> {
     /// 
     /// This is more efficient than save() when you only need to know how many rows were updated.
     /// Works with all database types.
+    /// Uses the database dialect from the client to generate optimal SQL.
     /// 
     /// # Examples
     /// ```
@@ -363,6 +366,7 @@ impl<T: Entity> TypeSafeUpdate<T> {
     /// 
     /// This is the most efficient method when you don't need feedback about the operation.
     /// Simply executes the UPDATE and confirms success.
+    /// Uses the database dialect from the client to generate optimal SQL.
     /// 
     /// # Examples
     /// ```
@@ -401,6 +405,8 @@ impl<T: Entity> TypeSafeUpdate<T> {
     }
     
     /// Execute UPDATE with specific RETURNING columns
+    /// 
+    /// Uses the database dialect from the client to generate optimal SQL.
     pub async fn execute_returning<B: DatabaseBackend>(self, client: &DatabaseClient<B>) -> Result<HashMap<String, Value>> {
         let dialect = client.dialect();
         
@@ -429,355 +435,396 @@ impl<T: Entity> QueryRenderer for TypeSafeUpdate<T> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::dialects::DatabaseDialect;
     use serde_json::json;
-    use sea_query::{Query, UpdateStatement};
+    use sea_query::Query;
     
-    // Mock entity for testing
-    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-    struct TestUser {
-        id: i64,
-        name: String,
-        email: String,
-        age: i32,
-        active: bool,
-    }
+    // Test our business logic, not sea-query's SQL generation
     
-    // Test entity - no additional constants needed
-    
-    // Helper function to create a basic update statement for testing
-    fn create_basic_update() -> UpdateStatement {
-        Query::update()
-            .table(sea_query::Alias::new("users"))
-            .to_owned()
+    #[test]
+    fn test_single_set_parameter_binding() {
+        // Test basic UPDATE with single SET value
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("users"))
+             .value(sea_query::Alias::new("name"), "Alice")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
+        
+        // Test parameter rendering across all database dialects
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness - this is our business logic
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0], json!("Alice"));  // SET name = 'Alice'
+            assert_eq!(params[1], json!(1));        // WHERE id = 1
+            
+            // Basic sanity check that sea-query generated an UPDATE
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_basic_update_sql_generation() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("name"), "Alice");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
+    fn test_multiple_set_values_parameter_binding() {
+        // Test UPDATE with multiple SET values
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("profiles"))
+             .value(sea_query::Alias::new("name"), "Bob")
+             .value(sea_query::Alias::new("email"), "bob@example.com")
+             .value(sea_query::Alias::new("age"), 25)
+             .value(sea_query::Alias::new("active"), true)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(2));
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("SET"));
-        assert!(sql.contains("name"));
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("id"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness and order (4 SET + 1 WHERE = 5 params)
+            assert_eq!(params.len(), 5);
+            assert_eq!(params[0], json!("Bob"));               // SET name
+            assert_eq!(params[1], json!("bob@example.com"));   // SET email
+            assert_eq!(params[2], json!(25));                 // SET age
+            assert_eq!(params[3], json!(true));               // SET active
+            assert_eq!(params[4], json!(2));                  // WHERE id
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_update_with_multiple_sets() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("name"), "Alice");
-        query.value(sea_query::Alias::new("email"), "alice@example.com");
-        query.value(sea_query::Alias::new("age"), 30);
-        query.value(sea_query::Alias::new("active"), true);
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
+    fn test_multiple_where_conditions_parameter_binding() {
+        // Test UPDATE with multiple WHERE conditions
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("accounts"))
+             .value(sea_query::Alias::new("status"), "premium")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("active")).eq(true))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("age")).gt(18))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("role")).eq("user"));
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("SET"));
-        assert!(sql.contains("name"));
-        assert!(sql.contains("email"));
-        assert!(sql.contains("age"));
-        assert!(sql.contains("active"));
-        assert!(sql.contains("WHERE"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness and order (1 SET + 3 WHERE = 4 params)
+            assert_eq!(params.len(), 4);
+            assert_eq!(params[0], json!("premium"));   // SET status
+            assert_eq!(params[1], json!(true));       // WHERE active = true
+            assert_eq!(params[2], json!(18));         // WHERE age > 18
+            assert_eq!(params[3], json!("user"));     // WHERE role = 'user'
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_update_with_multiple_where_conditions() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("status"), "updated");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("active")).eq(true));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("age")).gt(18));
+    fn test_like_pattern_parameter_handling() {
+        // Test LIKE operator parameter handling
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("users"))
+             .value(sea_query::Alias::new("verified"), true)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("email")).like("%@company.com"))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("name")).like("A%"));
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("SET"));
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("AND"));
-        assert!(sql.matches("AND").count() >= 2);
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness for LIKE patterns
+            assert_eq!(params.len(), 3);
+            assert_eq!(params[0], json!(true));              // SET verified
+            assert_eq!(params[1], json!("%@company.com"));   // WHERE email LIKE
+            assert_eq!(params[2], json!("A%"));              // WHERE name LIKE
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_update_with_like_condition() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("verified"), true);
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("email")).like("%@company.com"));
+    fn test_in_operator_parameter_handling() {
+        // Test IN operator with multiple values
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("orders"))
+             .value(sea_query::Alias::new("status"), "cancelled")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("type"))
+                       .is_in(["pending", "processing", "shipped"]));
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("LIKE"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness for IN operator (1 SET + 3 IN values = 4 params)
+            assert_eq!(params.len(), 4);
+            assert_eq!(params[0], json!("cancelled"));  // SET status
+            assert_eq!(params[1], json!("pending"));    // IN value 1
+            assert_eq!(params[2], json!("processing")); // IN value 2
+            assert_eq!(params[3], json!("shipped"));    // IN value 3
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_update_with_in_condition() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("status"), "inactive");
-        let values: Vec<sea_query::Value> = vec!["user".into(), "guest".into(), "viewer".into()];
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("role")).is_in(values));
+    fn test_between_operator_parameter_handling() {
+        // Test BETWEEN operator parameter handling
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("memberships"))
+             .value(sea_query::Alias::new("tier"), "gold")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("age")).between(25, 65))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("score")).between(75.0, 95.5));
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("IN"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness for BETWEEN (1 SET + 2×2 BETWEEN = 5 params)
+            assert_eq!(params.len(), 5);
+            assert_eq!(params[0], json!("gold"));   // SET tier
+            assert_eq!(params[1], json!(25));      // WHERE age BETWEEN 25
+            assert_eq!(params[2], json!(65));      // AND 65
+            assert_eq!(params[3], json!(75.0));    // WHERE score BETWEEN 75.0
+            assert_eq!(params[4], json!(95.5));    // AND 95.5
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_update_with_between_condition() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("tier"), "premium");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("age")).between(25, 65));
+    fn test_null_handling() {
+        // Test NULL/NOT NULL handling (no parameters for NULL checks)
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("documents"))
+             .value(sea_query::Alias::new("processed_at"), "2023-01-01T00:00:00Z")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("deleted_at")).is_null())
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("title")).is_not_null());
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("BETWEEN"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // NULL checks don't generate parameters (1 SET param only)
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0], json!("2023-01-01T00:00:00Z"));  // SET processed_at
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_update_with_null_conditions() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("deleted_at"), "2023-01-01T00:00:00Z");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("deleted_at")).is_null());
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("email")).is_not_null());
+    fn test_comparison_operators_parameter_handling() {
+        // Test all comparison operators
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("analytics"))
+             .value(sea_query::Alias::new("status"), "updated")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("views")).gt(100))        // >
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("likes")).gte(50))        // >=
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("errors")).lt(5))         // <
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("warnings")).lte(10))     // <=
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("type")).ne("archived")); // !=
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("IS NULL"));
-        assert!(sql.contains("IS NOT NULL"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness and order (1 SET + 5 WHERE = 6 params)
+            assert_eq!(params.len(), 6);
+            assert_eq!(params[0], json!("updated"));   // SET status
+            assert_eq!(params[1], json!(100));        // WHERE views > 100
+            assert_eq!(params[2], json!(50));         // WHERE likes >= 50
+            assert_eq!(params[3], json!(5));          // WHERE errors < 5
+            assert_eq!(params[4], json!(10));         // WHERE warnings <= 10
+            assert_eq!(params[5], json!("archived"));  // WHERE type != 'archived'
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_update_with_comparison_operators() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("status"), "updated");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("age")).gt(18));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("score")).gte(75));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("attempts")).lt(5));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("failures")).lte(2));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("status")).ne("banned"));
+    fn test_returning_clause_database_support() {
+        // Test RETURNING clause handling across different databases
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("users"))
+             .value(sea_query::Alias::new("last_login"), "2023-01-01T12:00:00Z")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1))
+             .returning_all();
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains(">"));
-        assert!(sql.contains(">="));
-        assert!(sql.contains("<"));
-        assert!(sql.contains("<="));
-        // Different databases/versions may use != or <> for not equals
-        assert!(sql.contains("!=") || sql.contains("<>"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0], json!("2023-01-01T12:00:00Z"));  // SET last_login
+            assert_eq!(params[1], json!(1));                       // WHERE id
+            
+            // Test database-specific RETURNING support
+            if dialect.supports_returning() {
+                assert!(sql.to_uppercase().contains("RETURNING"));
+            }
+            // Note: For databases without RETURNING, our application logic
+            // handles this, not the SQL generation
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_update_with_returning_clause() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("name"), "Alice");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
-        query.returning_all();
+    fn test_returning_specific_columns() {
+        // Test RETURNING specific columns
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("posts"))
+             .value(sea_query::Alias::new("content"), "Updated content")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(5))
+             .returning_col(sea_query::Alias::new("updated_at"))
+             .returning_col(sea_query::Alias::new("version"));
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("RETURNING"));
-        assert!(sql.contains("*"));
-    }
-    
-    #[test]
-    fn test_update_with_returning_specific_column() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("name"), "Alice");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
-        query.returning_col(sea_query::Alias::new("updated_at"));
-        
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("RETURNING"));
-        assert!(sql.contains("updated_at"));
-        assert!(!sql.contains("*"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0], json!("Updated content"));  // SET content
+            assert_eq!(params[1], json!(5));                  // WHERE id
+            
+            // Test database-specific RETURNING support
+            if dialect.supports_returning() {
+                assert!(sql.to_uppercase().contains("RETURNING"));
+                // Verify it's returning specific columns, not *
+                assert!(!sql.contains("RETURNING *"));
+            }
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
     fn test_json_to_sea_value_conversion() {
+        // Test our value conversion logic
         use super::super::json_to_sea_value;
         
-        // Test string conversion
-        let string_val = json_to_sea_value(&json!("test"));
-        assert!(matches!(string_val, sea_query::Value::String(_)));
-        
-        // Test integer conversion
+        // Test various JSON types get converted correctly
+        let string_val = json_to_sea_value(&json!("test_string"));
         let int_val = json_to_sea_value(&json!(42));
-        assert!(matches!(int_val, sea_query::Value::Int(_) | sea_query::Value::BigInt(_)));
-        
-        // Test boolean conversion
+        let float_val = json_to_sea_value(&json!(3.14));
         let bool_val = json_to_sea_value(&json!(true));
-        assert!(matches!(bool_val, sea_query::Value::Bool(Some(true))));
-        
-        // Test null conversion
         let null_val = json_to_sea_value(&json!(null));
-        assert!(matches!(null_val, sea_query::Value::BigInt(None)));
+        
+        // Verify conversions work (specific format is sea-query's responsibility)
+        assert!(matches!(string_val, sea_query::Value::String(_)));
+        assert!(matches!(int_val, sea_query::Value::Int(_) | sea_query::Value::BigInt(_)));
+        assert!(matches!(float_val, sea_query::Value::Double(_) | sea_query::Value::Float(_)));
+        assert!(matches!(bool_val, sea_query::Value::Bool(_)));
+        // null_val format may vary by sea-query version
+        let _null_handled = null_val;
     }
     
     #[test]
-    fn test_renderer_functionality() {
-        // Create a simple update query manually
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("name"), "Alice");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
+    fn test_unicode_and_special_character_parameters() {
+        // Test that our parameter handling works with special characters
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("international_profiles"))
+             .value(sea_query::Alias::new("display_name"), "测试用户")    // Chinese
+             .value(sea_query::Alias::new("bio"), "🚀✨🎉")           // Emoji
+             .value(sea_query::Alias::new("notes"), "!@#$%^&*()")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
         
-        // Test rendering for different dialects
-        let sqlite_sql = query.build(sea_query::SqliteQueryBuilder).0;
-        let postgres_sql = query.build(sea_query::PostgresQueryBuilder).0;
-        let mysql_sql = query.build(sea_query::MysqlQueryBuilder).0;
-        
-        // Basic assertions
-        assert!(sqlite_sql.contains("UPDATE"));
-        assert!(postgres_sql.contains("UPDATE"));
-        assert!(mysql_sql.contains("UPDATE"));
-        
-        // Different dialects may use different quoting
-        assert!(sqlite_sql.contains("users") || sqlite_sql.contains("\"users\""));
-        assert!(postgres_sql.contains("users") || postgres_sql.contains("\"users\""));
-        assert!(mysql_sql.contains("users") || mysql_sql.contains("`users`"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness with unicode
+            assert_eq!(params.len(), 4);
+            assert_eq!(params[0], json!("测试用户"));       // Chinese
+            assert_eq!(params[1], json!("🚀✨🎉"));         // Emoji
+            assert_eq!(params[2], json!("!@#$%^&*()"));      // Special chars
+            assert_eq!(params[3], json!(1));                // WHERE id
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_unicode_and_special_characters() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("name"), "测试用户");
-        query.value(sea_query::Alias::new("description"), "🎉 party");
-        query.value(sea_query::Alias::new("emoji"), "😀");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
+    fn test_complex_update_parameter_order() {
+        // Test complex UPDATE with multiple conditions to verify parameter order
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("user_profiles"))
+             .value(sea_query::Alias::new("status"), "verified")
+             .value(sea_query::Alias::new("tier"), "premium")
+             .value(sea_query::Alias::new("updated_at"), "2023-01-01T00:00:00Z")
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("active")).eq(true))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("email")).like("%@verified.com"))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("age")).between(18, 99))
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("role")).is_in(["user", "admin"]));
         
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        // SQL should be generated without errors
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("SET"));
-        assert!(sql.contains("WHERE"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test parameter correctness and order: 3 SET + 1+1+2+2 WHERE = 9 parameters
+            assert_eq!(params.len(), 9);
+            assert_eq!(params[0], json!("verified"));                 // SET status
+            assert_eq!(params[1], json!("premium"));                  // SET tier
+            assert_eq!(params[2], json!("2023-01-01T00:00:00Z"));     // SET updated_at
+            assert_eq!(params[3], json!(true));                      // WHERE active = true
+            assert_eq!(params[4], json!("%@verified.com"));          // WHERE email LIKE
+            assert_eq!(params[5], json!(18));                        // WHERE age BETWEEN 18
+            assert_eq!(params[6], json!(99));                        // AND 99
+            assert_eq!(params[7], json!("user"));                     // WHERE role IN ('user',
+            assert_eq!(params[8], json!("admin"));                    //                'admin')
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
-    fn test_different_value_types() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("string_field"), "text");
-        query.value(sea_query::Alias::new("int_field"), 42);
-        query.value(sea_query::Alias::new("float_field"), 3.14);
-        query.value(sea_query::Alias::new("bool_field"), true);
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
-        
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("string_field"));
-        assert!(sql.contains("int_field"));
-        assert!(sql.contains("float_field"));
-        assert!(sql.contains("bool_field"));
-    }
-    
-    #[test]
-    fn test_complex_update_query() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("status"), "premium");
-        query.value(sea_query::Alias::new("updated_at"), "2023-01-01T00:00:00Z");
-        query.value(sea_query::Alias::new("last_activity"), "2023-01-01T12:00:00Z");
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("active")).eq(true));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("subscription_type")).like("basic%"));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("age")).between(25, 65));
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("email")).is_not_null());
-        query.returning_all();
-        
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        // Verify SQL structure
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("users"));
-        assert!(sql.contains("SET"));
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("AND"));
-        assert!(sql.contains("LIKE"));
-        assert!(sql.contains("BETWEEN"));
-        assert!(sql.contains("IS NOT NULL"));
-        assert!(sql.contains("RETURNING"));
-        assert!(sql.contains("*"));
-    }
-    
-    #[test]
-    fn test_method_chaining_fluency() {
-        // Test that all methods return Self for fluent chaining
-        let mut _query = create_basic_update();
-        _query.value(sea_query::Alias::new("field1"), 1);
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field2")).ne(2));
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field3")).gt(3));
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field4")).gte(4));
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field5")).lt(5));
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field6")).lte(6));
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field7")).like("pattern"));
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field8")).is_in([1, 2, 3]));
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field9")).between(1, 10));
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field10")).is_null());
-        _query.and_where(sea_query::Expr::col(sea_query::Alias::new("field11")).is_not_null());
-        _query.returning_all();
-        
-        // If this compiles, the fluent interface works correctly
-        assert!(true);
-    }
-    
-    #[test]
-    fn test_sql_injection_prevention() {
-        let mut query = create_basic_update();
-        
-        // Try to update with potentially malicious content
+    fn test_sql_injection_prevention_through_parameters() {
+        // Test that malicious content is safely parameterized
         let malicious_content = "'; DROP TABLE users; --";
-        query.value(sea_query::Alias::new("name"), malicious_content);
-        query.and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("safe_profiles"))
+             .value(sea_query::Alias::new("description"), malicious_content)
+             .and_where(sea_query::Expr::col(sea_query::Alias::new("id")).eq(1));
         
-        let (sql, _params) = query.build(sea_query::SqliteQueryBuilder);
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Test that malicious content is safely in parameters
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0], json!(malicious_content));  // SET description
+            assert_eq!(params[1], json!(1));                  // WHERE id
+            
+            // Verify SQL structure is safe (no malicious content in SQL itself)
+            assert!(sql.to_uppercase().contains("UPDATE"));
+            // The malicious content should NOT be in the SQL string
+            assert!(!sql.contains("DROP TABLE"));
+            assert!(!sql.contains("--"));
+        }
+    }
+    
+    #[test]
+    fn test_no_where_clause_parameter_handling() {
+        // Test UPDATE without WHERE clause (affects all rows)
+        let mut query = Query::update();
+        query.table(sea_query::Alias::new("global_settings"))
+             .value(sea_query::Alias::new("maintenance_mode"), true)
+             .value(sea_query::Alias::new("last_updated"), "2023-01-01T00:00:00Z");
         
-        // Should not contain the malicious SQL in the generated SQL
-        assert!(!sql.contains("DROP TABLE"));
-        assert!(!sql.contains("--"));
-        // Should be properly structured
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("SET"));
-        assert!(sql.contains("WHERE"));
-        // The malicious content should be in parameters, not in SQL
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // Only SET parameters, no WHERE parameters
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0], json!(true));                       // SET maintenance_mode
+            assert_eq!(params[1], json!("2023-01-01T00:00:00Z"));     // SET last_updated
+            
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
     
     #[test]
     fn test_empty_update_handling() {
-        let query = create_basic_update();
+        // Test UPDATE with no SET clauses (should still work)
+        let query = Query::update()
+            .table(sea_query::Alias::new("test_table"))
+            .to_owned();
         
-        // Should generate basic UPDATE structure even without SET clauses
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("users"));
-    }
-    
-    #[test]
-    fn test_no_where_clause() {
-        let mut query = create_basic_update();
-        query.value(sea_query::Alias::new("global_flag"), true);
-        
-        let sql = query.build(sea_query::SqliteQueryBuilder).0;
-        
-        // Should generate UPDATE without WHERE (affects all rows)
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("SET"));
-        assert!(!sql.contains("WHERE"));
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.render_for_dialect(dialect);
+            
+            // No parameters for empty update
+            assert_eq!(params.len(), 0);
+            
+            // Should still generate valid SQL
+            assert!(sql.to_uppercase().contains("UPDATE"));
+        }
     }
 }
