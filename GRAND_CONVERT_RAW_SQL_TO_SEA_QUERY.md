@@ -7,7 +7,7 @@
 - [x] **Task 1.2**: INSERT Query Builder Conversion (`src/query_builder/insert.rs`)
 - [x] **Task 1.3**: UPDATE Query Builder Conversion (`src/query_builder/update.rs`)
 - [x] **Task 1.4**: DELETE Query Builder Conversion (`src/query_builder/delete.rs`)
-- [ ] **Task 1.5**: Core Query Infrastructure (`src/query/queries.rs`)
+- [x] **Task 1.5**: Core Query Infrastructure (`src/query/queries.rs`)
 - [ ] **Task 1.6**: Query Parameter Builder (`src/query/parameter_builder.rs`)
 
 ### **PHASE 2: SCHEMA INTROSPECTION** (8 files, ~400-500 lines)

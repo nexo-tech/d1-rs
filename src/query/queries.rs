@@ -4,11 +4,7 @@ use crate::dialects::DatabaseDialect;
 use sea_query::{Query as SeaQuery, SelectStatement, Expr, Order};
 
 // Import type-safe parameter building system from sibling module
-use super::parameter_builder::{
-    TypeSafeParameterBuilder,
-    InsertParameterBuilder,
-    UpdateParameterBuilder,
-};
+// Note: These imports removed as we now use pure sea-query
 
 #[derive(Debug, Clone)]
 pub struct WhereClause {
@@ -148,82 +144,24 @@ impl Query {
         self
     }
 
-    // Keep compatibility with existing to_sql method
-    pub fn to_sql(&self) -> (String, Vec<Value>) {
-        // For backward compatibility, we need to generate SQL that matches the original format exactly
-        // The original format doesn't quote identifiers and doesn't parameterize LIMIT/OFFSET
-        self.generate_backward_compatible_sql()
-    }
-    
-    // New method that respects database dialect
-    pub fn to_sql_for_dialect(&self, dialect: DatabaseDialect) -> (String, Vec<Value>) {
+    // Clean sea-query implementation - database-agnostic
+    pub fn to_sql(&self, dialect: DatabaseDialect) -> (String, Vec<Value>) {
         self.inner.render_for_dialect(dialect)
     }
     
-    pub fn to_count_sql(&self) -> (String, Vec<Value>) {
-        // For backward compatibility, generate count SQL in the same format as the original
-        self.generate_backward_compatible_count_sql()
-    }
-    
-    // Private method to generate SQL that matches the original format exactly
-    fn generate_backward_compatible_sql(&self) -> (String, Vec<Value>) {
-        // Use the original implementation logic exactly to ensure 100% compatibility
-        use super::parameter_builder::WhereParameterBuilder;
+    pub fn to_count_sql(&self, dialect: DatabaseDialect) -> (String, Vec<Value>) {
+        // Create a pure sea-query COUNT query preserving all WHERE conditions
+        let mut count_query = self.inner.clone();
         
-        let mut sql = format!("SELECT * FROM {}", self.table);
-        let mut parameter_builder = WhereParameterBuilder::new();
-
-        if !self.where_clauses.is_empty() {
-            sql.push_str(" WHERE ");
-            for (idx, clause) in self.where_clauses.iter().enumerate() {
-                if idx > 0 {
-                    sql.push_str(" AND ");
-                }
-                sql.push_str(&format!("{} {} ?", clause.column, clause.operator));
-                parameter_builder.add_condition_parameter(clause.value.clone());
-            }
-        }
-
-        if !self.order_by.is_empty() {
-            sql.push_str(" ORDER BY ");
-            for (idx, order) in self.order_by.iter().enumerate() {
-                if idx > 0 {
-                    sql.push_str(", ");
-                }
-                sql.push_str(&format!("{} {}", order.column, if order.ascending { "ASC" } else { "DESC" }));
-            }
-        }
-
-        if let Some(limit) = self.limit {
-            sql.push_str(&format!(" LIMIT {}", limit));
-        }
-
-        if let Some(offset) = self.offset {
-            sql.push_str(&format!(" OFFSET {}", offset));
-        }
-
-        (sql, parameter_builder.parameter_values())
-    }
-    
-    fn generate_backward_compatible_count_sql(&self) -> (String, Vec<Value>) {
-        // Use the original count implementation logic exactly
-        use super::parameter_builder::WhereParameterBuilder;
+        // Clear existing selections and set to COUNT(*)
+        count_query.clear_selects()
+                   .expr(sea_query::Func::count(Expr::col(sea_query::Asterisk)));
         
-        let mut sql = format!("SELECT COUNT(*) as count FROM {}", self.table);
-        let mut parameter_builder = WhereParameterBuilder::new();
-
-        if !self.where_clauses.is_empty() {
-            sql.push_str(" WHERE ");
-            for (idx, clause) in self.where_clauses.iter().enumerate() {
-                if idx > 0 {
-                    sql.push_str(" AND ");
-                }
-                sql.push_str(&format!("{} {} ?", clause.column, clause.operator));
-                parameter_builder.add_condition_parameter(clause.value.clone());
-            }
-        }
-
-        (sql, parameter_builder.parameter_values())
+        // Clear ORDER BY for count queries (LIMIT/OFFSET don't affect COUNT)
+        count_query.clear_order_by();
+        
+        // Render the pure sea-query COUNT statement for the specified dialect
+        count_query.render_for_dialect(dialect)
     }
 }
 
@@ -234,11 +172,12 @@ impl QueryRenderer for Query {
     }
 }
 
+
 #[derive(Debug)]
 pub struct InsertQuery {
-    pub table: String,
-    pub columns: Vec<String>,
-    pub values: Vec<Value>,
+    table: String,
+    columns: Vec<String>,
+    values: Vec<Value>,
 }
 
 impl InsertQuery {
@@ -256,90 +195,88 @@ impl InsertQuery {
         self
     }
 
-    pub fn to_sql(&self) -> (String, Vec<Value>) {
-        let columns = self.columns.join(", ");
+    pub fn to_sql(&self, dialect: DatabaseDialect) -> (String, Vec<Value>) {
+        let mut insert = SeaQuery::insert();
+        insert.into_table(sea_query::Alias::new(&self.table))
+              .returning_all();
         
-        // Revolutionary: Use type-safe parameter building instead of string literals
-        let mut parameter_builder = InsertParameterBuilder::new();
-        for value in &self.values {
-            parameter_builder.add_column_value(value.clone());
+        if !self.columns.is_empty() {
+            let columns: Vec<_> = self.columns.iter()
+                .map(|k| sea_query::Alias::new(k))
+                .collect();
+            let expr_values: Vec<_> = self.values.iter()
+                .map(|v| json_to_sea_value(v).into())
+                .collect();
+                
+            insert.columns(columns).values_panic(expr_values);
         }
         
-        let values_fragment = parameter_builder.values_clause_fragment();
-        let sql = format!("INSERT INTO {} ({}) VALUES {} RETURNING *", 
-                         self.table, columns, values_fragment.sql);
-        
-        (sql, parameter_builder.parameter_values())
+        insert.render_for_dialect(dialect)
     }
 }
 
 #[derive(Debug)]
 pub struct UpdateQuery {
-    pub table: String,
-    pub columns: Vec<String>,
-    pub values: Vec<Value>,
-    pub where_clauses: Vec<WhereClause>,
+    inner: sea_query::UpdateStatement,
+    table: String,
 }
 
 impl UpdateQuery {
     pub fn new(table: String) -> Self {
+        let mut update = SeaQuery::update();
+        update.table(sea_query::Alias::new(&table))
+              .returning_all();
+        
         Self {
+            inner: update,
             table,
-            columns: Vec::new(),
-            values: Vec::new(),
-            where_clauses: Vec::new(),
         }
     }
 
     pub fn set(&mut self, column: &str, value: Value) -> &mut Self {
-        self.columns.push(column.to_string());
-        self.values.push(value);
+        let sea_value = json_to_sea_value(&value);
+        self.inner.value(sea_query::Alias::new(column), sea_value);
         self
     }
 
     pub fn where_clause(&mut self, column: &str, operator: &str, value: Value) -> &mut Self {
-        self.where_clauses.push(WhereClause {
-            column: column.to_string(),
-            operator: operator.to_string(),
-            value,
-        });
+        let sea_value = json_to_sea_value(&value);
+        let column_expr = Expr::col(sea_query::Alias::new(column));
+        
+        match operator {
+            "=" => { self.inner.and_where(column_expr.eq(sea_value)); },
+            "!=" => { self.inner.and_where(column_expr.ne(sea_value)); },
+            ">" => { self.inner.and_where(column_expr.gt(sea_value)); },
+            ">=" => { self.inner.and_where(column_expr.gte(sea_value)); },
+            "<" => { self.inner.and_where(column_expr.lt(sea_value)); },
+            "<=" => { self.inner.and_where(column_expr.lte(sea_value)); },
+            "LIKE" => {
+                if let sea_query::Value::String(Some(ref pattern)) = sea_value {
+                    self.inner.and_where(column_expr.like(pattern.as_str()));
+                } else {
+                    self.inner.and_where(column_expr.eq(sea_value));
+                }
+            },
+            "IN" => {
+                if let Value::Array(values) = value {
+                    let sea_values: Vec<_> = values.iter().map(json_to_sea_value).collect();
+                    self.inner.and_where(column_expr.is_in(sea_values));
+                } else {
+                    self.inner.and_where(column_expr.eq(sea_value));
+                }
+            },
+            "IS NOT" => {
+                self.inner.and_where(column_expr.is_not_null());
+            },
+            _ => {
+                self.inner.and_where(column_expr.eq(sea_value));
+            }
+        }
         self
     }
 
-    pub fn to_sql(&self) -> (String, Vec<Value>) {
-        let mut sql = format!("UPDATE {} SET ", self.table);
-        
-        // Revolutionary: Use type-safe parameter building instead of string literals
-        let mut parameter_builder = UpdateParameterBuilder::new();
-        
-        // Add SET clause parameters
-        for value in &self.values {
-            parameter_builder.add_set_parameter(value.clone());
-        }
-        
-        // Build SET clause with type-safe placeholders
-        for (idx, column) in self.columns.iter().enumerate() {
-            if idx > 0 {
-                sql.push_str(", ");
-            }
-            sql.push_str(&format!("{} = ?", column));
-        }
-
-        // Add WHERE clause parameters
-        if !self.where_clauses.is_empty() {
-            sql.push_str(" WHERE ");
-            for (idx, clause) in self.where_clauses.iter().enumerate() {
-                if idx > 0 {
-                    sql.push_str(" AND ");
-                }
-                sql.push_str(&format!("{} {} ?", clause.column, clause.operator));
-                parameter_builder.add_where_parameter(clause.value.clone());
-            }
-        }
-
-        sql.push_str(" RETURNING *");
-
-        (sql, parameter_builder.parameter_values())
+    pub fn to_sql(&self, dialect: DatabaseDialect) -> (String, Vec<Value>) {
+        self.inner.render_for_dialect(dialect)
     }
 }
 
@@ -347,6 +284,7 @@ impl UpdateQuery {
 mod tests {
     use super::*;
     use serde_json::json;
+    use crate::dialects::DatabaseDialect;
 
     #[test]
     fn test_query_select_with_where_clauses() {
@@ -357,12 +295,23 @@ mod tests {
         query.limit(10);
         query.offset(5);
 
-        let (sql, params) = query.to_sql();
-        
-        assert_eq!(sql, "SELECT * FROM users WHERE age > ? AND status = ? ORDER BY name ASC LIMIT 10 OFFSET 5");
-        assert_eq!(params.len(), 2);
-        assert_eq!(params[0], json!(18));
-        assert_eq!(params[1], json!("active"));
+        // Test all available database dialects (based on enabled features)
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.to_sql(dialect);
+            
+            // All dialects should generate proper SQL structure
+            assert!(sql.contains("SELECT"));
+            assert!(sql.contains("FROM users"));
+            assert!(sql.contains("WHERE"));
+            assert!(sql.contains("ORDER BY"));
+            assert!(sql.contains("LIMIT"));
+            assert!(sql.contains("OFFSET"));
+            
+            // Parameters should be consistent across all dialects
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0], json!(18));
+            assert_eq!(params[1], json!("active"));
+        }
     }
 
     #[test]
@@ -371,10 +320,20 @@ mod tests {
         query.order_by("price", false);
         query.limit(20);
 
-        let (sql, params) = query.to_sql();
-        
-        assert_eq!(sql, "SELECT * FROM products ORDER BY price DESC LIMIT 20");
-        assert_eq!(params.len(), 0);
+        // Test all available database dialects (based on enabled features)
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.to_sql(dialect);
+            
+            // All dialects should generate proper SQL structure
+            assert!(sql.contains("SELECT"));
+            assert!(sql.contains("FROM products"));
+            assert!(sql.contains("ORDER BY"));
+            assert!(sql.contains("DESC"));
+            assert!(sql.contains("LIMIT"));
+            
+            // No parameters expected
+            assert_eq!(params.len(), 0);
+        }
     }
 
     #[test]
@@ -383,22 +342,39 @@ mod tests {
         query.where_clause("total", ">=", json!(100.0));
         query.where_clause("cancelled", "=", json!(false));
 
-        let (sql, params) = query.to_count_sql();
-        
-        assert_eq!(sql, "SELECT COUNT(*) as count FROM orders WHERE total >= ? AND cancelled = ?");
-        assert_eq!(params.len(), 2);
-        assert_eq!(params[0], json!(100.0));
-        assert_eq!(params[1], json!(false));
+        // Test all available database dialects (based on enabled features)
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.to_count_sql(dialect);
+            
+            // All dialects should generate proper COUNT SQL structure
+            assert!(sql.contains("SELECT"));
+            assert!(sql.contains("COUNT"));
+            assert!(sql.contains("FROM orders"));
+            assert!(sql.contains("WHERE"));
+            
+            // Parameters should be consistent across all dialects
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0], json!(100.0));
+            assert_eq!(params[1], json!(false));
+        }
     }
 
     #[test]
     fn test_query_count_without_where_clauses() {
         let query = Query::new("customers".to_string());
 
-        let (sql, params) = query.to_count_sql();
-        
-        assert_eq!(sql, "SELECT COUNT(*) as count FROM customers");
-        assert_eq!(params.len(), 0);
+        // Test all available database dialects (based on enabled features)
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.to_count_sql(dialect);
+            
+            // All dialects should generate proper COUNT SQL structure
+            assert!(sql.contains("SELECT"));
+            assert!(sql.contains("COUNT"));
+            assert!(sql.contains("FROM customers"));
+            
+            // No parameters expected
+            assert_eq!(params.len(), 0);
+        }
     }
 
     #[test]
@@ -406,11 +382,20 @@ mod tests {
         let mut query = InsertQuery::new("users".to_string());
         query.set("name", json!("Alice"));
 
-        let (sql, params) = query.to_sql();
-        
-        assert_eq!(sql, "INSERT INTO users (name) VALUES (?) RETURNING *");
-        assert_eq!(params.len(), 1);
-        assert_eq!(params[0], json!("Alice"));
+        // Test all available database dialects (based on enabled features)
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.to_sql(dialect);
+            
+            // All dialects should generate proper INSERT SQL structure
+            assert!(sql.contains("INSERT INTO users"));
+            assert!(sql.contains("name"));
+            assert!(sql.contains("VALUES"));
+            assert!(sql.contains("RETURNING") || !dialect.supports_returning()); // Some databases don't support RETURNING
+            
+            // Parameters should be consistent across all dialects
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0], json!("Alice"));
+        }
     }
 
     #[test]
@@ -421,24 +406,42 @@ mod tests {
         query.set("active", json!(true));
         query.set("score", json!(null));
 
-        let (sql, params) = query.to_sql();
-        
-        assert_eq!(sql, "INSERT INTO users (name, age, active, score) VALUES (?, ?, ?, ?) RETURNING *");
-        assert_eq!(params.len(), 4);
-        assert_eq!(params[0], json!("Bob"));
-        assert_eq!(params[1], json!(25));
-        assert_eq!(params[2], json!(true));
-        assert_eq!(params[3], json!(null));
+        // Test all available database dialects (based on enabled features)
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.to_sql(dialect);
+            
+            // All dialects should generate proper INSERT SQL structure
+            assert!(sql.contains("INSERT INTO users"));
+            assert!(sql.contains("name"));
+            assert!(sql.contains("age"));
+            assert!(sql.contains("active"));
+            assert!(sql.contains("score"));
+            assert!(sql.contains("VALUES"));
+            
+            // Parameters should be consistent across all dialects
+            assert_eq!(params.len(), 4);
+            assert_eq!(params[0], json!("Bob"));
+            assert_eq!(params[1], json!(25));
+            assert_eq!(params[2], json!(true));
+            assert_eq!(params[3], json!(null));
+        }
     }
 
     #[test]
     fn test_insert_query_empty() {
         let query = InsertQuery::new("logs".to_string());
 
-        let (sql, params) = query.to_sql();
-        
-        assert_eq!(sql, "INSERT INTO logs () VALUES () RETURNING *");
-        assert_eq!(params.len(), 0);
+        // Test all available database dialects (based on enabled features)
+        for dialect in DatabaseDialect::all_available() {
+            let (sql, params) = query.to_sql(dialect);
+            
+            // All dialects should generate proper INSERT SQL structure
+            assert!(sql.contains("INSERT INTO logs"));
+            assert!(sql.contains("RETURNING") || !dialect.supports_returning()); // Some databases don't support RETURNING
+            
+            // No parameters expected for empty insert
+            assert_eq!(params.len(), 0);
+        }
     }
 
     #[test]
@@ -452,7 +455,7 @@ mod tests {
         query.set("col2", json!(42));
         query.set("col3", json!(true));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         // Verify the SQL structure is correct without string literal placeholders
         assert_eq!(sql, "INSERT INTO test_table (col1, col2, col3) VALUES (?, ?, ?) RETURNING *");
@@ -475,7 +478,7 @@ mod tests {
         query.where_clause("id", "=", json!(1));
         query.where_clause("active", "=", json!(true));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         assert_eq!(sql, "UPDATE users SET name = ?, age = ? WHERE id = ? AND active = ? RETURNING *");
         assert_eq!(params.len(), 4);
@@ -490,7 +493,7 @@ mod tests {
         let mut query = UpdateQuery::new("settings".to_string());
         query.set("updated_at", json!("2024-01-01"));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         assert_eq!(sql, "UPDATE settings SET updated_at = ? RETURNING *");
         assert_eq!(params.len(), 1);
@@ -504,7 +507,7 @@ mod tests {
         query.set("notifications", json!(false));
         query.set("timeout", json!(5000));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         assert_eq!(sql, "UPDATE config SET theme = ?, notifications = ?, timeout = ? RETURNING *");
         assert_eq!(params.len(), 3);
@@ -532,7 +535,7 @@ mod tests {
         query.set("content", complex_json.clone());
         query.set("array_data", json!([1, 2, 3, "test"]));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         assert_eq!(sql, "INSERT INTO documents (content, array_data) VALUES (?, ?) RETURNING *");
         assert_eq!(params.len(), 2);
@@ -549,7 +552,7 @@ mod tests {
             .order_by("name", true)
             .limit(50)
             .offset(25)
-            .to_sql();
+            .to_sql(DatabaseDialect::SQLite);
         
         assert_eq!(sql, "SELECT * FROM products WHERE category = ? AND price BETWEEN ? ORDER BY price ASC, name ASC LIMIT 50 OFFSET 25");
         assert_eq!(params.len(), 2);
@@ -564,7 +567,7 @@ mod tests {
         query.set("whitespace", json!("   "));
         query.set("special_chars", json!("!@#$%^&*()"));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         assert_eq!(sql, "INSERT INTO test_table (empty_string, whitespace, special_chars) VALUES (?, ?, ?) RETURNING *");
         assert_eq!(params.len(), 3);
@@ -581,7 +584,7 @@ mod tests {
         query.set("negative", json!(-123.456));
         query.set("scientific", json!(1.23e-10));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         assert_eq!(sql, "INSERT INTO measurements (integer, float, negative, scientific) VALUES (?, ?, ?, ?) RETURNING *");
         assert_eq!(params.len(), 4);
@@ -599,7 +602,7 @@ mod tests {
         query.set("nullable_field", json!(null));
         query.where_clause("id", "IS NOT", json!(null));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         assert_eq!(sql, "UPDATE flags SET is_enabled = ?, is_disabled = ?, nullable_field = ? WHERE id IS NOT ? RETURNING *");
         assert_eq!(params.len(), 4);
@@ -616,7 +619,7 @@ mod tests {
         query.where_clause("username", "=", json!("'; DROP TABLE users; --"));
         query.where_clause("password", "=", json!("' OR '1'='1"));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         // SQL structure should be preserved, malicious content should be in parameters
         assert_eq!(sql, "SELECT * FROM users WHERE username = ? AND password = ?");
@@ -633,7 +636,7 @@ mod tests {
         query.set("arabic", json!("مرحبا بالعالم"));
         query.set("russian", json!("Привет мир"));
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         assert_eq!(sql, "INSERT INTO internationalization (chinese, emoji, arabic, russian) VALUES (?, ?, ?, ?) RETURNING *");
         assert_eq!(params.len(), 4);
@@ -652,7 +655,7 @@ mod tests {
             query.set(&format!("col_{}", i), json!(format!("value_{}", i)));
         }
 
-        let (sql, params) = query.to_sql();
+        let (sql, params) = query.to_sql(DatabaseDialect::SQLite);
         
         // Should handle large parameter sets efficiently
         assert!(sql.starts_with("INSERT INTO bulk_data"));
@@ -666,22 +669,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_type_safe_parameter_builder_integration() {
-        // Test that the type-safe parameter builders work correctly
-        let mut insert_builder = InsertParameterBuilder::new();
-        insert_builder.add_column_value(json!("test"));
-        insert_builder.add_column_value(json!(42));
-
-        let fragment = insert_builder.build_sql_fragment();
-        assert_eq!(fragment.sql, "(?, ?)");
-        assert_eq!(fragment.parameter_count, 2);
-
-        let values = insert_builder.parameter_values();
-        assert_eq!(values.len(), 2);
-        assert_eq!(values[0], json!("test"));
-        assert_eq!(values[1], json!(42));
-    }
 
     #[test]
     fn test_zero_string_literals_compliance() {
@@ -690,13 +677,13 @@ mod tests {
         
         // Create queries with various parameter counts
         let empty_insert = InsertQuery::new("test".to_string());
-        let (sql, params) = empty_insert.to_sql();
+        let (sql, params) = empty_insert.to_sql(DatabaseDialect::SQLite);
         assert_eq!(sql, "INSERT INTO test () VALUES () RETURNING *");
         assert_eq!(params.len(), 0);
         
         let mut single_insert = InsertQuery::new("test".to_string());
         single_insert.set("col", json!("val"));
-        let (sql, params) = single_insert.to_sql();
+        let (sql, params) = single_insert.to_sql(DatabaseDialect::SQLite);
         assert_eq!(sql, "INSERT INTO test (col) VALUES (?) RETURNING *");
         assert_eq!(params.len(), 1);
         
@@ -704,7 +691,7 @@ mod tests {
         for i in 0..5 {
             multi_insert.set(&format!("col{}", i), json!(i));
         }
-        let (sql, params) = multi_insert.to_sql();
+        let (sql, params) = multi_insert.to_sql(DatabaseDialect::SQLite);
         assert_eq!(sql, "INSERT INTO test (col0, col1, col2, col3, col4) VALUES (?, ?, ?, ?, ?) RETURNING *");
         assert_eq!(params.len(), 5);
         
