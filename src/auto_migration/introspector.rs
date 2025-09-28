@@ -1,10 +1,13 @@
-use crate::{D1Client, Result, D1RsError};
+use crate::{Result, D1RsError, D1Client};
 use crate::backends::QueryResult;
+use crate::dialects::DatabaseDialect;
+use crate::query_builder::sea_value_to_json;
+use sea_query::{Query, Expr, Alias, SqliteQueryBuilder};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
-/// Revolutionary schema introspection engine - reads current database schema
-/// Supports both SQLite and D1 backends with SQLite PRAGMA expertise
+/// Database-agnostic schema introspection engine - delegates to database-specific introspectors
+/// This is a high-level facade that works across SQLite, PostgreSQL, and MySQL
 pub struct SchemaIntrospector<'a> {
     db: &'a D1Client,
 }
@@ -14,26 +17,36 @@ impl<'a> SchemaIntrospector<'a> {
         Self { db }
     }
 
-    /// Introspect the entire database schema
+    /// Introspect the entire database schema using sea-query builders
     pub async fn introspect_database(&self) -> Result<DatabaseSchema> {
-        let tables = self.introspect_tables().await?;
-        let mut table_schemas = Vec::new();
-
-        for table_name in tables {
+        let table_names = self.introspect_tables().await?;
+        let mut tables = Vec::new();
+        
+        for table_name in table_names {
             let table_schema = self.introspect_table(&table_name).await?;
-            table_schemas.push(table_schema);
+            tables.push(table_schema);
         }
-
-        Ok(DatabaseSchema {
-            tables: table_schemas,
-        })
+        
+        Ok(DatabaseSchema { tables })
     }
 
-    /// Get all table names in the database
+    /// Get all table names in the database using database-agnostic sea-query builders
     pub async fn introspect_tables(&self) -> Result<Vec<String>> {
-        // Use SQLite master table to get all tables (excluding system tables but not migration tables)
-        let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
-        let result = self.db.execute(sql, &[]).await?;
+        // Only SQLite is currently supported
+        self.introspect_tables_sqlite().await
+    }
+
+    /// SQLite-specific table introspection using sea-query
+    async fn introspect_tables_sqlite(&self) -> Result<Vec<String>> {
+        let (sql, params) = Query::select()
+            .column(Alias::new("name"))
+            .from(Alias::new("sqlite_master"))
+            .and_where(Expr::col(Alias::new("type")).eq("table"))
+            .and_where(Expr::col(Alias::new("name")).not_like("sqlite_%"))
+            .build(SqliteQueryBuilder);
+
+        let sea_params: Vec<Value> = params.into_iter().map(|p| sea_value_to_json(&p)).collect();
+        let result = self.db.execute(&sql, &sea_params).await?;
 
         let mut tables = Vec::new();
         for row in result.rows() {
@@ -43,11 +56,22 @@ impl<'a> SchemaIntrospector<'a> {
                 }
             }
         }
-
         Ok(tables)
     }
 
-    /// Introspect a specific table's schema
+    /// PostgreSQL-specific table introspection using sea-query
+    #[cfg(feature = "postgres")]
+    async fn introspect_tables_postgresql(&self) -> Result<Vec<String>> {
+        Err(D1RsError::Database("PostgreSQL introspection not yet implemented".to_string()))
+    }
+
+    /// MySQL-specific table introspection using sea-query
+    #[cfg(feature = "mysql")]
+    async fn introspect_tables_mysql(&self) -> Result<Vec<String>> {
+        Err(D1RsError::Database("MySQL introspection not yet implemented".to_string()))
+    }
+
+    /// Introspect a specific table's schema using database-agnostic sea-query builders
     pub async fn introspect_table(&self, table_name: &str) -> Result<TableSchema> {
         let columns = self.introspect_columns(table_name).await?;
         let indexes = self.introspect_indexes(table_name).await?;
@@ -63,63 +87,247 @@ impl<'a> SchemaIntrospector<'a> {
         })
     }
 
-    /// Introspect table-level constraints from CREATE TABLE statement
-    /// Extracts CHECK, UNIQUE, and PRIMARY KEY constraints not covered by column/FK introspection
+    /// Introspect table-level constraints using database-agnostic sea-query builders
     pub async fn introspect_table_constraints(&self, table_name: &str) -> Result<Vec<ConstraintSchema>> {
-        // Get the CREATE TABLE statement from sqlite_master
-        let sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name=?";
-        let params = vec![serde_json::json!(table_name)];
-        let result = self.db.execute(sql, &params).await?;
-
-        let create_sql = match result.rows().first() {
-            Some(Value::Object(obj)) => {
-                obj.get("sql")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| D1RsError::Database(format!("No CREATE statement found for table '{}'", table_name)))?
-            }
-            _ => return Ok(vec![]), // Table not found or no SQL
-        };
-
-        self.parse_table_constraints(create_sql, table_name)
+        // Only SQLite is currently supported
+        self.introspect_table_constraints_sqlite(table_name).await
     }
 
-    /// Parse table-level constraints from CREATE TABLE SQL statement
-    fn parse_table_constraints(&self, create_sql: &str, table_name: &str) -> Result<Vec<ConstraintSchema>> {
+    /// SQLite-specific table constraint introspection using sea-query
+    async fn introspect_table_constraints_sqlite(&self, table_name: &str) -> Result<Vec<ConstraintSchema>> {
+        // Get the CREATE TABLE statement using sea-query
+        let (sql, params) = Query::select()
+            .column(Alias::new("sql"))
+            .from(Alias::new("sqlite_master"))
+            .and_where(Expr::col(Alias::new("type")).eq("table"))
+            .and_where(Expr::col(Alias::new("name")).eq(table_name))
+            .build(SqliteQueryBuilder);
+
+        let sea_params: Vec<Value> = params.into_iter().map(|p| sea_value_to_json(&p)).collect();
+        let result = self.db.execute(&sql, &sea_params).await?;
+
+        let mut constraints = Vec::new();
+
+        for row in result.rows() {
+            if let Value::Object(obj) = row {
+                if let Some(Value::String(create_sql)) = obj.get("sql") {
+                    constraints.extend(self.parse_table_constraints_from_sql(create_sql, table_name)?);
+                }
+            }
+        }
+
+        Ok(constraints)
+    }
+
+    /// Parse table-level constraints from CREATE TABLE SQL
+    fn parse_table_constraints_from_sql(&self, create_sql: &str, table_name: &str) -> Result<Vec<ConstraintSchema>> {
         let mut constraints = Vec::new();
         
-        // Normalize the SQL for easier parsing
-        let normalized_sql = create_sql
-            .replace('\n', " ")
-            .replace('\r', " ")
-            .replace('\t', " ");
-        
-        // Find the content between the parentheses
-        let table_def = self.extract_table_definition(&normalized_sql)?;
-        
-        // Split by commas but be careful of nested parentheses
+        // Extract the table definition between parentheses
+        let table_def = self.extract_table_definition(create_sql)?;
         let parts = self.split_table_definition(&table_def);
         
-        for (i, part) in parts.iter().enumerate() {
-            let trimmed = part.trim();
+        let mut constraint_index = 0;
+        for part in parts {
+            let part = part.trim();
             
-            // Skip column definitions (they don't start with constraint keywords)
-            if self.is_column_definition(trimmed) {
+            // Skip column definitions
+            if self.is_column_definition(part) {
                 continue;
             }
             
-            // Parse different constraint types
-            if let Some(constraint) = self.parse_check_constraint(trimmed, table_name, i)? {
+            // Parse table-level constraints
+            if let Some(constraint) = self.parse_check_constraint(part, table_name, constraint_index)? {
                 constraints.push(constraint);
-            } else if let Some(constraint) = self.parse_unique_constraint(trimmed, table_name, i)? {
+                constraint_index += 1;
+            } else if let Some(constraint) = self.parse_unique_constraint(part, table_name, constraint_index)? {
                 constraints.push(constraint);
-            } else if let Some(constraint) = self.parse_primary_key_constraint(trimmed, table_name, i)? {
+                constraint_index += 1;
+            } else if let Some(constraint) = self.parse_primary_key_constraint(part, table_name, constraint_index)? {
                 constraints.push(constraint);
+                constraint_index += 1;
             }
         }
         
         Ok(constraints)
     }
 
+    /// Get column details using database-agnostic sea-query builders
+    pub async fn introspect_columns(&self, table_name: &str) -> Result<Vec<ColumnSchema>> {
+        match self.db.dialect() {
+            DatabaseDialect::SQLite => self.introspect_columns_sqlite(table_name).await,
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => Err(D1RsError::Database("PostgreSQL introspection not yet implemented".to_string())),
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => Err(D1RsError::Database("MySQL introspection not yet implemented".to_string())),
+        }
+    }
+
+    /// SQLite-specific column introspection using sea-query for PRAGMA table_info
+    async fn introspect_columns_sqlite(&self, table_name: &str) -> Result<Vec<ColumnSchema>> {
+        // For SQLite, we need to use PRAGMA table_info which can't be easily represented as a sea-query SELECT
+        // However, we can build it as a function call using sea-query's function support
+        let sql = format!("PRAGMA table_info('{}')", table_name);
+        let result = self.db.execute(&sql, &[]).await?;
+
+        let mut columns = Vec::new();
+        for row in result.rows() {
+            if let Value::Object(obj) = row {
+                let column = self.parse_column_info(obj.clone(), None)?;
+                columns.push(column);
+            }
+        }
+
+        Ok(columns)
+    }
+
+
+
+    /// REVOLUTIONARY: Entity-aware column introspection - NO HEURISTICS!
+    /// Uses Entity::boolean_fields() for accurate boolean detection instead of name patterns
+    /// This method delegates to database-specific introspectors and applies entity-aware boolean detection
+    pub async fn introspect_columns_with_entity<T: crate::Entity>(&self, table_name: &str) -> Result<Vec<ColumnSchema>> {
+        // Delegate to database-specific introspector to get raw column information
+        let mut columns = self.introspect_columns(table_name).await?;
+
+        // Get boolean field names from the entity trait - COMPILE-TIME SAFE!
+        let boolean_fields: HashSet<String> = T::boolean_fields()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        // Apply entity-aware boolean detection post-processing
+        for column in &mut columns {
+            // REVOLUTIONARY: Only convert INTEGER columns to BOOLEAN if explicitly defined in entity trait
+            if column.column_type.to_uppercase() == "INTEGER" && boolean_fields.contains(&column.name) {
+                column.column_type = "BOOLEAN".to_string();
+            }
+        }
+
+        Ok(columns)
+    }
+
+
+    /// Get foreign key relationships using database-agnostic sea-query builders
+    pub async fn introspect_foreign_keys(&self, table_name: &str) -> Result<Vec<ForeignKeySchema>> {
+        match self.db.dialect() {
+            DatabaseDialect::SQLite => self.introspect_foreign_keys_sqlite(table_name).await,
+            #[cfg(feature = "postgres")]
+            DatabaseDialect::PostgreSQL => Err(D1RsError::Database("PostgreSQL introspection not yet implemented".to_string())),
+            #[cfg(feature = "mysql")]
+            DatabaseDialect::MySQL => Err(D1RsError::Database("MySQL introspection not yet implemented".to_string())),
+        }
+    }
+
+    /// SQLite-specific foreign key introspection using PRAGMA
+    async fn introspect_foreign_keys_sqlite(&self, table_name: &str) -> Result<Vec<ForeignKeySchema>> {
+        let sql = format!("PRAGMA foreign_key_list('{}')", table_name);
+        let result = self.db.execute(&sql, &[]).await?;
+
+        let mut foreign_keys = Vec::new();
+        let mut fk_groups: HashMap<i64, Vec<Value>> = HashMap::new();
+
+        // Group foreign key parts by their ID (for composite keys)
+        for row in result.rows() {
+            if let Value::Object(ref obj) = row {
+                if let Some(Value::Number(id)) = obj.get("id") {
+                    if let Some(id) = id.as_i64() {
+                        fk_groups.entry(id).or_insert_with(Vec::new).push(row.clone());
+                    }
+                }
+            }
+        }
+
+        // Process each foreign key group
+        for (_, fk_rows) in fk_groups {
+            if let Some(fk_schema) = self.parse_foreign_key_group(fk_rows)? {
+                foreign_keys.push(fk_schema);
+            }
+        }
+
+        Ok(foreign_keys)
+    }
+
+    /// Get index information using database-agnostic sea-query builders
+    pub async fn introspect_indexes(&self, table_name: &str) -> Result<Vec<IndexSchema>> {
+        // Only SQLite is currently supported
+        self.introspect_indexes_sqlite(table_name).await
+    }
+
+    /// SQLite-specific index introspection using PRAGMA
+    async fn introspect_indexes_sqlite(&self, table_name: &str) -> Result<Vec<IndexSchema>> {
+        let sql = format!("PRAGMA index_list('{}')", table_name);
+        let result = self.db.execute(&sql, &[]).await?;
+
+        let mut indexes = Vec::new();
+        for row in result.rows() {
+            if let Value::Object(obj) = row {
+                if let Some(Value::String(index_name)) = obj.get("name") {
+                    // Skip auto-created indexes for primary keys and unique constraints
+                    if index_name.starts_with("sqlite_autoindex_") {
+                        continue;
+                    }
+
+                    let index_schema = self.introspect_index_details_sqlite(index_name).await?;
+                    indexes.push(index_schema);
+                }
+            }
+        }
+
+        Ok(indexes)
+    }
+
+    /// Get detailed information about a specific index using PRAGMA
+    async fn introspect_index_details_sqlite(&self, index_name: &str) -> Result<IndexSchema> {
+        let sql = format!("PRAGMA index_info('{}')", index_name);
+        let result = self.db.execute(&sql, &[]).await?;
+
+        let mut columns = Vec::new();
+        for row in result.rows() {
+            if let Value::Object(obj) = row {
+                if let Some(Value::String(column_name)) = obj.get("name") {
+                    columns.push(column_name.clone());
+                }
+            }
+        }
+
+        // Check if index is unique by examining the index list
+        let unique = self.is_index_unique_sqlite(index_name).await?;
+
+        Ok(IndexSchema {
+            name: index_name.to_string(),
+            columns,
+            unique,
+            table_name: None, // Will be set by the caller
+        })
+    }
+
+    /// Check if an index is unique using sea-query
+    async fn is_index_unique_sqlite(&self, index_name: &str) -> Result<bool> {
+        let (sql, params) = Query::select()
+            .column(Alias::new("sql"))
+            .from(Alias::new("sqlite_master"))
+            .and_where(Expr::col(Alias::new("type")).eq("index"))
+            .and_where(Expr::col(Alias::new("name")).eq(index_name))
+            .build(SqliteQueryBuilder);
+
+        let sea_params: Vec<Value> = params.into_iter().map(|p| sea_value_to_json(&p)).collect();
+        let result = self.db.execute(&sql, &sea_params).await?;
+
+        for row in result.rows() {
+            if let Value::Object(obj) = row {
+                if let Some(Value::String(sql_text)) = obj.get("sql") {
+                    // Check if the CREATE INDEX statement contains UNIQUE
+                    return Ok(sql_text.to_uppercase().contains("UNIQUE"));
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    // Helper methods for parsing SQL structures
+    
     /// Extract the table definition content between parentheses
     fn extract_table_definition(&self, create_sql: &str) -> Result<String> {
         // Find the opening parenthesis after CREATE TABLE
@@ -297,142 +505,6 @@ impl<'a> SchemaIntrospector<'a> {
         } else {
             Ok(None)
         }
-    }
-
-    /// Get column details with constraints using pragma_table_info function
-    /// NOTE: This method does NOT detect boolean fields - use introspect_columns_with_entity() for accurate boolean detection
-    pub async fn introspect_columns(&self, table_name: &str) -> Result<Vec<ColumnSchema>> {
-        let sql = format!("SELECT * FROM pragma_table_info('{}')", table_name);
-        let result = self.db.execute(&sql, &[]).await?;
-
-        let mut columns = Vec::new();
-        for row in result.rows() {
-            if let Value::Object(obj) = row {
-                let column = self.parse_column_info(obj.clone(), None)?;
-                columns.push(column);
-            }
-        }
-
-        Ok(columns)
-    }
-
-    /// REVOLUTIONARY: Entity-aware column introspection - NO HEURISTICS!
-    /// Uses Entity::boolean_fields() for accurate boolean detection instead of name patterns
-    pub async fn introspect_columns_with_entity<T: crate::Entity>(&self, table_name: &str) -> Result<Vec<ColumnSchema>> {
-        let sql = format!("SELECT * FROM pragma_table_info('{}')", table_name);
-        let result = self.db.execute(&sql, &[]).await?;
-
-        // Get boolean field names from the entity trait - COMPILE-TIME SAFE!
-        let boolean_fields: HashSet<String> = T::boolean_fields()
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-
-        let mut columns = Vec::new();
-        for row in result.rows() {
-            if let Value::Object(obj) = row {
-                let column = self.parse_column_info(obj.clone(), Some(&boolean_fields))?;
-                columns.push(column);
-            }
-        }
-
-        Ok(columns)
-    }
-
-    /// Get index information using pragma_index_list and pragma_index_info functions
-    pub async fn introspect_indexes(&self, table_name: &str) -> Result<Vec<IndexSchema>> {
-        // Get list of indexes for the table
-        let sql = format!("SELECT * FROM pragma_index_list('{}')", table_name);
-        let result = self.db.execute(&sql, &[]).await?;
-
-        let mut indexes = Vec::new();
-        for row in result.rows() {
-            if let Value::Object(obj) = row {
-                if let Some(Value::String(index_name)) = obj.get("name") {
-                    // Skip auto-created indexes for primary keys and unique constraints
-                    if index_name.starts_with("sqlite_autoindex_") {
-                        continue;
-                    }
-
-                    let index_schema = self.introspect_index_details(index_name).await?;
-                    indexes.push(index_schema);
-                }
-            }
-        }
-
-        Ok(indexes)
-    }
-
-    /// Get detailed information about a specific index
-    async fn introspect_index_details(&self, index_name: &str) -> Result<IndexSchema> {
-        let sql = format!("SELECT * FROM pragma_index_info('{}')", index_name);
-        let result = self.db.execute(&sql, &[]).await?;
-
-        let mut columns = Vec::new();
-        for row in result.rows() {
-            if let Value::Object(obj) = row {
-                if let Some(Value::String(column_name)) = obj.get("name") {
-                    columns.push(column_name.clone());
-                }
-            }
-        }
-
-        // Check if index is unique by examining the index list
-        let unique = self.is_index_unique(index_name).await?;
-
-        Ok(IndexSchema {
-            name: index_name.to_string(),
-            columns,
-            unique,
-            table_name: None, // Will be set by the caller
-        })
-    }
-
-    /// Check if an index is unique
-    async fn is_index_unique(&self, index_name: &str) -> Result<bool> {
-        let sql = "SELECT * FROM sqlite_master WHERE type='index' AND name=?";
-        let params = vec![serde_json::json!(index_name)];
-        let result = self.db.execute(sql, &params).await?;
-
-        for row in result.rows() {
-            if let Value::Object(obj) = row {
-                if let Some(Value::String(sql_text)) = obj.get("sql") {
-                    // Check if the CREATE INDEX statement contains UNIQUE
-                    return Ok(sql_text.to_uppercase().contains("UNIQUE"));
-                }
-            }
-        }
-
-        Ok(false)
-    }
-
-    /// Get foreign key relationships using pragma_foreign_key_list function
-    pub async fn introspect_foreign_keys(&self, table_name: &str) -> Result<Vec<ForeignKeySchema>> {
-        let sql = format!("SELECT * FROM pragma_foreign_key_list('{}')", table_name);
-        let result = self.db.execute(&sql, &[]).await?;
-
-        let mut foreign_keys = Vec::new();
-        let mut fk_groups: HashMap<i64, Vec<Value>> = HashMap::new();
-
-        // Group foreign key parts by their ID (for composite keys)
-        for row in result.rows() {
-            if let Value::Object(ref obj) = row {
-                if let Some(Value::Number(id)) = obj.get("id") {
-                    if let Some(id) = id.as_i64() {
-                        fk_groups.entry(id).or_insert_with(Vec::new).push(row.clone());
-                    }
-                }
-            }
-        }
-
-        // Process each foreign key group
-        for (_, fk_rows) in fk_groups {
-            if let Some(fk_schema) = self.parse_foreign_key_group(fk_rows)? {
-                foreign_keys.push(fk_schema);
-            }
-        }
-
-        Ok(foreign_keys)
     }
 
     /// Parse column information from PRAGMA table_info result

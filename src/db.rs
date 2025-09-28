@@ -239,6 +239,23 @@ impl D1Client {
         
         Ok(0)
     }
+
+    /// Get the database dialect based on compilation target
+    pub fn dialect(&self) -> DatabaseDialect {
+        #[cfg(target_arch = "wasm32")]
+        {
+            DatabaseDialect::SQLite // D1 uses SQLite dialect
+        }
+        #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+        {
+            DatabaseDialect::SQLite
+        }
+        #[cfg(not(any(target_arch = "wasm32", feature = "sqlite")))]
+        {
+            // Default fallback - this should not be reachable in practice
+            DatabaseDialect::SQLite
+        }
+    }
 }
 
 // Generic DatabaseClient that works with any backend

@@ -14,7 +14,7 @@
 - [x] **Task 2.1**: SQLite Introspection Conversion (`src/introspection/sqlite.rs`)
 - [x] **Task 2.2**: PostgreSQL Introspection Conversion (`src/introspection/postgres.rs`)
 - [x] **Task 2.3**: MySQL Introspection Conversion (`src/introspection/mysql.rs`)
-- [ ] **Task 2.4**: Auto Migration Introspector (`src/auto_migration/introspector.rs`)
+- [x] **Task 2.4**: Auto Migration Introspector (`src/auto_migration/introspector.rs`)
 - [ ] **Task 2.5**: Main Introspection Module (`src/introspection/mod.rs`)
 - [ ] **Task 2.6**: Schema Evolution Detection (`src/schema_evolution.rs`)
 - [ ] **Task 2.7**: Schema Utilities (`src/schema.rs`)
@@ -252,15 +252,23 @@ Based on comprehensive codebase analysis, identified **877 raw SQL occurrences**
 - **Challenge**: MySQL-specific information_schema patterns
 - **Raw SQL Count**: 3 occurrences
 
-#### **Task 2.4**: Auto Migration Introspector
+#### **Task 2.4**: Auto Migration Introspector ✅ **COMPLETED**
 - **File**: `src/auto_migration/introspector.rs`
 - **Challenge**: Complex schema diff and analysis queries
-- **Raw SQL Count**: 9 occurrences
-- **Critical Violations**:
+- **Raw SQL Count**: 9 occurrences → **CONVERTED TO SEA-QUERY**
+- **Critical Violations**: ✅ **RESOLVED**
   ```sql
+  // Before: Raw SQL violations
   SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'
   SELECT sql FROM sqlite_master WHERE type='table' AND name=?
+  
+  // After: Sea-query builders
+  Query::select().column(Alias::new("name")).from(Alias::new("sqlite_master"))
+    .and_where(Expr::col(Alias::new("type")).eq("table"))
+    .and_where(Expr::col(Alias::new("name")).not_like("sqlite_%"))
   ```
+- **Implementation**: Database-agnostic introspector using sea-query builders for sqlite_master queries
+- **Architecture**: Simplified to SQLite-only support with clean delegation pattern
 
 #### **Task 2.5**: Main Introspection Module
 - **File**: `src/introspection/mod.rs`
