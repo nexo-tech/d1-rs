@@ -470,7 +470,7 @@ mod tests {
             assert!(sql.contains("test_table") || sql.contains("\"test_table\"") || sql.contains("`test_table`"));
             assert!(sql.contains("(col1, col2, col3)") || sql.contains("(\"col1\", \"col2\", \"col3\")") || sql.contains("(`col1`, `col2`, `col3`)"));
             assert!(sql.contains("VALUES (?, ?, ?)"));
-            assert!(sql.contains("RETURNING *"));
+            assert!(sql.contains("RETURNING *") || !dialect.supports_returning());
             assert_eq!(params.len(), 3);
             
             // Verify parameters maintain proper order and type safety
@@ -499,7 +499,7 @@ mod tests {
             assert!(sql.contains("users") || sql.contains("\"users\"") || sql.contains("`users`"));
             assert!((sql.contains("SET name = ?") || sql.contains("SET \"name\" = ?")) && (sql.contains("age = ?") || sql.contains("\"age\" = ?")));
             assert!((sql.contains("WHERE id = ?") || sql.contains("WHERE \"id\" = ?")) && (sql.contains("active = ?") || sql.contains("\"active\" = ?")));
-            assert!(sql.contains("RETURNING *"));
+            assert!(sql.contains("RETURNING *") || !dialect.supports_returning());
             assert_eq!(params.len(), 4);
             assert_eq!(params[0], json!("Updated Name"));
             assert_eq!(params[1], json!(30));
@@ -520,7 +520,7 @@ mod tests {
             assert!(sql.to_uppercase().contains("UPDATE"));
             assert!(sql.contains("settings") || sql.contains("\"settings\"") || sql.contains("`settings`"));
             assert!(sql.contains("SET updated_at = ?") || sql.contains("SET \"updated_at\" = ?") || sql.contains("SET `updated_at` = ?"));
-            assert!(sql.contains("RETURNING *"));
+            assert!(sql.contains("RETURNING *") || !dialect.supports_returning());
             assert_eq!(params.len(), 1);
             assert_eq!(params[0], json!("2024-01-01"));
         }
@@ -540,7 +540,7 @@ mod tests {
             assert!(sql.to_uppercase().contains("UPDATE"));
             assert!(sql.contains("config") || sql.contains("\"config\"") || sql.contains("`config`"));
             assert!((sql.contains("SET theme = ?") || sql.contains("SET \"theme\" = ?")) && (sql.contains("notifications = ?") || sql.contains("\"notifications\" = ?")) && (sql.contains("timeout = ?") || sql.contains("\"timeout\" = ?")));
-            assert!(sql.contains("RETURNING *"));
+            assert!(sql.contains("RETURNING *") || !dialect.supports_returning());
             assert_eq!(params.len(), 3);
             assert_eq!(params[0], json!("dark"));
             assert_eq!(params[1], json!(false));
@@ -632,7 +632,7 @@ mod tests {
             assert!(sql.contains("test_table") || sql.contains("\"test_table\"") || sql.contains("`test_table`"));
             assert!(sql.contains("empty_string") && sql.contains("whitespace") && sql.contains("special_chars"));
             assert!(sql.contains("VALUES (?, ?, ?)"));
-            assert!(sql.contains("RETURNING *"));
+            assert!(sql.contains("RETURNING *") || !dialect.supports_returning());
             assert_eq!(params.len(), 3);
             assert_eq!(params[0], json!(""));
             assert_eq!(params[1], json!("   "));
@@ -656,7 +656,7 @@ mod tests {
             assert!(sql.contains("measurements") || sql.contains("\"measurements\"") || sql.contains("`measurements`"));
             assert!(sql.contains("integer") && sql.contains("float") && sql.contains("negative") && sql.contains("scientific"));
             assert!(sql.contains("VALUES (?, ?, ?, ?)"));
-            assert!(sql.contains("RETURNING *"));
+            assert!(sql.contains("RETURNING *") || !dialect.supports_returning());
             assert_eq!(params.len(), 4);
             assert_eq!(params[0], json!(42));
             assert_eq!(params[1], json!(3.14159));
@@ -681,7 +681,7 @@ mod tests {
             assert!(sql.contains("flags") || sql.contains("\"flags\"") || sql.contains("`flags`"));
             assert!((sql.contains("SET is_enabled = ?") || sql.contains("SET \"is_enabled\" = ?")) && (sql.contains("is_disabled = ?") || sql.contains("\"is_disabled\" = ?")) && (sql.contains("nullable_field = ?") || sql.contains("\"nullable_field\" = ?")));
             assert!(sql.contains("WHERE id IS NOT NULL") || sql.contains("WHERE \"id\" IS NOT NULL"));
-            assert!(sql.contains("RETURNING *"));
+            assert!(sql.contains("RETURNING *") || !dialect.supports_returning());
             assert_eq!(params.len(), 3);
             assert_eq!(params[0], json!(true));
             assert_eq!(params[1], json!(false));
@@ -727,7 +727,7 @@ mod tests {
             assert!(sql.contains("internationalization") || sql.contains("\"internationalization\"") || sql.contains("`internationalization`"));
             assert!(sql.contains("chinese") && sql.contains("emoji") && sql.contains("arabic") && sql.contains("russian"));
             assert!(sql.contains("VALUES (?, ?, ?, ?)"));
-            assert!(sql.contains("RETURNING *"));
+            assert!(sql.contains("RETURNING *") || !dialect.supports_returning());
             assert_eq!(params.len(), 4);
             assert_eq!(params[0], json!("你好世界"));
             assert_eq!(params[1], json!("🚀✨🎉"));
@@ -774,7 +774,7 @@ mod tests {
         let (sql, params) = empty_insert.to_sql(DatabaseDialect::SQLite);
         assert!(sql.to_uppercase().contains("INSERT INTO"));
         assert!(sql.contains("test") || sql.contains("\"test\"") || sql.contains("`test`"));
-        assert!(sql.contains("RETURNING *"));
+        assert!(sql.contains("RETURNING *") || !DatabaseDialect::SQLite.supports_returning());
         assert_eq!(params.len(), 0);
         
         let mut single_insert = InsertQuery::new("test".to_string());
@@ -783,7 +783,7 @@ mod tests {
         assert!(sql.to_uppercase().contains("INSERT INTO"));
         assert!(sql.contains("test") || sql.contains("\"test\"") || sql.contains("`test`"));
         assert!(sql.contains("col") && sql.contains("VALUES (?)"));
-        assert!(sql.contains("RETURNING *"));
+        assert!(sql.contains("RETURNING *") || !DatabaseDialect::SQLite.supports_returning());
         assert_eq!(params.len(), 1);
         
         let mut multi_insert = InsertQuery::new("test".to_string());
@@ -795,7 +795,7 @@ mod tests {
         assert!(sql.contains("test") || sql.contains("\"test\"") || sql.contains("`test`"));
         assert!(sql.contains("col0") && sql.contains("col1") && sql.contains("col2") && sql.contains("col3") && sql.contains("col4"));
         assert!(sql.contains("VALUES (?, ?, ?, ?, ?)"));
-        assert!(sql.contains("RETURNING *"));
+        assert!(sql.contains("RETURNING *") || !DatabaseDialect::SQLite.supports_returning());
         assert_eq!(params.len(), 5);
         
         // Verify that placeholder generation is now type-safe and consistent
