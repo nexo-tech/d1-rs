@@ -21,7 +21,7 @@
 - [x] **Task 2.6**: Configuration Systems - Environment-Driven Database Setup
 - [x] **Task 2.7**: Raw SQL Audit - Understanding the Legacy
 - [x] **Task 2.8**: Client Wrapper Pattern - Hiding Complexity
-- [ ] **Task 2.9**: RETURNING Clause Challenges - Database Dialect Differences
+- [x] **Task 2.9**: RETURNING Clause Challenges - Database Dialect Differences
 - [ ] **Task 2.10**: Performance Optimization - Memory and Speed Considerations
 
 ### **PHASE 3: AUTOMATIC MIGRATION SYSTEM** (12 articles)
