@@ -7,7 +7,7 @@
 - [x] **Task 1.2**: Early Architecture Decisions - Why Rust for Database Abstraction
 - [x] **Task 1.3**: First ORM Implementation - Making It "Finally Work"
 - [x] **Task 1.4**: Boolean Handling Crisis - The SQLite Integer Problem
-- [ ] **Task 1.5**: Time Zone Handling Complexity in Rust
+- [x] **Task 1.5**: Time Zone Handling Complexity in Rust
 - [ ] **Task 1.6**: The Great Restructure - Learning from Early Mistakes
 - [ ] **Task 1.7**: Adding Claude.md - AI-Assisted Development Philosophy
 - [ ] **Task 1.8**: Foreign Constraints - First Steps Toward Relational Data
