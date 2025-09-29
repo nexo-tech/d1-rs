@@ -28,7 +28,7 @@
 - [x] **Task 3.1**: Schema Introspection Engine - Reading Database Structure
 - [x] **Task 3.2**: Entity Analysis - From Rust Structs to SQL Schema
 - [x] **Task 3.3**: Migration Planning - Diffing and Change Detection
-- [ ] **Task 3.4**: DDL Generation - Database-Agnostic Schema Changes
+- [x] **Task 3.4**: DDL Generation - Database-Agnostic Schema Changes
 - [ ] **Task 3.5**: Rollback System Design - Safety-First Migrations
 - [ ] **Task 3.6**: Data Migration Engine - Moving Data Safely
 - [ ] **Task 3.7**: Parallel Execution - Optimizing Migration Performance
