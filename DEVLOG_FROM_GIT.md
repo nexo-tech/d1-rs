@@ -30,7 +30,7 @@
 - [x] **Task 3.3**: Migration Planning - Diffing and Change Detection
 - [x] **Task 3.4**: DDL Generation - Database-Agnostic Schema Changes
 - [x] **Task 3.5**: Rollback System Design - Safety-First Migrations
-- [ ] **Task 3.6**: Data Migration Engine - Moving Data Safely
+- [x] **Task 3.6**: Data Migration Engine - Moving Data Safely
 - [ ] **Task 3.7**: Parallel Execution - Optimizing Migration Performance
 - [ ] **Task 3.8**: Schema Versioning - Tracking Database Evolution
 - [ ] **Task 3.9**: Zero-Downtime Migrations - Enterprise-Grade Features
