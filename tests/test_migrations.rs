@@ -782,6 +782,7 @@ async fn test_revolutionary_automatic_migration_generation() {
     // Test that we can generate migrations automatically from Entity traits
     let _current_schema = crate::auto_migration::DatabaseSchema {
         tables: vec![],
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
     };
     
     // This would generate migrations automatically from Entity definitions

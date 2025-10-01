@@ -3,7 +3,10 @@ use d1_rs::auto_migration::{SchemaDiffer, DatabaseSchema, TableSchema, ColumnSch
 #[tokio::test]
 async fn test_empty_schemas_no_diff() {
     let differ = SchemaDiffer::new();
-    let empty_schema = DatabaseSchema { tables: vec![] };
+    let empty_schema = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![],
+    };
     
     let diff = differ.compare_schemas(&empty_schema, &empty_schema).unwrap();
     assert!(diff.is_empty());
@@ -13,7 +16,10 @@ async fn test_empty_schemas_no_diff() {
 #[tokio::test]
 async fn test_add_new_table() {
     let differ = SchemaDiffer::new();
-    let current = DatabaseSchema { tables: vec![] };
+    let current = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![],
+    };
     
     let new_table = TableSchema {
         name: "users".to_string(),
@@ -45,6 +51,7 @@ async fn test_add_new_table() {
     };
     
     let desired = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
         tables: vec![new_table.clone()] 
     };
     
@@ -83,9 +90,13 @@ async fn test_remove_table() {
     };
     
     let current = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
         tables: vec![old_table.clone()] 
     };
-    let desired = DatabaseSchema { tables: vec![] };
+    let desired = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![],
+    };
     
     let diff = differ.compare_schemas(&current, &desired).unwrap();
     assert!(!diff.is_empty());
@@ -152,8 +163,14 @@ async fn test_add_column() {
         constraints: vec![],
     };
     
-    let current = DatabaseSchema { tables: vec![current_table] };
-    let desired = DatabaseSchema { tables: vec![desired_table] };
+    let current = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![current_table],
+    };
+    let desired = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![desired_table],
+    };
     
     let diff = differ.compare_schemas(&current, &desired).unwrap();
     assert!(!diff.is_empty());
@@ -212,8 +229,14 @@ async fn test_modify_column() {
         constraints: vec![],
     };
     
-    let current = DatabaseSchema { tables: vec![current_table] };
-    let desired = DatabaseSchema { tables: vec![desired_table] };
+    let current = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![current_table],
+    };
+    let desired = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![desired_table],
+    };
     
     let diff = differ.compare_schemas(&current, &desired).unwrap();
     assert!(!diff.is_empty());
@@ -270,8 +293,14 @@ async fn test_rename_detection() {
         constraints: vec![],
     };
     
-    let current = DatabaseSchema { tables: vec![current_table] };
-    let desired = DatabaseSchema { tables: vec![desired_table] };
+    let current = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![current_table],
+    };
+    let desired = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![desired_table],
+    };
     
     let diff = differ.compare_schemas(&current, &desired).unwrap();
     assert!(!diff.is_empty());
@@ -335,8 +364,14 @@ async fn test_index_changes() {
         constraints: vec![],
     };
     
-    let current = DatabaseSchema { tables: vec![current_table] };
-    let desired = DatabaseSchema { tables: vec![desired_table] };
+    let current = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![current_table],
+    };
+    let desired = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![desired_table],
+    };
     
     let diff = differ.compare_schemas(&current, &desired).unwrap();
     assert!(!diff.is_empty());
@@ -390,8 +425,14 @@ async fn test_foreign_key_changes() {
         constraints: vec![],
     };
     
-    let current = DatabaseSchema { tables: vec![current_table] };
-    let desired = DatabaseSchema { tables: vec![desired_table] };
+    let current = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![current_table],
+    };
+    let desired = DatabaseSchema { 
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
+        tables: vec![desired_table],
+    };
     
     let diff = differ.compare_schemas(&current, &desired).unwrap();
     assert!(!diff.is_empty());
@@ -446,6 +487,7 @@ async fn test_strict_mode() {
 
 fn create_complex_current_schema() -> DatabaseSchema {
     DatabaseSchema {
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
         tables: vec![
             TableSchema {
                 name: "users".to_string(),
@@ -499,6 +541,7 @@ fn create_complex_current_schema() -> DatabaseSchema {
 
 fn create_complex_desired_schema() -> DatabaseSchema {
     DatabaseSchema {
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
         tables: vec![
             TableSchema {
                 name: "users".to_string(),
@@ -588,6 +631,7 @@ fn create_complex_desired_schema() -> DatabaseSchema {
 
 fn create_simple_schema() -> DatabaseSchema {
     DatabaseSchema {
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
         tables: vec![
             TableSchema {
                 name: "simple".to_string(),
@@ -613,6 +657,7 @@ fn create_simple_schema() -> DatabaseSchema {
 
 fn create_modified_schema() -> DatabaseSchema {
     DatabaseSchema {
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
         tables: vec![
             TableSchema {
                 name: "simple".to_string(),

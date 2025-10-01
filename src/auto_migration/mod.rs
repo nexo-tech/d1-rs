@@ -188,7 +188,10 @@ impl AutoSchemaClient {
         let desired_schema = self.analyzer.borrow().analyze_all_entities().await?;
 
         // Create empty current schema (as if database is brand new)
-        let empty_schema = DatabaseSchema { tables: vec![] };
+        let empty_schema = DatabaseSchema { 
+            tables: vec![],
+            dialect: crate::dialects::DatabaseDialect::SQLite,
+        };
 
         // Compare empty schema with desired schema to generate full creation plan
         let diff = self

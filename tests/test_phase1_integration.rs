@@ -35,6 +35,7 @@ async fn test_phase1_complete_integration() {
     let post_schema = analyzer.analyze_entity::<TestPost>().unwrap();
     
     let desired_schema = DatabaseSchema {
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
         tables: vec![user_schema, post_schema],
     };
     
@@ -99,6 +100,7 @@ async fn test_phase1_no_changes_scenario() {
     
     // Create matching desired schema manually
     let desired_schema = DatabaseSchema {
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
         tables: vec![
             TableSchema {
                 name: "simple_table".to_string(),
@@ -243,6 +245,7 @@ async fn setup_complex_existing_schema(db: &D1Client) {
 
 fn create_complex_desired_schema() -> DatabaseSchema {
     DatabaseSchema {
+        dialect: d1_rs::dialects::DatabaseDialect::SQLite,
         tables: vec![
             TableSchema {
                 name: "complex_table".to_string(),

@@ -279,6 +279,7 @@ impl EnhancedAutoMigrator {
         // For now, return a minimal empty schema as introspector integration needs more work
         // This allows compilation while maintaining the interface for future implementation
         Ok(UnifiedDatabaseSchema {
+            dialect: crate::dialects::DatabaseDialect::SQLite,
             tables: Vec::new(),
         })
     }
@@ -618,6 +619,7 @@ mod tests {
 
         DatabaseSchema {
             tables: vec![table],
+            dialect: crate::dialects::DatabaseDialect::SQLite,
         }
     }
 
@@ -701,6 +703,7 @@ mod tests {
         // Test migration from empty database to empty schema (no operations should be generated)
         let empty_target_schema = UnifiedDatabaseSchema {
             tables: Vec::new(),
+            dialect: crate::dialects::DatabaseDialect::SQLite,
         };
         
         let result = migrator.auto_migrate(&empty_target_schema, &backend).await;

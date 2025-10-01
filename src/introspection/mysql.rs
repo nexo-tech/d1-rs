@@ -663,7 +663,8 @@ impl SchemaIntrospector<MySQLBackend> for MySQLIntrospector<'_> {
             constraints.push(ConstraintSchema {
                 name: constraint_name,
                 constraint_type,
-                definition: format!("{} constraint", constraint_type_str),
+                columns: Vec::new(), // Could be enhanced to parse column names from constraint
+                definition: Some(format!("{} constraint", constraint_type_str)),
             });
         }
         
@@ -683,7 +684,8 @@ impl SchemaIntrospector<MySQLBackend> for MySQLIntrospector<'_> {
                 constraints.push(ConstraintSchema {
                     name: constraint_name,
                     constraint_type: ConstraintType::Check,
-                    definition: check_clause,
+                    columns: Vec::new(), // Could be enhanced to parse column names from CHECK constraint  
+                    definition: Some(check_clause),
                 });
             }
         }

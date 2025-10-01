@@ -335,8 +335,14 @@ impl DataMigrator {
             config,
             context: std::cell::RefCell::new(MigrationContext {
                 migration_id: String::new(),
-                source_schema: DatabaseSchema { tables: Vec::new() },
-                target_schema: DatabaseSchema { tables: Vec::new() },
+                source_schema: DatabaseSchema { 
+                    tables: Vec::new(),
+                    dialect: crate::dialects::DatabaseDialect::SQLite,
+                },
+                target_schema: DatabaseSchema { 
+                    tables: Vec::new(),
+                    dialect: crate::dialects::DatabaseDialect::SQLite,
+                },
                 statistics: MigrationStatistics::default(),
                 temporary_tables: Vec::new(),
                 backup_tables: HashMap::new(),

@@ -608,7 +608,8 @@ impl SchemaIntrospector<PostgreSQLBackend> for PostgreSQLIntrospector<'_> {
             constraints.push(ConstraintSchema {
                 name: constraint_name,
                 constraint_type,
-                definition,
+                columns: Vec::new(), // Could be enhanced to parse column names from constraint
+                definition: Some(definition),
             });
         }
         

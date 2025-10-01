@@ -370,14 +370,14 @@ impl RollbackRiskAssessor {
             RollbackOperation::RecreateTable { definition, restore_data, data_source } => {
                 self.validate_recreate_table_safety(&definition.name, definition, *restore_data, data_source.as_ref(), schema, &mut issues);
             }
-            RollbackOperation::DropTable { name, .. } => {
-                self.validate_drop_table_safety(name, schema, &mut issues);
+            RollbackOperation::DropTable { name, preserve_data, .. } => {
+                self.validate_drop_table_safety(name, *preserve_data, schema, &mut issues);
             }
             RollbackOperation::AddColumn { table, column, restore_data, .. } => {
                 self.validate_add_column_safety(table, column, *restore_data, schema, &mut issues);
             }
-            RollbackOperation::DropColumn { table, column, .. } => {
-                self.validate_drop_column_safety(table, column, schema, &mut issues);
+            RollbackOperation::DropColumn { table, column, preserve_data, .. } => {
+                self.validate_drop_column_safety(table, column, *preserve_data, schema, &mut issues);
             }
             RollbackOperation::ModifyColumn { table, column, changes, preserve_data, .. } => {
                 self.validate_modify_column_safety(table, column, changes, *preserve_data, schema, &mut issues);
@@ -912,7 +912,7 @@ impl RollbackRiskAssessor {
         }
     }
     
-    fn validate_drop_table_safety(&self, name: &str, schema: &DatabaseSchema, issues: &mut Vec<RollbackValidationIssue>) {
+    fn validate_drop_table_safety(&self, name: &str, preserve_data: bool, schema: &DatabaseSchema, issues: &mut Vec<RollbackValidationIssue>) {
         // Check if table exists for dropping
         if !self.table_exists(name, schema) {
             issues.push(RollbackValidationIssue {
@@ -948,11 +948,23 @@ impl RollbackRiskAssessor {
         // Check if table contains data (high data loss risk)
         let table_schema = schema.tables.iter().find(|t| t.name == name);
         if let Some(_table) = table_schema {
+            let severity = if preserve_data {
+                RollbackRiskSeverity::Critical
+            } else {
+                RollbackRiskSeverity::Blocking  // Blocking when no data preservation!
+            };
+            
+            let description = if preserve_data {
+                format!("Dropping table '{}' will delete all data but preserve_data is enabled", name)
+            } else {
+                format!("Dropping table '{}' will permanently delete all data without backup", name)
+            };
+            
             issues.push(RollbackValidationIssue {
                 operation_type: "drop_table".to_string(),
-                description: format!("Dropping table '{}' will permanently delete all data", name),
-                severity: RollbackRiskSeverity::Critical,
-                mitigation: "Backup table data before dropping or use preserve_data option".to_string(),
+                description,
+                severity,
+                mitigation: "Backup table data before dropping or enable preserve_data option".to_string(),
                 affected_table: Some(name.to_string()),
                 affected_column: None,
             });
@@ -1080,7 +1092,7 @@ impl RollbackRiskAssessor {
         }
     }
     
-    fn validate_drop_column_safety(&self, table: &str, column: &str, schema: &DatabaseSchema, issues: &mut Vec<RollbackValidationIssue>) {
+    fn validate_drop_column_safety(&self, table: &str, column: &str, preserve_data: bool, schema: &DatabaseSchema, issues: &mut Vec<RollbackValidationIssue>) {
         // Check if table exists
         if !self.table_exists(table, schema) {
             issues.push(RollbackValidationIssue {
@@ -1112,12 +1124,24 @@ impl RollbackRiskAssessor {
         
         let column_schema = column_schema.unwrap();
         
-        // Always warn about data loss
+        // Check for data loss risk
+        let severity = if preserve_data {
+            RollbackRiskSeverity::Critical
+        } else {
+            RollbackRiskSeverity::Blocking  // Blocking when no data preservation!
+        };
+        
+        let description = if preserve_data {
+            format!("Dropping column '{}' will delete all data but preserve_data is enabled", column)
+        } else {
+            format!("Dropping column '{}' will permanently delete all data without backup", column)
+        };
+        
         issues.push(RollbackValidationIssue {
             operation_type: "drop_column".to_string(),
-            description: format!("Dropping column '{}' will permanently delete all data in that column", column),
-            severity: RollbackRiskSeverity::Critical,
-            mitigation: "Backup column data before dropping or use preserve_data option".to_string(),
+            description,
+            severity,
+            mitigation: "Backup column data before dropping or enable preserve_data option".to_string(),
             affected_table: Some(table.to_string()),
             affected_column: Some(column.to_string()),
         });

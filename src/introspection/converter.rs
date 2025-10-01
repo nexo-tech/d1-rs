@@ -137,12 +137,13 @@ impl SchemaConverter {
             ConstraintType::ForeignKey => UnifiedConstraintType::ForeignKey,
             ConstraintType::Check => UnifiedConstraintType::Check,
             ConstraintType::NotNull => UnifiedConstraintType::NotNull,
+            ConstraintType::Default => UnifiedConstraintType::Check, // Default constraints are often implemented as check constraints
         };
 
         UnifiedConstraintSchema {
             name: legacy_constraint.name,
             constraint_type: unified_type,
-            definition: legacy_constraint.definition,
+            definition: legacy_constraint.definition.unwrap_or_else(|| "".to_string()),
             columns: Vec::new(), // Legacy schema doesn't track this explicitly
             deferrable: false,
             initially_deferred: false,

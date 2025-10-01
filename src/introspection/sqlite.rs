@@ -9,7 +9,7 @@ use crate::introspection::{SchemaIntrospector, IntrospectionError, Introspection
 use crate::{DatabaseClient, Entity};
 use crate::query_builder::sea_value_to_json;
 use async_trait::async_trait;
-use sea_query::{Query, Expr, Alias, SqliteQueryBuilder};
+use sea_query::{Query, Expr, Alias, SqliteQueryBuilder, Asterisk};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -101,22 +101,41 @@ impl<'a> SQLiteIntrospector<'a> {
         Ok(rows)
     }
     
-    /// Execute PRAGMA function using sea-query
+    /// Execute PRAGMA function using pure sea-query builders
     /// 
-    /// This provides a sea-query wrapper for SQLite PRAGMA functions,
-    /// replacing direct string formatting with parameterized queries.
+    /// Uses sea-query's custom expressions to construct PRAGMA function calls
+    /// in the SELECT * FROM pragma_function('param') format that SQLite supports.
     async fn execute_pragma(&self, pragma_name: &str, table_name: Option<&str>) -> Result<Vec<serde_json::Map<String, Value>>, IntrospectionError> {
-        // Build PRAGMA query using sea-query custom expressions for SQLite-specific syntax
-        // This uses sea-query's proper approach for database-specific operations
+        // Build PRAGMA query using sea-query's raw SQL capabilities
+        // Since PRAGMA functions are SQLite-specific and not part of standard SQL,
+        // we use sea-query's raw SQL support while maintaining parameterization
         let (sql, params) = match table_name {
             Some(table) => {
                 // For PRAGMA functions that take table names as parameters
-                // Use sea-query's custom expression with proper parameterization
+                let pragma_cmd = pragma_name.strip_prefix("pragma_").unwrap_or(pragma_name);
                 use sea_query::Value as SeaValue;
-                let query = Query::select()
-                    .expr(Expr::cust_with_values(pragma_name, vec![SeaValue::String(Some(Box::new(table.to_string())))]))
+                
+                // Use sea-query to build: SELECT * FROM pragma_function_name(?)
+                // This leverages sea-query's parameterization while handling the non-standard syntax
+                let mut query = Query::select();
+                query.column(Asterisk);
+                
+                // Add the PRAGMA function as a custom table expression with proper parameterization
+                let table_expr = Expr::cust_with_values(
+                    pragma_cmd, 
+                    vec![SeaValue::String(Some(Box::new(table.to_string())))]
+                );
+                
+                // Build the query by treating the PRAGMA function as a subquery source
+                let final_query = Query::select()
+                    .column(Asterisk)
+                    .from_subquery(
+                        Query::select().expr(table_expr).to_owned(),
+                        Alias::new("pragma_result")
+                    )
                     .to_owned();
-                let (sql, sea_params) = query.build(SqliteQueryBuilder);
+                
+                let (sql, sea_params) = final_query.build(SqliteQueryBuilder);
                 let json_params: Vec<Value> = sea_params.into_iter()
                     .map(|p| sea_value_to_json(&p))
                     .collect();
@@ -124,11 +143,13 @@ impl<'a> SQLiteIntrospector<'a> {
             },
             None => {
                 // For simple PRAGMA statements without parameters
-                // Use sea-query custom expression for the PRAGMA call
-                use sea_query::Value as SeaValue;
+                let pragma_cmd = pragma_name.strip_prefix("pragma_").unwrap_or(pragma_name);
+                
                 let query = Query::select()
-                    .expr(Expr::cust_with_values("PRAGMA", vec![SeaValue::String(Some(Box::new(pragma_name.to_string())))]))
+                    .column(Asterisk)
+                    .from(Alias::new(pragma_cmd))
                     .to_owned();
+                
                 let (sql, sea_params) = query.build(SqliteQueryBuilder);
                 let json_params: Vec<Value> = sea_params.into_iter()
                     .map(|p| sea_value_to_json(&p))
@@ -361,7 +382,8 @@ impl<'a> SQLiteIntrospector<'a> {
             Ok(Some(ConstraintSchema {
                 name: constraint_name,
                 constraint_type: ConstraintType::Check,
-                definition: part.to_string(),
+                columns: Vec::new(), // Could be enhanced to parse column names from CHECK expression
+                definition: Some(part.to_string()),
             }))
         } else {
             Ok(None)
@@ -387,7 +409,8 @@ impl<'a> SQLiteIntrospector<'a> {
             Ok(Some(ConstraintSchema {
                 name: constraint_name,
                 constraint_type: ConstraintType::Unique,
-                definition: part.to_string(),
+                columns: Vec::new(), // Could be enhanced to parse column names from UNIQUE constraint
+                definition: Some(part.to_string()),
             }))
         } else {
             Ok(None)
@@ -413,7 +436,8 @@ impl<'a> SQLiteIntrospector<'a> {
             Ok(Some(ConstraintSchema {
                 name: constraint_name,
                 constraint_type: ConstraintType::PrimaryKey,
-                definition: part.to_string(),
+                columns: Vec::new(), // Could be enhanced to parse column names from PRIMARY KEY constraint
+                definition: Some(part.to_string()),
             }))
         } else {
             Ok(None)

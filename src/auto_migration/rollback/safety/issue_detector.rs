@@ -685,6 +685,7 @@ mod tests {
     
     fn create_test_schema() -> DatabaseSchema {
         DatabaseSchema {
+            dialect: crate::dialects::DatabaseDialect::SQLite,
             tables: vec![
                 TableSchema {
                     name: "users".to_string(),

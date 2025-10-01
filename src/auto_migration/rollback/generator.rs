@@ -1079,6 +1079,7 @@ mod tests {
         ];
         
         let schema = DatabaseSchema {
+            dialect: crate::dialects::DatabaseDialect::SQLite,
             tables: vec![],
         };
         
@@ -1111,6 +1112,7 @@ mod tests {
         ];
         
         let schema = DatabaseSchema {
+            dialect: crate::dialects::DatabaseDialect::SQLite,
             tables: vec![],
         };
         
@@ -1158,6 +1160,7 @@ mod tests {
         ];
         
         let schema = DatabaseSchema {
+            dialect: crate::dialects::DatabaseDialect::SQLite,
             tables: vec![],
         };
         

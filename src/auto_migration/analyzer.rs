@@ -129,7 +129,10 @@ impl EntityAnalyzer {
         // Use trait to analyze each entity in the tuple
         entities.analyze_all(self, &mut tables)?;
 
-        Ok(DatabaseSchema { tables })
+        Ok(DatabaseSchema { 
+            tables,
+            dialect: crate::dialects::DatabaseDialect::SQLite,
+        })
     }
 
     /// Extract column definitions from entity fields
@@ -587,7 +590,10 @@ impl EntityAnalyzer {
     /// Generate complete database schema from all analyzed entities
     pub fn generate_database_schema(&self) -> DatabaseSchema {
         let tables = self.entity_schemas.values().cloned().collect();
-        DatabaseSchema { tables }
+        DatabaseSchema { 
+            tables,
+            dialect: crate::dialects::DatabaseDialect::SQLite,
+        }
     }
 
     /// Legacy method for backward compatibility

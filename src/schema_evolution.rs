@@ -259,21 +259,24 @@ impl<T: Entity> TypeSafeSchema<T> {
                         table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
                             name: format!("nn_{}", col.name),
                             constraint_type: crate::auto_migration::introspector::ConstraintType::NotNull,
-                            definition: format!("{} NOT NULL", col.name),
+                            columns: vec![col.name.to_string()],
+                            definition: Some(format!("{} NOT NULL", col.name)),
                         });
                     },
                     ColumnConstraint::PrimaryKey => {
                         table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
                             name: format!("pk_{}", col.name),
                             constraint_type: crate::auto_migration::introspector::ConstraintType::PrimaryKey,
-                            definition: format!("PRIMARY KEY ({})", col.name),
+                            columns: vec![col.name.to_string()],
+                            definition: Some(format!("PRIMARY KEY ({})", col.name)),
                         });
                     },
                     ColumnConstraint::Unique => {
                         table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
                             name: format!("uq_{}", col.name),
                             constraint_type: crate::auto_migration::introspector::ConstraintType::Unique,
-                            definition: format!("UNIQUE ({})", col.name),
+                            columns: vec![col.name.to_string()],
+                            definition: Some(format!("UNIQUE ({})", col.name)),
                         });
                     },
                     ColumnConstraint::Default(value) => {
@@ -281,15 +284,17 @@ impl<T: Entity> TypeSafeSchema<T> {
                         // but we include them for completeness
                         table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
                             name: format!("df_{}", col.name),
-                            constraint_type: crate::auto_migration::introspector::ConstraintType::Check,
-                            definition: format!("{} DEFAULT {}", col.name, value),
+                            constraint_type: crate::auto_migration::introspector::ConstraintType::Default,
+                            columns: vec![col.name.to_string()],
+                            definition: Some(format!("{} DEFAULT {}", col.name, value)),
                         });
                     },
                     ColumnConstraint::ForeignKey { table, column } => {
                         table_constraints.push(crate::auto_migration::introspector::ConstraintSchema {
                             name: format!("fk_{}_{}", col.name, table),
                             constraint_type: crate::auto_migration::introspector::ConstraintType::ForeignKey,
-                            definition: format!("FOREIGN KEY ({}) REFERENCES {} ({})", col.name, table, column),
+                            columns: vec![col.name.to_string()],
+                            definition: Some(format!("FOREIGN KEY ({}) REFERENCES {} ({})", col.name, table, column)),
                         });
                     },
                 }
@@ -306,7 +311,10 @@ impl<T: Entity> TypeSafeSchema<T> {
         
         tables.push(table_schema);
         
-        DatabaseSchema { tables }
+        DatabaseSchema { 
+            tables,
+            dialect: crate::dialects::DatabaseDialect::SQLite,
+        }
     }
     
     /// Extract auto_increment flag for a specific column from Entity field definitions
@@ -1262,6 +1270,7 @@ mod tests {
         // Create empty database schema
         let current_db = DatabaseSchema {
             tables: Vec::new(),
+            dialect: crate::dialects::DatabaseDialect::SQLite,
         };
         
         // Create desired schema for TestUser
@@ -1317,6 +1326,7 @@ mod tests {
         
         let current_db = DatabaseSchema {
             tables: current_tables,
+            dialect: crate::dialects::DatabaseDialect::SQLite,
         };
         
         // Create desired schema with different columns
@@ -1340,6 +1350,7 @@ mod tests {
         // Empty database
         let current_db = DatabaseSchema {
             tables: Vec::new(),
+            dialect: crate::dialects::DatabaseDialect::SQLite,
         };
         
         // Generate migrations for TestUser
@@ -1390,6 +1401,7 @@ mod tests {
         // Test the extension trait
         let current_db = DatabaseSchema {
             tables: Vec::new(),
+            dialect: crate::dialects::DatabaseDialect::SQLite,
         };
         
         let result = differ.compare_with_entity::<TestUser>(
@@ -1692,7 +1704,7 @@ mod tests {
         // Verify constraint definitions are properly formatted
         for constraint in &table.constraints {
             assert!(!constraint.name.is_empty(), "Constraint should have a name");
-            assert!(!constraint.definition.is_empty(), "Constraint should have a definition");
+            assert!(constraint.definition.as_ref().map_or(false, |d| !d.is_empty()), "Constraint should have a definition");
         }
     }
     
@@ -1789,9 +1801,9 @@ mod tests {
         assert!(fk_constraint.is_some(), "Should have foreign key table constraint");
         
         if let Some(constraint) = fk_constraint {
-            assert!(constraint.definition.contains("FOREIGN KEY"));
-            assert!(constraint.definition.contains("user_id"));
-            assert!(constraint.definition.contains("test_users"));
+            assert!(constraint.definition.as_ref().map_or(false, |d| d.contains("FOREIGN KEY")));
+            assert!(constraint.definition.as_ref().map_or(false, |d| d.contains("user_id")));
+            assert!(constraint.definition.as_ref().map_or(false, |d| d.contains("test_users")));
         }
     }
     

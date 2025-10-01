@@ -172,7 +172,10 @@ pub trait SchemaIntrospector<B: DatabaseBackend> {
             tables.push(table_schema);
         }
         
-        Ok(DatabaseSchema { tables })
+        Ok(DatabaseSchema { 
+            tables,
+            dialect: crate::dialects::DatabaseDialect::SQLite,
+        })
     }
 
     /// Entity-aware column introspection with boolean field detection

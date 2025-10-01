@@ -763,6 +763,7 @@ mod tests {
     
     fn create_test_database_schema(_dialect: DatabaseDialect) -> DatabaseSchema {
         DatabaseSchema {
+            dialect: crate::dialects::DatabaseDialect::SQLite,
             tables: Vec::new(),
         }
     }
